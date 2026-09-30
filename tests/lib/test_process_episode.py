@@ -73,7 +73,9 @@ def _stub_mechanical_pass(monkeypatch, route):
     threading needs to see both land on the SAME pixels: reframe encodes them
     and check_episode judges them, two independent readers of the same claim.
     It also records the `CheckSpec` the check was handed (`calls["check_spec"]`):
-    the bars a run was judged against are the one thing a gates test has to see."""
+    the bars a run was judged against are the one thing a gates test has to see — and
+    the reasons it was handed beside them (`calls["check_gate_reasons"]`, None when the
+    kwarg was not passed at all: a run that authored nothing keeps its call shape)."""
     calls = {}
 
     def fake_reframe(spec, src, route_path, out, path_out, stabilized=False):
@@ -92,10 +94,12 @@ def _stub_mechanical_pass(monkeypatch, route):
         return out, None
     monkeypatch.setattr(process_episode.storyboard, "build", fake_storyboard_build)
 
-    def fake_run(clip, route_path, path_path, spec, out, source=None, plans=None):
+    def fake_run(clip, route_path, path_path, spec, out, source=None, plans=None,
+                 gate_reasons=None):
         calls["check_source"] = source
         calls["check_plans"] = plans
         calls["check_spec"] = spec
+        calls["check_gate_reasons"] = gate_reasons
         r = models.Report(checks={}, attempt=spec.attempt)
         r.write(out)
         return r
@@ -375,11 +379,12 @@ def test_the_authored_bar_rides_every_retry_attempt_not_only_the_first(tmp_path,
     passing_run = process_episode.check_episode.run      # the faked check _frozen_episode installed
     specs = []
 
-    def fail_once(clip, route_path, path_path, spec, out, source=None, plans=None):
+    def fail_once(clip, route_path, path_path, spec, out, source=None, plans=None,
+                  gate_reasons=None):
         specs.append(spec)
         if len(specs) > 1:
             return passing_run(clip, route_path, path_path, spec, out,
-                               source=source, plans=plans)
+                               source=source, plans=plans, gate_reasons=gate_reasons)
         report = models.Report(checks={"jitter": models.CheckResult("jitter", False, {})},
                                attempt=spec.attempt)
         report.write(out)
@@ -393,6 +398,24 @@ def test_the_authored_bar_rides_every_retry_attempt_not_only_the_first(tmp_path,
     assert res["status"] == "mechanical_pass" and res["attempt"] == 2
     assert specs == [_checked_spec(md, attempt=1, entropy_floor=0.85),
                      _checked_spec(md, attempt=2, entropy_floor=0.85)]
+
+
+def test_the_reasons_reach_the_check_that_names_the_bars_it_judged_by(tmp_path, monkeypatch):
+    """check_episode can only name a moved bar if it is handed the reason, and this is the call
+    that hands it (design 2026-09-30 §2.4 item 1). The WHOLE authored set goes through, both
+    scopes — the same rule as the gates themselves: the callee partitions and no caller does.
+    The control is inside the test, so the instrument has just been shown able to see the
+    kwarg before it is trusted to report its absence: a run that authored nothing is handed
+    none, and keeps the call shape it had before gates existed."""
+    md, route, calls = _frozen_episode(tmp_path, monkeypatch)
+    process_episode.process_episode(
+        md, tmp_path / "ep0", route_path=route,
+        gates={"entropy_floor": {"value": 0.85, "why": "log profile"},
+               "beat_tol": {"value": 0.08, "why": "no click track"}})
+    assert calls["check_gate_reasons"] == {"entropy_floor": "log profile",
+                                           "beat_tol": "no click track"}
+    process_episode.process_episode(md, tmp_path / "ep1", route_path=route)
+    assert calls["check_gate_reasons"] is None
 
 
 def test_a_falsy_wrong_typed_gate_set_is_refused_not_read_as_no_gates(tmp_path, monkeypatch):

@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from scripts.lib import gates
-from scripts.lib.models import CheckSpec, ReelCheckSpec, _ADVISORY_CHECKS
+from scripts.lib.models import CheckResult, CheckSpec, ReelCheckSpec, _ADVISORY_CHECKS
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -416,3 +416,139 @@ def test_beside_project_reads_the_file_in_the_projects_own_directory(tmp_path, m
         {"black_floor": {"value": 2.0, "why": "a decoy: the wrong directory"}}))
     monkeypatch.chdir(elsewhere)
     assert gates.beside_project(str(run / "project.json")) == gates.Gates.from_dict(doc)
+
+
+# ---- naming a moved bar beside the verdict it bought (design §2.4 item 1) --------------------
+#
+# The row in a check's own detail is {field, value, default, why} and deliberately NOT
+# Gates.record()'s {field, value, default, scope, blocking, why}: the check already knows its own
+# scope and whether it blocks, and the two answer different questions — what this check judged by
+# (only a bar that MOVED), against everything an author wrote (the attestation).
+
+
+def _judged(*names: str, passed: bool | None = True) -> dict[str, CheckResult]:
+    return {n: CheckResult(n, passed, {"probe": 1}) for n in names}
+
+
+def _authors(fields: dict, why: str = "a reason") -> dict[str, str]:
+    return {f: f"{why}: {f}" for f in fields}
+
+
+def _named(checks: dict[str, CheckResult]) -> dict[str, list[str]]:
+    """{check: [the fields its detail names]}, [] for a check that names none."""
+    return {n: [r["field"] for r in c.detail.get("authored", [])] for n, c in checks.items()}
+
+
+def test_every_reel_bar_is_named_on_the_check_that_reads_it():
+    """A literal table, typed here on purpose. The code derives the same mapping from OF_CHECK, so
+    asserting against OF_CHECK would compare the table with itself; this is the independent copy
+    that notices one bar filed under a neighbour (clip_tol under pad_bars reads as a plausible edit
+    and moves no BLOCKING answer, since both are advisory). length_retime_max is named on TWO
+    checks: `length`, where build_reel's absorb converts a blocking failure into a silent re-target
+    (design §0.1), and `brief_length`, whose advisory band borrows the same number."""
+    moved = dict(loudness_target=-16.0, loudness_tol=2.0, grade_residual_max=6.0,
+                 chroma_spread_max=8.0, length_retime_max=3.0, beat_tol=0.08, clip_tol=0.05,
+                 bar_symmetry_tol=0.05, layout_jump_max=0.9)
+    spec = ReelCheckSpec(target_dur=6.0, **moved)
+    checks = _judged("loudness", "grade_faithful", "chroma_spread", "length", "brief_length",
+                     "beat", "key_action", "pad_bars", "transitions", "black", "variety")
+    gates.name_authored(checks, spec, _authors(moved))
+    assert _named(checks) == {
+        "loudness": ["loudness_target", "loudness_tol"],
+        "grade_faithful": ["grade_residual_max"],
+        "chroma_spread": ["chroma_spread_max"],
+        "length": ["length_retime_max"],
+        "brief_length": ["length_retime_max"],
+        "beat": ["beat_tol"],
+        "key_action": ["clip_tol"],
+        "pad_bars": ["bar_symmetry_tol"],
+        "transitions": ["layout_jump_max"],
+        "black": [],            # judges by no threshold
+        "variety": [],          # variety_min is authored elsewhere (AUTHORED_ELSEWHERE)
+    }
+
+
+def test_every_episode_bar_is_named_on_the_check_that_reads_it():
+    """The same table for the other scope — and a control inside it: check_episode also writes a
+    `length` check, which judges by no gate, while a reel gate named `length_retime_max` is authored
+    in the same set. Naming it there would put a reel bar on an episode verdict."""
+    moved = dict(black_floor=2.0, black_rel=0.2, entropy_floor=0.8)
+    spec = CheckSpec(composition="lead", grid="thirds", target_dur=1.0, **moved)
+    checks = _judged("black_frames", "grade_damage", "length", "jitter")
+    gates.name_authored(checks, spec, _authors({**moved, "length_retime_max": 3.0}))
+    assert _named(checks) == {"black_frames": ["black_floor", "black_rel"],
+                              "grade_damage": ["entropy_floor"],
+                              "length": [], "jitter": []}
+
+
+def test_a_named_bar_carries_its_value_its_default_and_its_reason():
+    spec = ReelCheckSpec(target_dur=6.0, loudness_tol=2.0)
+    checks = _judged("loudness")
+    gates.name_authored(checks, spec, {"loudness_tol": "live room"})
+    assert checks["loudness"].detail == {"probe": 1, "authored": [
+        {"field": "loudness_tol", "value": 2.0, "default": 1.0, "why": "live room"}]}
+
+
+def test_only_a_bar_that_moved_with_a_written_reason_is_named():
+    """Both halves of the filter, in one call. `loudness_target` has a reason and sits at its
+    default: an author may legally write the default value, and the bar did not move. `beat_tol`
+    moved and has no reason: this function names reasons, and a value moved by hand is
+    provenance.spec_overrides' business. Only `loudness_tol` moved AND was explained."""
+    spec = ReelCheckSpec(target_dur=6.0, loudness_tol=2.0, beat_tol=0.08)
+    checks = _judged("loudness", "beat")
+    gates.name_authored(checks, spec, {"loudness_tol": "live room",
+                                       "loudness_target": "pinned at the default on purpose"})
+    assert _named(checks) == {"loudness": ["loudness_tol"], "beat": []}
+
+
+def test_a_check_that_examined_nothing_does_not_claim_a_bar_it_never_read():
+    """passed=None is a not-checked arm. Its detail can carry the bar (grade_faithful's does,
+    as `max`), but no verdict was reached by it — so an `authored` row there would read as "this
+    bar moved the result" on a check that produced none."""
+    spec = ReelCheckSpec(target_dur=6.0, grade_residual_max=6.0)
+    checks = _judged("grade_faithful", passed=None)
+    gates.name_authored(checks, spec, {"grade_residual_max": "log profile"})
+    assert checks["grade_faithful"].detail == {"probe": 1}
+
+
+def test_a_set_that_authored_nothing_adds_no_key_at_all():
+    """Not `authored: []`. Every check of every run that authored nothing would change, which
+    is the byte-identity this slice promises to keep (design §3)."""
+    spec = ReelCheckSpec(target_dur=6.0, loudness_tol=2.0)
+    for reasons in (None, {}):
+        checks = _judged("loudness")
+        gates.name_authored(checks, spec, reasons)
+        assert checks["loudness"].detail == {"probe": 1}
+
+
+def test_naming_a_bar_never_mutates_a_detail_dict_someone_else_holds():
+    """check_reel builds a ReelFailure from a copy of the detail it puts on the check, and the
+    next edit could share one dict between them. The row goes on a NEW dict, so a failure that
+    shares the original keeps the shape it had."""
+    shared = {"probe": 1}
+    checks = {"loudness": CheckResult("loudness", True, shared)}
+    gates.name_authored(checks, ReelCheckSpec(target_dur=6.0, loudness_tol=2.0),
+                        {"loudness_tol": "live room"})
+    assert shared == {"probe": 1}
+
+
+@pytest.mark.parametrize("call", [
+    lambda spec: gates.authored_rows(spec, {}, "loudness_tol"),
+    lambda spec: gates.name_authored(_judged("loudness"), spec, {"loudness_tol": "x"}),
+], ids=["authored_rows", "name_authored"])
+def test_a_value_that_is_not_a_spec_is_refused_not_silently_left_unnamed(call):
+    """A spec of any other class owns no gate, so every authored bar would go unnamed in
+    silence — the failure for_spec's own refusal exists for. Two callers, because each of the
+    two public functions makes its own call to the guard."""
+    with pytest.raises(ValueError, match="ReelCheckSpec or CheckSpec"):
+        call(object())
+
+
+def test_a_name_the_spec_does_not_own_is_refused_not_silently_never_reported():
+    """A typo, or a reel bar asked of an episode spec. `n in reasons` short-circuits before the
+    value is read, so without this the wrong name would simply never appear — a reason lost on
+    the exact surface built to carry it."""
+    with pytest.raises(ValueError, match="'loudnes_tol'"):
+        gates.authored_rows(ReelCheckSpec(target_dur=6.0), {}, "loudnes_tol")
+    with pytest.raises(ValueError, match="'loudness_tol'.*CheckSpec"):
+        gates.authored_rows(CheckSpec("lead", "thirds", 1.0), {}, "loudness_tol")

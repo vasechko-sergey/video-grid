@@ -120,7 +120,13 @@ def attest_path(reel_path: str | Path) -> Path:
 class Attestation:
     """A delivery's record: what was shipped, which gate it passed, on which engine,
     which EDL it came from, and every gate threshold loosened to let it through.
-    Written by deliver beside the encode; read by montage status/verify (design §6)."""
+    Written by deliver beside the encode; read by montage status/verify (design §6).
+
+    `overrides` and `gates` are two lists answering two questions and both stay: `overrides`
+    is what differs from the default WHATEVER the source (a diff of the effective spec, no
+    reason); `gates` is what a human AUTHORED in GATES.json — {field, value, default, scope,
+    blocking, why}, both scopes, each with the reason it was moved and whether the bar can
+    stop a delivery (design 2026-09-30 §2.4 item 2). A reel-scope gate appears in both."""
     reel: str
     reel_digest: str
     master_digest: str
@@ -137,14 +143,22 @@ class Attestation:
     # proof that the declared vignette/fade/titles reached the delivered pixels
     # (design 2026-08-15 §7). A "not-checked" row is a real outcome: the source could
     # not discriminate. An empty list means nothing was declared.
+    gates: list[dict] = field(default_factory=list)   # every threshold GATES.json moved
+    # (Gates.record() rows), or [] when none was. Absent from to_dict when empty, unlike
+    # look_checks: an empty list here would change the sidecar of every run that authored
+    # nothing, and a run that authored nothing must be byte-identical to one made before the
+    # field existed (design 2026-09-30 §3).
 
     def to_dict(self) -> dict:
-        return {"v": self.v, "reel": self.reel, "reel_digest": self.reel_digest,
-                "master_digest": self.master_digest, "report_digest": self.report_digest,
-                "overall": self.overall, "engine_at_start": dict(self.engine_at_start),
-                "engine_at_deliver": dict(self.engine_at_deliver), "edl": dict(self.edl),
-                "overrides": list(self.overrides), "episode_qc": dict(self.episode_qc),
-                "delivered_at": self.delivered_at, "look_checks": list(self.look_checks)}
+        d = {"v": self.v, "reel": self.reel, "reel_digest": self.reel_digest,
+             "master_digest": self.master_digest, "report_digest": self.report_digest,
+             "overall": self.overall, "engine_at_start": dict(self.engine_at_start),
+             "engine_at_deliver": dict(self.engine_at_deliver), "edl": dict(self.edl),
+             "overrides": list(self.overrides), "episode_qc": dict(self.episode_qc),
+             "delivered_at": self.delivered_at, "look_checks": list(self.look_checks)}
+        if self.gates:
+            d["gates"] = list(self.gates)
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "Attestation":
@@ -159,7 +173,7 @@ class Attestation:
                    edl=d.get("edl") or {}, overrides=d.get("overrides") or [],
                    episode_qc=d.get("episode_qc") or {},
                    delivered_at=d.get("delivered_at", ""), v=d.get("v", PROV_V),
-                   look_checks=d.get("look_checks") or [])
+                   look_checks=d.get("look_checks") or [], gates=d.get("gates") or [])
 
     def write(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))

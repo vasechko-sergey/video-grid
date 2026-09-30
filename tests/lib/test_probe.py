@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from scripts import probe
+from scripts.lib import gradedamage
 from scripts.lib.edl import EDL, EDLEpisode, write_edl
 from scripts.lib.models import EpisodeGeometry, ReelEpisode, ReelGeometry, ReelManifest
 
@@ -250,6 +251,129 @@ def test_predicted_profile_ignores_frames_but_tone_profile_does_not(tmp_path, mo
     assert len(r["times"]) == 7                    # the widened request really landed
     assert r["tone_profile"] == [9.0, 9.0, 9.0]    # the widened (7-sample) reading
     assert r["predicted_profile"] == [1.0, 2.0, 3.0]   # ALWAYS the default (3-sample) one
+
+
+# --- threshold-surface Task 5: the probe predicts against the bar the gate will use ---
+# probe.py read CheckSpec's dataclass default for entropy_floor directly, which the design's
+# census of CheckSpec( call sites could not see because nothing here constructs one. A prediction
+# made against a different bar than the gate will use is the cry-wolf mechanism with the sign
+# flipped: a tool that says "this will fail" about a render that will pass (design §2.3).
+
+def _gray(values: np.ndarray) -> np.ndarray:
+    return np.stack([values] * 3, axis=-1)
+
+
+def _damage_pair() -> tuple[np.ndarray, np.ndarray]:
+    """Gray frames whose luma entropy falls from 7.95 to 4.995 bits when 3 bits are dropped:
+    a ratio of 0.628 — BELOW CheckSpec's default floor (0.90) and ABOVE the 0.5 authored below,
+    so the verdict itself says which bar was used. Measured, not assumed."""
+    v = np.random.default_rng(7).integers(0, 256, (64, 64), dtype=np.uint8)
+    return _gray(v), _gray(v // 8 * 8)
+
+
+def _fake_pair_render(monkeypatch):
+    """probe's two frame readers over a pair whose entropy ratio is known: `_render` yields the
+    graded half and plan_frames_rgb the plain one, exactly the roles they play in the real call."""
+    plain, graded = _damage_pair()
+    assert gradedamage.evaluate(plain=[plain], graded=[graded], floor=0.9)["ratio"] == 0.628
+
+    def render(plan, src, times, d):
+        d.mkdir(parents=True, exist_ok=True)
+        return [graded for _ in times]
+    monkeypatch.setattr(probe, "_render", render)
+    monkeypatch.setattr(probe.reframe, "plan_frames_rgb",
+                        lambda plan, src, times: [plain for _ in times])
+    monkeypatch.setattr(probe.reframe, "plan_render",
+                        lambda *a, **k: SimpleNamespace(dur=2.0, grade=""))
+    monkeypatch.setattr(probe.color_measure, "crop_percentiles",
+                        lambda *a, **k: (10.0, 20.0, 30.0))
+
+
+_FLOOR_GATE = {"entropy_floor": {"value": 0.5, "why": "log profile"}}
+
+
+def test_probe_grade_predicts_against_the_floor_the_episodes_froze(tmp_path, monkeypatch):
+    """The manifest's own `gates` is the set that judged these clips, so it is the bar the
+    prediction must use. The control is inside the test: the SAME frames against a manifest that
+    authored nothing fail at the default, so the authored run passing is the floor and nothing
+    else. `below` and not merely `floor` is asserted, because a floor reported and ignored would
+    still print the right number."""
+    _fake_pair_render(monkeypatch)
+    monkeypatch.setattr(probe, "_refuse_on_drift", lambda *a, **k: None)
+    ep = ReelEpisode(manifest=_md(), clip="o.mp4", route=None,
+                     path=str(tmp_path / "path.json"), meta=str(tmp_path / "path.meta.json"))
+    verdicts = {}
+    for label, gates in (("authored", _FLOOR_GATE), ("default", {})):
+        ep_json = tmp_path / f"{label}.json"
+        ReelManifest(episodes=[ep], target_dur=2.0, gates=gates).write(ep_json)
+        damage = probe.probe_grade(str(ep_json), 0, out_dir=str(tmp_path / label))["grade_damage"]
+        verdicts[label] = (damage["floor"], damage["below"])
+    assert verdicts == {"authored": (0.5, False), "default": (0.9, True)}
+
+
+def _geometry(tmp_path, monkeypatch, project: str) -> str:
+    """A GEOMETRY.json recording `project`, over the same faked render as above."""
+    edl_path = tmp_path / "EDL.json"
+    _stamped_edl(edl_path)
+    monkeypatch.chdir(tmp_path)          # the source is named relatively; see the test above
+    (tmp_path / "seg.mp4").touch()
+    geo = ReelGeometry(
+        episodes=(EpisodeGeometry(manifest=_md(), route=None, source="seg.mp4",
+                                  project_dir=str(tmp_path)),),
+        edl=str(edl_path), project=project)
+    geo_path = tmp_path / "GEOMETRY.json"
+    geo.write(geo_path)
+    _fake_pair_render(monkeypatch)
+    return str(geo_path)
+
+
+def test_probe_geometry_reads_the_gates_beside_the_project_geometry_recorded(
+        tmp_path, monkeypatch):
+    """No EPISODES.json exists before the first encode, so the set is found the way phase 1b
+    will find it: beside the project. The decoy in the working directory authors 0.99, which
+    would FAIL this pair — the opposite of the 0.5 beside the project — so a lookup that strays
+    there reads the wrong file instead of reading nothing. The control is inside: with no file
+    beside the project the same pair fails at the default, and nothing is named, because
+    nothing was unread."""
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "project.json").write_text("{}")
+    (tmp_path / "GATES.json").write_text(json.dumps(
+        {"entropy_floor": {"value": 0.99, "why": "a decoy: the working directory"}}))
+    geo = _geometry(tmp_path, monkeypatch, str(run / "project.json"))
+
+    (run / "GATES.json").write_text(json.dumps(_FLOOR_GATE))
+    r = probe.probe_grade_geometry(geo, 0, out_dir=str(tmp_path / "a"))
+    assert (r["grade_damage"]["floor"], r["grade_damage"]["below"]) == (0.5, False)
+    assert "gates" not in r
+
+    (run / "GATES.json").unlink()
+    r = probe.probe_grade_geometry(geo, 0, out_dir=str(tmp_path / "b"))
+    assert (r["grade_damage"]["floor"], r["grade_damage"]["below"]) == (0.9, True)
+    assert "gates" not in r
+
+
+@pytest.mark.parametrize("recorded, why", [
+    ("", "GEOMETRY.json records no project"),
+    ("gone/project.json", "gone/project.json does not resolve from here"),
+    ("project.json", "project.json does not resolve from here"),
+], ids=["none-recorded", "moved", "bare-relative"])
+def test_probe_geometry_names_the_absence_when_it_cannot_look_for_the_gates(
+        tmp_path, monkeypatch, recorded, why):
+    """geo.project may not resolve from here: nothing recorded at all (a GEOMETRY.json from
+    before the field), a project that has since moved, or a bare relative name read from another
+    working directory. In each the gates cannot even be LOOKED FOR, so a prediction against the
+    default floor would read "no gates authored" — a statement nobody made. It is still made, at
+    the default, but the report says it was unread and why (design §2.3; match_grade._find_regions
+    states the same three). The bare relative case is whole-branch-review finding 2 there: the
+    parent of "project.json" is ".", which exists from any directory, so a test of the
+    DIRECTORY would look for ./GATES.json in the wrong place and call it "none"."""
+    (tmp_path / "GATES.json").write_text(json.dumps(_FLOOR_GATE))   # beside the cwd, NOT the project
+    geo = _geometry(tmp_path, monkeypatch, recorded)
+    r = probe.probe_grade_geometry(geo, 0, out_dir=str(tmp_path / "p"))
+    assert (r["grade_damage"]["floor"], r["grade_damage"]["below"]) == (0.9, True)
+    assert r["gates"]["status"] == "not-read"
+    assert why in r["gates"]["reason"] and "DEFAULT" in r["gates"]["reason"]
 
 
 def test_probe_tone_is_gone():

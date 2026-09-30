@@ -45,7 +45,7 @@ def _wire(monkeypatch, reports, pe_results=None):
     seen = {"deliver": [], "reprocess": [], "titles": [], "geometry": None, "platform": "",
             "targets": [], "deliver_platform": "", "outro": None,
             "tone_target": None, "tone_dsts": None, "predicted": None, "brief_len": None,
-            "chroma": None}
+            "chroma": None, "gate_reasons": None}
     rq = list(reports)
     monkeypatch.setattr(build_reel.assembly, "probe_stream",
                         lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
@@ -96,9 +96,14 @@ def _wire(monkeypatch, reports, pe_results=None):
     # were once silently dropped at the real call site while the whole suite stayed green,
     # until a dedicated assertion like this one was added — see
     # test_build_reel_forwards_chroma_to_check_reel below.
+    #
+    # gate_reasons= is the same shape of risk once more (2026-09-30, threshold-surface Task 5):
+    # dropped, it silently defaults to None and every authored bar vanishes from the report
+    # that says PASS while the suite stays green — see
+    # test_build_reel_hands_the_gate_reasons_to_check_reel below.
     def fake_run(m, e, s, o, music=None, audio=None, geometry=None, platform="", outro=None,
                 predicted=None, tone_target=None, tone_dsts=None, brief_len=None,
-                chroma=None):
+                chroma=None, gate_reasons=None):
         seen["geometry"] = geometry
         seen["platform"] = platform
         seen["outro"] = outro
@@ -107,6 +112,7 @@ def _wire(monkeypatch, reports, pe_results=None):
         seen["tone_dsts"] = tone_dsts
         seen["brief_len"] = brief_len
         seen["chroma"] = chroma
+        seen["gate_reasons"] = gate_reasons
         seen["targets"].append(s.target_dur)     # a length re-time replaces it between rounds
         return rq.pop(0)
     monkeypatch.setattr(build_reel.check_reel, "run", fake_run)
@@ -1044,3 +1050,44 @@ def test_a_reprocess_is_judged_against_the_same_authored_bar_as_its_siblings(
     res = build_reel.build_reel(_rm(), str(tmp_path / "out2"), str(tmp_path / "w2"))
     assert res["status"] == "delivered"
     assert passed == [{}]
+
+
+# --- threshold-surface Task 5: the reason rides the verdict and the attestation (design
+# docs/specs/2026-09-30-threshold-surface-design.md §2.4) ---
+
+
+def test_build_reel_hands_the_gate_reasons_to_check_reel(monkeypatch, tmp_path):
+    """The one place check_reel.run is called, so the only place a reel-scope bar's reason can
+    leave for the verdict it bought. The WHOLE authored set goes through, both scopes — the
+    callee names only the bars its own spec class owns. The control is inside the test, so the
+    instrument has just been shown able to see the kwarg before it is trusted to report its
+    absence: a reel that authored nothing is handed none and keeps the call shape it had."""
+    seen = _wire(monkeypatch, [_pass()])
+    build_reel.build_reel(dataclasses.replace(_rm(), gates=GATES_DOC),
+                          str(tmp_path / "o1"), str(tmp_path / "w1"))
+    assert seen["gate_reasons"] == {"entropy_floor": "log profile", "loudness_tol": "live room"}
+
+    seen = _wire(monkeypatch, [_pass()])
+    build_reel.build_reel(_rm(), str(tmp_path / "o2"), str(tmp_path / "w2"))
+    assert seen["gate_reasons"] is None
+
+
+def test_the_attestation_is_handed_every_authored_gate_with_its_scope_and_reason(
+        monkeypatch, tmp_path):
+    """Derived from the manifest's own `gates`, the same set check_spec judged the reel by, at
+    the moment of delivery — not from a copy stored somewhere else, which could disagree with
+    the bar that actually ran. Both scopes: episode_qc judged the clips by the episode half, and
+    the attestation is the record of which bars judged THESE clips (design §6). Absent, rather
+    than an empty list, when nothing was authored (the exact-dict control is
+    test_build_reel_threads_the_manifest_provenance_into_deliver)."""
+    seen = {}
+    _wire(monkeypatch, [_pass()])
+    monkeypatch.setattr(build_reel.deliver, "deliver",
+                        lambda *a, **k: seen.update(k) or "out/REEL_v1.mp4")
+    build_reel.build_reel(dataclasses.replace(_rm(), gates=GATES_DOC),
+                          str(tmp_path / "o"), str(tmp_path / "w"))
+    assert seen["run_provenance"]["gates"] == [
+        {"field": "entropy_floor", "value": 0.85, "default": 0.9, "scope": "episode",
+         "blocking": True, "why": "log profile"},
+        {"field": "loudness_tol", "value": 2.0, "default": 1.0, "scope": "reel",
+         "blocking": True, "why": "live room"}]

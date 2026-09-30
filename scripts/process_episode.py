@@ -241,6 +241,11 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     # the same shape for the same reason).
     authored = gates_lib.Gates.from_dict({} if gates is None else gates,
                                          where="the gates passed to process_episode")
+    # The reasons go to the check beside the bars, so its report can name the ones it judged by
+    # (design §2.4 item 1). Passed only when something was authored, the same rule the pool and
+    # build_reel's reprocess follow for `gates` itself: a run that authored nothing keeps the
+    # call shape it had before gates existed.
+    reasons_kw = {"gate_reasons": authored.reasons()} if authored.gates else {}
     if stop_after not in (None, "geometry"):
         return {"status": "needs_input", "attempt": 0, "problems": [
             f"stop_after must be None or 'geometry', got {stop_after!r} — 'geometry' "
@@ -589,7 +594,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
                           attempt=attempt, **authored.for_spec(CheckSpec))
         report = _timed("check", lambda: check_episode.run(
             m.out_path, rp, path_out, cspec, str(Path(project_dir) / "report.json"),
-            source=src, plans=plans))
+            source=src, plans=plans, **reasons_kw))
         if report.overall:
             sheet = str(Path(project_dir) / "storyboard.jpg")
             # hero marker (§6.1a layer 4): draw the followed subject on every

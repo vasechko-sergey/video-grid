@@ -6,7 +6,7 @@ no file. The only way to move a bar was to edit models.py — which is to say, t
 patch the engine. A tool whose bars move only by patching it is a tool for the one
 shoot its bars were measured on.
 
-Two things here are DERIVED rather than typed, and both must stay that way:
+Three things here are DERIVED rather than typed, and all must stay that way:
 
 - FIELDS, from the two spec classes' own dataclass fields minus the five names
   authored elsewhere (design §0.6). A threshold added to either class joins
@@ -15,6 +15,10 @@ Two things here are DERIVED rather than typed, and both must stay that way:
 - BLOCKING, from OF_CHECK against models._ADVISORY_CHECKS. The partition between a
   preference and a waiver has one source, and it is the registry the report itself
   keys on.
+- The check each bar is named beside (fields_judged_by), from the same OF_CHECK. The
+  reason a bar was moved is written into the detail of every check that judged by it
+  (name_authored), so a threshold added later is reported beside its verdict the day
+  OF_CHECK learns which check it belongs to, with no list of attach sites to forget.
 
 A value without a written reason is refused AT LOAD, and that is the whole design
 (§1). A blocking bar is a waiver in numeric clothing; this repo has already watched
@@ -37,7 +41,7 @@ from pathlib import Path
 # The dependency runs one way: gates imports models, so models must never import
 # gates at module scope. Code in models that needs it imports it inside the function
 # that uses it.
-from scripts.lib.models import CheckSpec, ReelCheckSpec, _ADVISORY_CHECKS
+from scripts.lib.models import CheckResult, CheckSpec, ReelCheckSpec, _ADVISORY_CHECKS
 
 #: Names that sit on a check spec but are authored somewhere else entirely. Each value
 #: completes "it is authored in ..." in the refusal, so it has to be true of the tree as
@@ -82,6 +86,22 @@ OF_CHECK: dict[str, str] = {
     "black_rel": "black_frames",
     "entropy_floor": "grade_damage",
 }
+
+#: Checks that JUDGE by a bar OF_CHECK files under another name. brief_length is the only one:
+#: its advisory band is _LENGTH_TOL + length_retime_max, so it reads the field directly, while
+#: the field's blast radius is build_reel's absorb — which is why OF_CHECK says "length" (see the
+#: comment on that entry). A moved length_retime_max therefore belongs beside BOTH verdicts.
+ALSO_JUDGED_BY: dict[str, tuple[str, ...]] = {"brief_length": ("length_retime_max",)}
+
+
+def fields_judged_by(check: str) -> tuple[str, ...]:
+    """The thresholds whose bars `check` judges by (design §2.4 item 1). Derived from OF_CHECK
+    plus ALSO_JUDGED_BY rather than listed at each check, so a threshold added later is named
+    beside its verdict the day OF_CHECK learns which check it belongs to — the same property
+    FIELDS and BLOCKING have, and for the same reason: a second list of attach sites is a list
+    somebody forgets, and a forgotten site drops a reason from the verdict without a word."""
+    return tuple(f for f, c in OF_CHECK.items() if c == check) + ALSO_JUDGED_BY.get(check, ())
+
 
 _OWNER: dict[str, type] = {}
 for _cls in (ReelCheckSpec, CheckSpec):
@@ -213,6 +233,18 @@ class Gates:
                 for g in self.gates]
 
 
+#: The convention file's name. Spelled here and nowhere else: beside_project reads it and
+#: montage's inspector asks whether it is there, and two spellings of a convention is how two
+#: readers end up looking in different places.
+FILENAME = "GATES.json"
+
+
+def path_beside(project_path: str | Path) -> Path:
+    """Where the gates for `project_path` live: GATES.json in the same directory (design §0.5).
+    No existence check — callers that must tell an absent file from an empty one ask the path."""
+    return Path(project_path).parent / FILENAME
+
+
 def beside_project(project_path: str | Path) -> Gates:
     """The gates authored beside `project_path`: GATES.json in the same directory, or an
     empty set when there is none (design §0.5/§2.1).
@@ -225,5 +257,71 @@ def beside_project(project_path: str | Path) -> Gates:
 
     A file that exists and cannot be loaded raises ValueError naming its path, and that is
     never read as 'no gates'. There is no waiver and no fallback to defaults."""
-    p = Path(project_path).parent / "GATES.json"
+    p = path_beside(project_path)
     return Gates.from_json(p) if p.exists() else Gates()
+
+
+def _require_spec(spec: object, who: str) -> type:
+    """`type(spec)`, once it is known to be one of the two spec classes, else ValueError."""
+    cls = type(spec)
+    if cls not in _DEFAULTS:
+        raise ValueError(
+            f"{who} takes a ReelCheckSpec or CheckSpec, got {cls.__name__} — any other class "
+            f"owns none of the gates, so every authored bar would silently go unnamed")
+    return cls
+
+
+def authored_rows(spec: object, reasons: dict[str, str], *names: str) -> list[dict]:
+    """The rows of `names` this run moved off their default, each with the reason it was moved
+    (design §2.4 item 1): {field, value, default, why}, in `names` order.
+
+    The value is read off `spec`, because that is what the check actually judged by. Two
+    conditions, both required, and neither implies the other: the author wrote a reason (a bar
+    moved by hand has none to name — provenance.spec_overrides is what sees that one), and the
+    value differs from the default (an author may legally write the default, and a bar that did
+    not move is not what a reader is looking for). Gates.record() is the other list — every gate
+    authored, moved or not — and its rows carry `scope`/`blocking` because the attestation
+    holds both scopes; these do not, because the check already knows its own.
+
+    A name the spec's class does not own raises: `n in reasons` is tested before the value is
+    read, so a typo would otherwise simply never appear, which is a reason lost on the very
+    surface built to carry it."""
+    cls = _require_spec(spec, "authored_rows")
+    for n in names:
+        if _OWNER.get(n) is not cls:
+            raise ValueError(
+                f"authored_rows: {n!r} is not a threshold of {cls.__name__} (its gate "
+                f"thresholds are: "
+                f"{', '.join(sorted(f for f, o in _OWNER.items() if o is cls))}) — a wrong "
+                f"name is never reported, because it is never in the authored set")
+    base = _DEFAULTS[cls]
+    return [{"field": n, "value": getattr(spec, n), "default": getattr(base, n),
+             "why": reasons[n]}
+            for n in names
+            if n in reasons and getattr(spec, n) != getattr(base, n)]
+
+
+def name_authored(checks: dict[str, CheckResult], spec: object,
+                  reasons: dict[str, str] | None) -> None:
+    """Write `authored` into the detail of every check that JUDGED by a bar this run moved, so
+    the artifact that says PASS also says which bar was moved and why (design §2.4 item 1).
+
+    Called once, just before a driver builds its report, over the whole `checks` dict. A check
+    that reached no verdict (passed is None) is skipped even when its detail echoes the bar:
+    the row reads as "this bar shaped the result", and there was none. The key is absent —
+    never an empty list — when nothing was moved, so a run that authored nothing is byte-
+    identical to one made before gates existed. `reasons` may hold the WHOLE authored set, both
+    scopes: each check is offered only the bars `spec`'s own class owns, which is also what keeps
+    check_episode's `length` (no threshold) from picking up a reel gate of the same check name.
+
+    The row goes on a new detail dict rather than into the existing one, so a failure record
+    that shares the original keeps the shape it had."""
+    cls = _require_spec(spec, "name_authored")
+    reasons = reasons or {}
+    for check, result in checks.items():
+        if result.passed is None:
+            continue
+        rows = authored_rows(spec, reasons,
+                             *(n for n in fields_judged_by(check) if _OWNER[n] is cls))
+        if rows:
+            result.detail = {**result.detail, "authored": rows}

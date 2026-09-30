@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from scripts.lib import provenance
-from scripts.lib.models import ReelCheckSpec
+from scripts.lib import gates, provenance
+from scripts.lib.models import ReelCheckSpec, ReelEpisode, ReelManifest
 
 
 def test_digest_obj_ignores_the_provenance_key_and_key_order():
@@ -261,3 +261,44 @@ def test_an_unattested_file_detail_does_not_assert_the_least_likely_cause(tmp_pa
     assert "no attestation sidecar" in detail
     assert "was not produced by deliver()" not in detail
     assert "look gate" in detail and "interrupted" in detail
+
+
+# --- 2026-09-30 threshold surface Task 5: the attestation names every authored gate ---
+# (design §2.4 item 2.)
+
+def test_the_attestation_records_every_authored_gate_with_its_reason_and_scope(tmp_path):
+    authored = gates.Gates.from_dict(
+        {"entropy_floor": {"value": 0.85, "why": "log profile"},
+         "beat_tol": {"value": 0.08, "why": "no click track"}})
+    a = _att(gates=authored.record())
+    p = tmp_path / "REEL_v1.attest.json"
+    a.write(p)
+    back = provenance.Attestation.from_json(p)
+    assert back.gates == a.gates
+    assert json.loads(p.read_text())["gates"] == [
+        {"field": "entropy_floor", "value": 0.85, "default": 0.9, "scope": "episode",
+         "blocking": True, "why": "log profile"},
+        {"field": "beat_tol", "value": 0.08, "default": 0.05, "scope": "reel",
+         "blocking": False, "why": "no click track"}]
+
+
+def test_an_attestation_that_authored_no_gates_has_no_gates_key(tmp_path):
+    """Absent, not []: the sidecar of a run that authored nothing is the one it always was
+    (design §3). A sidecar written before the field existed reads as authoring none, which is
+    true of it — no gate could be authored then."""
+    assert "gates" not in _att().to_dict()
+    old = {k: v for k, v in _att().to_dict().items() if k != "gates"}
+    assert provenance.Attestation.from_dict(old).gates == []
+
+
+def test_spec_overrides_is_unchanged_by_this_slice():
+    """It answers a different question — what differs from the default, WHATEVER the source —
+    so a reel-scope gate appears in both lists and the two lists keep different shapes: this
+    one is reason-free, and the attestation's `gates` carries the reason (design §2.4 item 2).
+    Deduplicating them is the tidy-looking edit this pins against: the variety_min tests above
+    cannot see it, because variety_min is not a gate."""
+    m = ReelManifest(episodes=[ReelEpisode(manifest={}, clip="c.mp4", route=None)],
+                     target_dur=6.0,
+                     gates={"loudness_tol": {"value": 2.0, "why": "live room"}})
+    assert provenance.spec_overrides(m.check_spec) == [
+        {"field": "loudness_tol", "value": 2.0, "default": 1.0}]

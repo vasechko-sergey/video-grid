@@ -21,8 +21,8 @@ import numpy as np
 from PIL import Image
 
 from scripts import color_measure, process_episode, reframe
-from scripts.lib import (assembly, color, edl as edl_lib, ffbin, gradedamage,
-                         lookcheck, naturalness, proc, provenance, sheet)
+from scripts.lib import (assembly, color, edl as edl_lib, ffbin, gates as gates_lib,
+                         gradedamage, lookcheck, naturalness, proc, provenance, sheet)
 from scripts.lib.edl import EDL
 from scripts.lib.manifest import COLOUR_IDENTITY, COLOUR_KEYS
 from scripts.lib.models import CheckSpec, CropPath, PathMeta, ReelGeometry, ReelManifest
@@ -54,6 +54,44 @@ def source_for(md: dict, epdir: Path | str) -> str:
             f"the episode never shipped. Re-run the episode (process_episode leaves the "
             f"file beside path.json), or drop stabilize from the EDL")
     return str(st)
+
+
+_DEFAULT_ENTROPY_FLOOR = CheckSpec.__dataclass_fields__["entropy_floor"].default
+
+
+def _entropy_floor(authored: gates_lib.Gates) -> float:
+    """The floor check_episode's grade_damage will judge by: the authored one, else CheckSpec's own
+    default. The probe predicts that gate without a reel re-render, and a prediction made against
+    a different bar than the gate will use is worse than none — the cry-wolf mechanism with the
+    sign flipped, a tool saying "this will fail" about a render that will pass (design
+    2026-09-30 §2.3). It read the dataclass default directly until GATES.json existed, which the
+    design's census missed because nothing here constructs a CheckSpec."""
+    return authored.for_spec(CheckSpec).get("entropy_floor", _DEFAULT_ENTROPY_FLOOR)
+
+
+def _gates_for_geometry(geo: ReelGeometry) -> tuple[gates_lib.Gates, str]:
+    """(the gates authored beside the project GEOMETRY.json recorded, "") — or (no gates, why the
+    file could not even be looked for). The second is a NAMED absence, never "none authored":
+    nothing has been encoded yet, so there is no EPISODES.json to read the frozen set from, and
+    the set phase 1b will use is found beside the project at that run's own time.
+
+    The project may not resolve from here — nothing recorded (a GEOMETRY.json from before the
+    field), a project that has since moved, or a bare relative name read from another working
+    directory — and in each the gates cannot be looked for at all. Answering with the default
+    floor and no word would read as "no gates authored", which nobody stated. The test is the
+    project FILE and not its parent directory, for the reason match_grade._find_regions gives:
+    the parent of a bare "project.json" is ".", which exists from any directory, so a directory
+    test would look for ./GATES.json wherever the probe happens to run and call the answer "none".
+
+    A file that resolves and cannot be loaded is not caught: phase 1b would refuse it the same
+    way, so a probe predicting a gate that cannot run has nothing honest to say."""
+    if not geo.project:
+        return gates_lib.Gates(), "GEOMETRY.json records no project"
+    project = Path(geo.project)
+    if not project.is_file():
+        return gates_lib.Gates(), (f"{geo.project} does not resolve from here — no file at "
+                                   f"{project.resolve()}")
+    return gates_lib.beside_project(project), ""
 
 
 def regrade(md: dict, edl_path: str, index: int) -> dict:
@@ -239,10 +277,13 @@ def probe_grade(episodes_path: str, index: int, *, edl_path: str | None = None,
     else:
         damage_times = color.sample_times(plan.dur)
         damage_graded = reframe.plan_frames_rgb(plan, src, damage_times)
+    # The set that judged THESE clips: the manifest froze it, so it is the bar the prediction
+    # must use (design §2.3). probe_grade_geometry has no manifest and finds it beside the project.
+    authored = gates_lib.Gates.from_dict(rm.gates, where="ReelManifest.gates")
     damage = gradedamage.evaluate(
         plain=reframe.plan_frames_rgb(plain, src, damage_times),
         graded=damage_graded,
-        floor=CheckSpec.__dataclass_fields__["entropy_floor"].default)
+        floor=_entropy_floor(authored))
     report = {
         "episode": index, "episodes": episodes_path, "edl": edl_path,
         "source": src, "frames": len(imgs),
@@ -312,6 +353,9 @@ def probe_grade_geometry(geometry_path: str, index: int, *, out_dir: str | None 
     # minor 5). AFTER regrade: a tampered EDL is the more specific complaint of the two,
     # and answering "your file is missing" to it would send the reader to the wrong place.
     eg.require_inputs(index)
+    # Before anything is rendered: a GATES.json that resolves and cannot be loaded raises here,
+    # and a probe that has just spent its renders should not be what reports it.
+    authored, unread = _gates_for_geometry(geo)
     plan = process_episode.plan_for(md, eg.source, eg.route)
 
     d = Path(out_dir) if out_dir is not None else Path(eg.project_dir) / "probe"
@@ -335,7 +379,7 @@ def probe_grade_geometry(geometry_path: str, index: int, *, out_dir: str | None 
     damage = gradedamage.evaluate(
         plain=reframe.plan_frames_rgb(plain, eg.source, damage_times),
         graded=damage_graded,
-        floor=CheckSpec.__dataclass_fields__["entropy_floor"].default)
+        floor=_entropy_floor(authored))
     report = {
         "episode": index, "geometry": geometry_path, "edl": geo.edl,
         "source": eg.source, "frames": len(imgs),
@@ -353,6 +397,16 @@ def probe_grade_geometry(geometry_path: str, index: int, *, out_dir: str | None 
                                     # source of truth before the encode. The
                                     # --episodes mode keeps the oracle.
     }
+    if unread:
+        # A named absence, present only when the gates could not be looked for — so a probe
+        # with a resolvable project keeps the report it always had, and this key means
+        # exactly "the floor above was NOT read from GATES.json, it is the default".
+        report["gates"] = {"status": "not-read", "reason": (
+            f"{unread}, so GATES.json cannot be looked for beside it. grade_damage.floor is "
+            f"therefore CheckSpec's DEFAULT ({_DEFAULT_ENTROPY_FLOOR}), which is not "
+            f"necessarily the bar these episodes will be judged by — run the probe from the "
+            f"directory the project was recorded in, or re-run edl_to_reel "
+            f"--stop-after-geometry with an absolute --project")}
     (d / "probe.json").write_text(json.dumps(report, indent=2))
     cells = [sheet.Cell(image=f, lines=(f"t={t:.2f}s",)) for f, t in zip(imgs, times)]
     sheet.tile(cells).save(str(d / "probe.jpg"), quality=90)
@@ -395,7 +449,12 @@ def build_parser() -> argparse.ArgumentParser:
                        description="render and measure N frames of one episode over its "
                                    "frozen route, through the same chain the real encode "
                                    "uses → probe.jpg + probe.json. Converges a colour "
-                                   "grade without re-rendering the reel.")
+                                   "grade without re-rendering the reel. Its grade_damage "
+                                   "prediction uses the entropy_floor the run's GATES.json "
+                                   "authored — read from EPISODES.json with --episodes, from "
+                                   "beside the project GEOMETRY.json records with --geometry, "
+                                   "where an unresolvable project is reported as `gates: "
+                                   "not-read` rather than read as no gates.")
     mode = g.add_mutually_exclusive_group()
     mode.add_argument("--episodes", default=None, help="EPISODES.json from "
                                                        "edl_to_reel --from-geometry (or "

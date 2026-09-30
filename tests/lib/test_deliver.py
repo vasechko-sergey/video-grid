@@ -237,6 +237,27 @@ def test_deliver_writes_an_attestation_beside_the_reel(tmp_path, monkeypatch):
     assert provenance.verify_delivery(out, rehash=True)["state"] == "attested"
 
 
+def test_deliver_records_the_authored_gates_it_was_handed(tmp_path, monkeypatch):
+    """The attestation is where a later reader learns which bars judged the reel and why
+    they were moved (design 2026-09-30 §2.4 item 2). deliver does not derive the rows — it
+    holds no manifest — it carries what the driver put in run_provenance, exactly as it does
+    `overrides`. The control rides in the same test, so the instrument has just been shown able
+    to see the key before it reports its absence: a delivery handed no gates writes a sidecar
+    with no `gates` key at all, byte-identical in shape to one made before gates existed."""
+    _fake_encode(monkeypatch)
+    master, rep = _bound(tmp_path)
+    rows = [{"field": "entropy_floor", "value": 0.85, "default": 0.9, "scope": "episode",
+             "blocking": True, "why": "log profile"}]
+    out = deliver.deliver(master, REEL_H264, str(tmp_path / "out"), "x", rep,
+                          scratch_dir=str(tmp_path / "scratch"),
+                          run_provenance={"gates": rows})
+    assert provenance.Attestation.from_json(provenance.attest_path(out)).gates == rows
+
+    plain = deliver.deliver(master, REEL_H264, str(tmp_path / "out"), "x", rep,
+                            scratch_dir=str(tmp_path / "scratch"))
+    assert "gates" not in provenance.attest_path(plain).read_text()
+
+
 def test_deliver_attests_without_run_provenance(tmp_path, monkeypatch):
     # build_reel may deliver a manifest that carries none — the sidecar still lands
     _fake_encode(monkeypatch)
