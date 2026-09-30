@@ -22,7 +22,8 @@ one widened 12 -> 44 -> 56 until the gate it belonged to was off in all but name
 (colour-convergence-retire design §0.1). Requiring the reason structurally is what
 separates this from a convention nothing can check.
 
-Pure: dicts in, dicts out. The only IO is from_json.
+Pure: dicts in, dicts out. The only IO is from_json and the existence check in
+beside_project.
 """
 import json
 from dataclasses import dataclass, fields
@@ -210,3 +211,19 @@ class Gates:
                  "scope": _SCOPE[_OWNER[g.field]],
                  "blocking": g.field in BLOCKING, "why": g.why}
                 for g in self.gates]
+
+
+def beside_project(project_path: str | Path) -> Gates:
+    """The gates authored beside `project_path`: GATES.json in the same directory, or an
+    empty set when there is none (design §0.5/§2.1).
+
+    The ONE place the convention is spelled. Its readers must agree on where the file is —
+    edl_to_reel's phase-1 arms and process_episode's own CLI — because a reader that looked
+    somewhere else would judge one episode against a bar its siblings were not judged
+    against, in silence (design §2.3). Found by convention and never named by a flag: a flag
+    can be dropped on a re-run, and a dropped threshold flag reverts the bar without a word.
+
+    A file that exists and cannot be loaded raises ValueError naming its path, and that is
+    never read as 'no gates'. There is no waiver and no fallback to defaults."""
+    p = Path(project_path).parent / "GATES.json"
+    return Gates.from_json(p) if p.exists() else Gates()

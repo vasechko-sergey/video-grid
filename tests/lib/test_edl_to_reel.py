@@ -1985,3 +1985,138 @@ def test_phase_one_records_a_named_absence_when_the_pair_was_refused():
          "report": {"checks": {"grade_damage": {
              "status": "not-checked", "reason": "no render pair"}}}}])
     assert rm.episodes[0].chroma["reason"] == "no render pair"
+
+
+# --- threshold-surface Task 4: edl_to_reel is the one finder (design
+# docs/specs/2026-09-30-threshold-surface-design.md §0.5/§2.3) ---
+#
+# GATES.json is found BY CONVENTION beside project.json, at RUN time, by every arm that
+# drives the pool — and there are three of them, not two: the single-pass arm
+# (_build_manifest), phase 1a (build_geometry), and phase 1b (render_from_geometry), which
+# never goes through _phase_one_setup. Phase 1b is the arm the conveyor actually renders
+# through (`--from-geometry`, since 2026-08-30), so a finder wired into the other two alone
+# would have shipped this slice as a no-op on the only path that matters.
+
+GATES_DOC = {"loudness_tol": {"value": 2.0, "why": "live room"},
+             "entropy_floor": {"value": 0.85, "why": "log profile"}}
+BROKEN_GATES = json.dumps({"entropy_floor": 0.85})        # a bare value: no written reason
+ARMS = ["single-pass", "geometry", "from-geometry"]
+
+
+def _spy_episode_kwargs(monkeypatch, passed):
+    """Wrap the process_episode fake `_wire` installed, recording into `passed` the EXTRA
+    keyword arguments each episode was handed.
+
+    The fake takes no `gates`, exactly as the real call shape did before this slice, so the
+    wrapper strips it before delegating: what is under test is what the pool PASSED, not what
+    a fake tolerates. Everything else is forwarded untouched, so every other signature check
+    in this file still bites."""
+    inner = edl_to_reel.process_episode.process_episode
+
+    def spy(md, project_dir, route_path=None, **kw):
+        passed.append(dict(kw))
+        return inner(md, project_dir, route_path,
+                     **{k: v for k, v in kw.items() if k != "gates"})
+    monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", spy)
+
+
+def _run_arm(arm, tmp_path, monkeypatch, gates_text, ran):
+    """Drive one of phase 1's three pool-driving arms over the standard fakes, with
+    `gates_text` written as GATES.json beside project.json (None = no file).
+
+    `ran` is an out-parameter filled AS the arm progresses, so a test of a refusal still holds
+    what ran before it: "seen" (the _wire recorder), "passed" (the kwargs each episode was
+    handed — only the arm under test, never the geometry run the from-geometry arm needs
+    first) and, when the arm assembles one, "rm".
+
+    The from-geometry arm writes GATES.json AFTER its geometry run, on purpose: the file is
+    found at RUN time, and the conveyor's real order is --stop-after-geometry, then the
+    conductor, then --from-geometry (design §2.3). A finder only the first arm called, or a
+    document frozen into GEOMETRY.json at 1a, would pass a test that wrote the file first."""
+    def write_gates():
+        if gates_text is not None:
+            (tmp_path / "GATES.json").write_text(gates_text)
+
+    if arm == "from-geometry":
+        _, ctx = _geometry_run(tmp_path, monkeypatch)
+        ran["seen"] = ctx["seen"]
+        ran["passed"] = []
+        _spy_episode_kwargs(monkeypatch, ran["passed"])
+        write_gates()
+        rm, stop = _render(ctx)
+        assert stop is None, stop
+        ran["rm"] = rm
+        return
+    ran["seen"] = _wire(monkeypatch)
+    ran["passed"] = []
+    _spy_episode_kwargs(monkeypatch, ran["passed"])
+    write_gates()
+    work, out = _reel_dirs(tmp_path)
+    edl_path, project = _edl_file(tmp_path), _project(tmp_path)
+    if arm == "geometry":
+        _, stop = edl_to_reel.build_geometry(edl_path, project, str(tmp_path), work, out)
+        assert stop is None, stop
+        return
+    rm, stop = edl_to_reel._build_manifest(edl_path, project, str(tmp_path), work, out)
+    assert stop is None, stop
+    ran["rm"] = rm
+
+
+def test_gates_json_beside_project_json_is_found_with_no_flag(tmp_path, monkeypatch):
+    _wire(monkeypatch)
+    _spy_episode_kwargs(monkeypatch, [])       # _wire's fake takes no `gates`; the spy strips it
+    (tmp_path / "GATES.json").write_text(json.dumps(GATES_DOC))
+    rm, stop = edl_to_reel._build_manifest(
+        _edl_file(tmp_path), project_path=_project(tmp_path), footage_root=str(tmp_path),
+        work_dir=str(tmp_path / "w"), out_dir=str(tmp_path / "out"))
+    assert stop is None, stop
+    assert rm.gates == GATES_DOC                       # the WHOLE document, both scopes
+    assert rm.check_spec.loudness_tol == 2.0           # and the reel half of it is applied
+
+
+@pytest.mark.parametrize("arm", ARMS)
+def test_the_pool_hands_the_authored_gates_to_every_episode(arm, tmp_path, monkeypatch, capsys):
+    """Every episode, in every pool-driving arm, is judged against the WHOLE authored
+    document — both scopes, unpartitioned: process_episode partitions where a spec is built,
+    so no caller does (design §2.3). And the kwarg exists ONLY when a file does: the pool's
+    kwargs are built 'only when it carries something', which keeps the call shape identical to
+    the pre-gates one. That second half is a control INSIDE this test and not beside it, so the
+    instrument has just been shown able to see a `gates` kwarg before it is trusted to report
+    the absence of one."""
+    (tmp_path / "with").mkdir()
+    (tmp_path / "without").mkdir()
+
+    ran = {}
+    _run_arm(arm, tmp_path / "with", monkeypatch, json.dumps(GATES_DOC), ran)
+    assert [c.get("gates") for c in ran["passed"]] == [GATES_DOC, GATES_DOC]
+    if "rm" in ran:
+        assert ran["rm"].gates == GATES_DOC
+    assert "2 authored threshold(s)" in capsys.readouterr().err
+
+    ran = {}
+    _run_arm(arm, tmp_path / "without", monkeypatch, None, ran)
+    assert len(ran["passed"]) == 2
+    assert all("gates" not in c for c in ran["passed"])
+    if "rm" in ran:
+        assert ran["rm"].gates == {}
+        assert "gates" not in ran["rm"].to_dict()      # EPISODES.json stays byte-identical
+    assert "authored threshold" not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("arm", ["single-pass", "from-geometry"])
+def test_a_broken_gates_file_stops_the_run_and_names_the_path(arm, tmp_path, monkeypatch):
+    """No waiver and no fallback to defaults: a file that exists and cannot be loaded stops
+    the run with its own path in the message (design §2.2/§6). It stops AHEAD of the work —
+    the pool and, in the arm that extracts, the extract itself — because a refusal that comes
+    after the encode is a refusal an encode late.
+
+    Two arms, not three: build_geometry reads its gates through the SAME _phase_one_setup as
+    the single-pass arm, so a third case would kill no mutation the first does not. Phase 1b
+    has a read of its own, which is why it is here."""
+    ran = {}
+    with pytest.raises(ValueError) as e:
+        _run_arm(arm, tmp_path, monkeypatch, BROKEN_GATES, ran)
+    assert str(tmp_path / "GATES.json") in str(e.value)
+    assert ran["passed"] == []
+    if arm == "single-pass":                           # phase 1b extracts nothing to begin with
+        assert ran["seen"]["segments"] == []

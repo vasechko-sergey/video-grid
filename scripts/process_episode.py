@@ -662,15 +662,25 @@ def build_parser() -> argparse.ArgumentParser:
                     help="sparse keyframes.json ([{t,x,y,w,h}]) — the manual rung when both "
                          "automatic trackers give nothing (design 2026-07-21 §4)")
     ap.add_argument("--project", default=None,
-                    help="path to project.json — the episode inherits its canvas/delivery")
+                    help="path to project.json — the episode inherits its canvas/delivery, "
+                         "and a GATES.json beside it (if any) moves the check thresholds "
+                         "(design 2026-09-30); with no --project no GATES.json is read")
     return ap
 
 
 def main() -> None:
     a = build_parser().parse_args()
     md = json.loads(Path(a.manifest).read_text())
+    # GATES.json beside --project, found by the SAME function edl_to_reel finds it with: a
+    # hand-driven re-render of one episode must be judged against the bar its siblings were
+    # (design 2026-09-30 §2.3). No --project, no lookup: there is no project.json to look
+    # beside, and a guess from the working directory would be a second, silent way to move a
+    # bar. `is not None` so only an OMITTED flag reads as "no project" — a wiped
+    # `--project ""` is handed on, and process_episode refuses it there.
+    authored = (gates_lib.beside_project(a.project) if a.project is not None
+                else gates_lib.Gates())
     result = process_episode(md, a.project_dir, route_path=a.route, project=a.project,
-                             keyframes_path=a.keyframes)
+                             keyframes_path=a.keyframes, gates=authored.to_dict())
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result["status"] == "mechanical_pass" else 1)
 

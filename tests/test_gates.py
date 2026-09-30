@@ -395,3 +395,24 @@ def test_for_spec_refuses_anything_but_the_two_spec_classes(not_a_spec):
     g = gates.Gates.from_dict({"entropy_floor": {"value": 0.85, "why": "x"}})
     with pytest.raises(ValueError, match="ReelCheckSpec or CheckSpec"):
         g.for_spec(not_a_spec)
+
+
+# ---- beside_project: the ONE place the convention is spelled (design §0.5/§2.1) ------------
+
+
+def test_beside_project_reads_the_file_in_the_projects_own_directory(tmp_path, monkeypatch):
+    """Found beside project.json — not in the working directory, which is where a run started
+    from the user's footage folder would otherwise look. The decoy in the cwd holds a DIFFERENT
+    bar, so a lookup that strays there (or prefers it) reads the wrong file rather than reading
+    nothing. The absent-file and broken-file halves of this helper's contract are pinned where
+    they are consumed — the three phase-1 arms and the process_episode CLI — because a unit
+    test of either here kills no mutation those do not."""
+    run, elsewhere = tmp_path / "run", tmp_path / "elsewhere"
+    run.mkdir()
+    elsewhere.mkdir()
+    doc = {"entropy_floor": {"value": 0.85, "why": "log profile"}}
+    (run / "GATES.json").write_text(json.dumps(doc))
+    (elsewhere / "GATES.json").write_text(json.dumps(
+        {"black_floor": {"value": 2.0, "why": "a decoy: the wrong directory"}}))
+    monkeypatch.chdir(elsewhere)
+    assert gates.beside_project(str(run / "project.json")) == gates.Gates.from_dict(doc)

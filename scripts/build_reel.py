@@ -238,7 +238,16 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
             # populated regardless — check_reel reads it, and raises for a tracked
             # (pan=false) episode whose route is None.
             route = None if manifest.get("stabilize") else ep.route
-            res = process_episode.process_episode(manifest, epdir, route_path=route)
+            # The authored gates, read off the carrier the first pass put them on and handed
+            # through WHOLE — both scopes, unfiltered, because process_episode partitions where
+            # a CheckSpec is built and no caller does (design 2026-09-30 §2.3). Without this
+            # the re-rendered episode is judged against the defaults while its siblings were
+            # judged against the authored bar, and nothing says so. Passed only when authored,
+            # the pool's own rule in edl_to_reel._run_pool, so a reel that authored none keeps
+            # the call shape it had before gates existed.
+            gates_kw = {"gates": rm.gates} if rm.gates else {}
+            res = process_episode.process_episode(manifest, epdir, route_path=route,
+                                                  **gates_kw)
             # A REJECTED re-render is already on disk. reframe writes m.out_path before
             # check_episode.run reads it (process_episode.py), so this early return
             # leaves ep{i}.mp4 overwritten by the render that just failed, and skips the

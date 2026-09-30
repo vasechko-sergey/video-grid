@@ -421,3 +421,72 @@ def test_an_episode_manifest_cannot_carry_gates(tmp_path):
     res = process_episode.process_episode(md, tmp_path / "ep0")
     assert res["status"] == "needs_input"
     assert "unknown field(s) ['gates']" in res["problems"][0]
+
+
+# --- threshold-surface Task 4, Step 3b: the hand-driven CLI finds GATES.json too ---
+# (design 2026-09-30 §2.3.) skills/process-episode/SKILL.md documents this CLI as the way to
+# drive ONE episode by hand. A re-render that judged against defaults while edl_to_reel
+# judged its siblings against the authored bar would be the silent different-bar defect the
+# build_reel reprocess arm exists to close, reached by the other door.
+
+CLI_GATES_DOC = {"entropy_floor": {"value": 0.85, "why": "log profile"}}
+
+
+def _drive_main(monkeypatch, tmp_path, *argv):
+    """Run process_episode.main() over `argv` with the episode run itself faked, and return the
+    keyword arguments it was handed. What is under test is which gates the CLI found and passed;
+    the run itself needs no files."""
+    seen = {}
+
+    def fake(md, project_dir, **kw):
+        seen.update(kw)
+        return {"status": "mechanical_pass"}
+    monkeypatch.setattr(process_episode, "process_episode", fake)
+    manifest = tmp_path / "episode.json"
+    manifest.write_text("{}")
+    monkeypatch.setattr("sys.argv", ["process_episode", str(manifest),
+                                     "--project-dir", str(tmp_path / "scratch"), *argv])
+    with pytest.raises(SystemExit) as e:
+        process_episode.main()
+    assert e.value.code == 0
+    return seen
+
+
+def test_the_cli_finds_gates_json_beside_the_project_it_was_given(tmp_path, monkeypatch):
+    """Beside `--project`, found by convention exactly as edl_to_reel finds it. The manifest
+    and the scratch dir sit elsewhere, so a lookup beside either of THEM finds nothing."""
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "GATES.json").write_text(json.dumps(CLI_GATES_DOC))
+    seen = _drive_main(monkeypatch, tmp_path, "--project", str(run / "project.json"))
+    assert seen["gates"] == CLI_GATES_DOC
+
+
+def test_the_cli_hands_no_gates_when_no_file_sits_beside_the_project(tmp_path, monkeypatch):
+    """The common case — every run that authored no gates — and the one a lookup written
+    without an existence check would break. A guard, and green before the lookup existed,
+    because nothing read a file then either."""
+    run = tmp_path / "run"
+    run.mkdir()
+    seen = _drive_main(monkeypatch, tmp_path, "--project", str(run / "project.json"))
+    assert not seen.get("gates")           # None and {} both mean "no gates in force"
+
+
+def test_the_cli_without_a_project_never_goes_looking_for_a_gates_file(tmp_path, monkeypatch):
+    """No --project means no project.json to look beside, and a guess from the working
+    directory would be a second, silent way to move a bar. A GATES.json in exactly the place a
+    guess would try — the cwd, which is also beside episode.json — changes nothing. A guard,
+    and green before the lookup existed, because nothing looked anywhere then either."""
+    (tmp_path / "GATES.json").write_text(json.dumps(CLI_GATES_DOC))
+    monkeypatch.chdir(tmp_path)
+    assert not _drive_main(monkeypatch, tmp_path).get("gates")
+
+
+def test_the_cli_refuses_a_broken_gates_file_beside_the_project_and_names_it(
+        tmp_path, monkeypatch):
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "GATES.json").write_text(json.dumps({"entropy_floor": 0.85}))     # no reason
+    with pytest.raises(ValueError) as e:
+        _drive_main(monkeypatch, tmp_path, "--project", str(run / "project.json"))
+    assert str(run / "GATES.json") in str(e.value)

@@ -19,8 +19,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from scripts import build_reel, extract, process_episode, track
-from scripts.lib import (color_fidelity, episode_qc as qc_lib, hero as hero_lib,
-                        manifest as manifest_lib, provenance, reid, runlayout)
+from scripts.lib import (color_fidelity, episode_qc as qc_lib, gates as gates_lib,
+                        hero as hero_lib, manifest as manifest_lib, provenance, reid,
+                        runlayout)
 from scripts.lib.edl import EDL, preflight
 from scripts.lib.episode_qc import ReelQC
 from scripts.lib.footage import Cast
@@ -84,12 +85,35 @@ def _refuse_on_engine_drift(started: dict, now: dict) -> None:
             f"against the current engine to re-baseline")
 
 
+def _authored_gates(project_path: str) -> gates_lib.Gates:
+    """GATES.json beside project.json, announced on stderr when it moves any bar.
+
+    Found BY CONVENTION with no flag — the CONSTRAINTS.json / REGIONS.json rule (design
+    2026-09-30 §0.5). A flag can be dropped on a re-run, and a dropped threshold flag reverts
+    the bar in silence, which is the defect EDL.platform shipped with. Read HERE, at run time,
+    and not at edit_plan time onto the EDL: a bar is discovered to be wrong after a check
+    fails, and re-cutting a reel to change one is absurd.
+
+    A file that exists and cannot be loaded stops the run with its own path in the message.
+    There is no waiver and no fallback to defaults. The announcement is there because a
+    GATES.json sitting beside the wrong project.json is otherwise indistinguishable from none:
+    both read as silence."""
+    authored = gates_lib.beside_project(project_path)
+    if authored.gates:
+        _note(f"edl_to_reel: gates: {len(authored.gates)} authored threshold(s) "
+              f"({', '.join(g.field for g in authored.gates)}) from GATES.json beside "
+              f"{project_path}")
+    return authored
+
+
 def _phase_one_setup(edl_path: str, project_path: str, footage_root: str,
                      work_dir: str, out_dir: str, jobs: int
-                     ) -> tuple[EDL, dict, list[dict], dict | None]:
+                     ) -> tuple[EDL, dict, list[dict], dict | None, gates_lib.Gates]:
     """Everything phase 1 does before the pool: the two footage-root refusals, the
     same-directory refusal, the build wipe, the jobs gate, the engine-drift stop,
-    preflight and the extract. Returns (edl, engine_at_start, mds, stop).
+    preflight and the extract. Returns (edl, engine_at_start, mds, stop, authored) — the
+    last being the GATES.json set found beside project.json, read before the extract so a
+    broken file refuses ahead of the expensive step.
 
     Shared by _build_manifest (render straight through) and build_geometry (stop at
     the geometry boundary), so the two arms cannot drift apart on a guard: both fill
@@ -123,6 +147,7 @@ def _phase_one_setup(edl_path: str, project_path: str, footage_root: str,
                          f"memory-constrained box, raise it only with a GPU)")
     edl = EDL.from_json(edl_path)
     cfg = ProjectConfig.from_json(project_path)
+    authored = _authored_gates(project_path)
     # #11 — a montage run must not straddle an engine change; see _refuse_on_engine_drift.
     # `started` is also threaded into rm.provenance below (engine_at_start) — the value
     # phase 2's own guard re-checks against, once the split carries it across the
@@ -135,11 +160,11 @@ def _phase_one_setup(edl_path: str, project_path: str, footage_root: str,
     # 1. resolve + preflight every episode — fail in ms, before any ffmpeg
     mds, stop = preflight(edl, cfg, seg_dir, out_dir)
     if stop:
-        return edl, started, mds, stop
+        return edl, started, mds, stop, authored
 
     # 2. extract every window (paths match the seg_dir/ep{i}_raw.mp4 the bridge used)
     extract.extract_edl(edl, footage_root, seg_dir)
-    return edl, started, mds, None
+    return edl, started, mds, None, authored
 
 
 def _cast_for(edl: EDL) -> Cast | None:
@@ -151,6 +176,7 @@ def _cast_for(edl: EDL) -> Cast | None:
 
 
 def _run_pool(mds: list[dict], work_dir: str, jobs: int, *,
+              authored: gates_lib.Gates,
               cast: Cast | None = None,
               stop_after: str | None = None,
               prepared: list[tuple[str | None, str | None]] | None = None
@@ -161,6 +187,12 @@ def _run_pool(mds: list[dict], work_dir: str, jobs: int, *,
     phase 1a recorded (design 2026-08-30 §2.3). An episode handed a route never
     tracks, so the two weight warm-ups below cover only the ROUTE-LESS rest of the
     pool — with `prepared=None` that is every episode, exactly as before the split.
+
+    `authored` is the GATES.json set, handed to every episode WHOLE — both scopes,
+    unpartitioned: process_episode partitions where a CheckSpec is built, so no caller does
+    (design 2026-09-30 §2.3). Required rather than defaulted to "none", because a pool
+    caller that forgot it would judge every episode against the defaults and say nothing;
+    there are three callers, and the third (phase 1b) is the one the conveyor renders through.
 
     That set is a safe SUPERSET, not an exact one, and deliberately: under `prepared`
     its members are the pans, and a pan does not track either (process_episode
@@ -181,13 +213,16 @@ def _run_pool(mds: list[dict], work_dir: str, jobs: int, *,
     to the sequential one."""
     # Per-episode kwargs, and the subset this pool will actually track. Passing a
     # kwarg only when it carries something keeps the call shape identical to the
-    # pre-split one for a plain render.
+    # pre-split one for a plain render — and to the pre-gates one for a reel that authored
+    # none.
     kwargs: list[dict] = []
     tracking: list[dict] = []
     for i, md in enumerate(mds):
         kw: dict = {}
         if stop_after is not None:
             kw["stop_after"] = stop_after
+        if authored.gates:
+            kw["gates"] = authored.to_dict()
         route, src = prepared[i] if prepared is not None else (None, None)
         if route is None:
             if src is not None:
@@ -247,7 +282,8 @@ def _run_pool(mds: list[dict], work_dir: str, jobs: int, *,
 
 def _reel_manifest(mds: list[dict], results: list[dict], routes: list[str | None],
                    epdirs: list[str], edl: EDL, edl_path: str, *,
-                   music: str | None, changelog: str, started: dict) -> ReelManifest:
+                   music: str | None, changelog: str, started: dict,
+                   authored: gates_lib.Gates = gates_lib.Gates()) -> ReelManifest:
     """The ReelManifest both phase-1 arms assemble from their pool's results.
 
     `routes[i]` is the episode's route.json or None. A pan episode has no route.json
@@ -255,7 +291,11 @@ def _reel_manifest(mds: list[dict], results: list[dict], routes: list[str | None
     written would be a lie the reel manifest then carries around; None states the
     absence. check_reel does not depend on this (it branches on the meta sidecar's
     provenance bit, which is what actually happened rather than what a caller
-    remembered to pass) — this is the contract telling the truth, not the crash fix."""
+    remembered to pass) — this is the contract telling the truth, not the crash fix.
+
+    `authored` (the GATES.json set) defaults to empty so the pure-assembly tests that call
+    this with results in hand keep their shape. Both real callers pass it, and the manifest
+    assertion in test_the_pool_hands_the_authored_gates_to_every_episode pins that they do."""
     episodes = [ReelEpisode(manifest=md, clip=res["clip"], route=routes[i],
                             path=str(Path(epdirs[i]) / "path.json"),
                             meta=str(Path(epdirs[i]) / "path.meta.json"),
@@ -271,9 +311,14 @@ def _reel_manifest(mds: list[dict], results: list[dict], routes: list[str | None
     # window (design §6).
     target = (edl.target_dur if edl.target_dur is not None
               else sum(ep.play_dur() for ep in edl.episodes))
-    extra: dict = {}  # deliberate seam for a future ReelManifest field a caller could
-                      # override — the retired --color-delta-max used to populate this
-                      # one (design 2026-08-29 §2); no current CLI flag fills it
+    # Deliberate seam for a ReelManifest field a caller could override. The retired
+    # --color-delta-max used to populate it (design 2026-08-29 §2); GATES.json is its first
+    # filler since (design 2026-09-30 §2.3) — the WHOLE authored set, both scopes, so the
+    # EPISODES.json round trip carries it to build_reel's reprocess arm. No CLI flag fills it:
+    # the file is found beside project.json, because a flag can be dropped on a re-run.
+    extra: dict = {}
+    if authored.gates:
+        extra["gates"] = authored.to_dict()
     # #16: this argument is the version-log NOTE, not the log's path. Passing
     # str(out_dir/"VERSIONS.md") here is what made 12 of 13 entries in a real run's
     # VERSIONS.md log the file's own path instead of the reason for the version.
@@ -314,12 +359,12 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
                     changelog: str = "") -> tuple[ReelManifest | None, dict | None]:
     """Everything up to the ReelManifest: preflight, extract, the loop-1 fan-out, the
     run provenance. Returns (rm, None) or (None, stop_and_report)."""
-    edl, started, mds, stop = _phase_one_setup(edl_path, project_path, footage_root,
-                                               work_dir, out_dir, jobs)
+    edl, started, mds, stop, authored = _phase_one_setup(edl_path, project_path,
+                                                         footage_root, work_dir, out_dir, jobs)
     if stop:
         return None, stop
     # 3. loop-1 fan-out: one process_episode per episode, up to `jobs` concurrently.
-    results, stop = _run_pool(mds, work_dir, jobs, cast=_cast_for(edl))
+    results, stop = _run_pool(mds, work_dir, jobs, cast=_cast_for(edl), authored=authored)
     if stop:
         return None, stop
 
@@ -328,7 +373,7 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
     routes = [None if md.get("pan") is not None else str(Path(d) / "route.json")
               for md, d in zip(mds, epdirs, strict=True)]
     return _reel_manifest(mds, results, routes, epdirs, edl, edl_path, music=music,
-                          changelog=changelog, started=started), None
+                          changelog=changelog, started=started, authored=authored), None
 
 
 def edl_to_reel(edl_path: str, project_path: str, footage_root: str,
@@ -408,12 +453,12 @@ def build_geometry(edl_path: str, project_path: str, footage_root: str,
 
     This is the seam match_grade measures the shipped crop in: the route exists, and no
     episode has been encoded yet, so a re-authored grade costs nothing to apply."""
-    edl, started, mds, stop = _phase_one_setup(edl_path, project_path, footage_root,
-                                               work_dir, out_dir, jobs)
+    edl, started, mds, stop, authored = _phase_one_setup(edl_path, project_path,
+                                                         footage_root, work_dir, out_dir, jobs)
     if stop:
         return None, stop
     results, stop = _run_pool(mds, work_dir, jobs, cast=_cast_for(edl),
-                              stop_after="geometry")
+                              stop_after="geometry", authored=authored)
     if stop:
         return None, stop
     geo = ReelGeometry(
@@ -518,6 +563,10 @@ def render_from_geometry(geometry_path: str, project_path: str, work_dir: str,
     phase 1a already cut the segments those routes were measured against, so cutting
     them again would be waste on top of a lie about which pixels were tracked.
 
+    Reads GATES.json beside `project_path` itself, at this phase's own run time (see
+    _authored_gates): this is the phase that renders and runs the checks, and GEOMETRY.json
+    carries no gates.
+
     No footage-root guard here, and none is missing: both directories are pinned by
     the stored manifests' own `segment`/`out_path`, and any other pair is refused by
     _refuse_on_changed_cut below."""
@@ -528,6 +577,11 @@ def render_from_geometry(geometry_path: str, project_path: str, work_dir: str,
     geo = ReelGeometry.from_json(geometry_path)
     edl = EDL.from_json(geo.edl)
     cfg = ProjectConfig.from_json(project_path)
+    # Found again HERE, not carried over from phase 1a: this phase never calls
+    # _phase_one_setup, and it is the one that RENDERS and so runs the checks. A bar is
+    # discovered to be wrong after a check fails, which is after 1a — GEOMETRY.json therefore
+    # holds no gates, and the file is read at the moment it is acted on.
+    authored = _authored_gates(project_path)
     # #11, at the third stop point (design §9.7): the conductor measures, a human reads
     # MATCH.md and may re-cut the grade — exactly the gap where the engine moves. The
     # stamp phase 1a recorded is the one this compares against, the same way
@@ -553,14 +607,15 @@ def render_from_geometry(geometry_path: str, project_path: str, work_dir: str,
                  eg.source if (md.get("stabilize") and eg.route is not None) else None)
                 for md, eg in zip(mds, geo.episodes, strict=True)]
     results, stop = _run_pool(mds, work_dir, jobs, cast=_cast_for(edl),
-                              prepared=prepared)
+                              prepared=prepared, authored=authored)
     if stop:
         return None, stop
     epdirs = [str(Path(work_dir) / f"ep{i}") for i in range(len(mds))]
     # the routes come from the geometry, not re-derived: it is the record of what was
     # actually written, pan (None) included.
     rm = _reel_manifest(mds, results, [eg.route for eg in geo.episodes], epdirs, edl,
-                        geo.edl, music=music, changelog=changelog, started=started)
+                        geo.edl, music=music, changelog=changelog, started=started,
+                        authored=authored)
     return rm, None
 
 

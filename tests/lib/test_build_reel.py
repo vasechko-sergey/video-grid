@@ -1,3 +1,4 @@
+import dataclasses
 import json
 
 import pytest
@@ -995,3 +996,51 @@ def test_a_reprocess_of_an_episode_with_no_sidecar_keeps_the_work_dir(monkeypatc
     build_reel.build_reel(rm, str(tmp_path / "out"), str(work))
 
     assert seen["reprocess"] == [{"route": "r0.json", "project_dir": str(work / "ep0")}]
+
+
+# --- threshold-surface Task 4: the reprocess arm reads the carrier (design
+# docs/specs/2026-09-30-threshold-surface-design.md §2.3) ---
+
+GATES_DOC = {"entropy_floor": {"value": 0.85, "why": "log profile"},
+             "loudness_tol": {"value": 2.0, "why": "live room"}}
+
+
+def _spy_reprocess_kwargs(monkeypatch, passed):
+    """Wrap the process_episode fake `_wire` installed, recording into `passed` the EXTRA
+    keyword arguments each reprocess was handed.
+
+    The fake takes no `gates`, exactly as the real call shape did before this slice, so the
+    wrapper strips it before delegating: what is under test is what the reprocess arm PASSED,
+    not what a fake tolerates. Everything else is forwarded, so the fake's own signature still
+    bites on any other keyword."""
+    inner = build_reel.process_episode.process_episode
+
+    def spy(manifest, project_dir, route_path=None, **kw):
+        passed.append(dict(kw))
+        return inner(manifest, project_dir, route_path=route_path,
+                     **{k: v for k, v in kw.items() if k != "gates"})
+    monkeypatch.setattr(build_reel.process_episode, "process_episode", spy)
+
+
+def test_a_reprocess_is_judged_against_the_same_authored_bar_as_its_siblings(
+        monkeypatch, tmp_path):
+    """Without the whole set on the manifest the reprocess arm has nowhere to read it from,
+    and the re-rendered episode is judged against a different bar in silence (design §2.3).
+    The set is handed through WHOLE — both scopes, unfiltered — because process_episode
+    partitions where a CheckSpec is built and no caller does. An unauthored reel's reprocess
+    call keeps the shape it had before gates existed; that control is INSIDE this test so the
+    instrument has just been shown able to see a `gates` kwarg before it is trusted to report
+    the absence of one."""
+    _wire(monkeypatch, [_black_fail(1), _pass(), _black_fail(1), _pass()])
+    passed = []
+    _spy_reprocess_kwargs(monkeypatch, passed)
+
+    authored = dataclasses.replace(_rm(), gates=GATES_DOC)
+    res = build_reel.build_reel(authored, str(tmp_path / "out1"), str(tmp_path / "w1"))
+    assert res["status"] == "delivered"
+    assert passed == [{"gates": GATES_DOC}]
+
+    passed.clear()
+    res = build_reel.build_reel(_rm(), str(tmp_path / "out2"), str(tmp_path / "w2"))
+    assert res["status"] == "delivered"
+    assert passed == [{}]
