@@ -981,7 +981,7 @@ Attach in `_loudness_check` (`loudness_target`, `loudness_tol`), `_grade_faithfu
 def authored_rows(spec, reasons: dict, *names) -> list[dict]: ...
 ```
 
-Thread the reasons at **four** sites, not three. `edl_to_reel`/`build_reel` pass `gate_reasons=Gates.from_dict(rm.gates).reasons()` into `check_reel.run`; `process_episode` passes the episode reasons into `check_episode.run`; **`check_episode.main` is the fourth and is easy to miss** — Task 3 left it holding a loaded `Gates` as `g`, and without `g.reasons()` there a `check_episode --gates f.json` run writes a verdict with a moved bar and no reason beside it, which is exactly the gap design §2.4 item 1 exists to close. `check_reel.main` is **not** one of them: Task 4's review measured its `--gates` flag inert and the fix round deleted it, so there is no loaded `Gates` there to take reasons from. Reuse the existing parameter-passing shape at each call site; if `check_episode.run`'s signature has no room without churn, say so in your report with what you did instead.
+Thread the reasons at **three** sites. An earlier correction of mine said four; `edl_to_reel` is not one of them — it never calls either check's `run` (verified). `edl_to_reel`/`build_reel` pass `gate_reasons=Gates.from_dict(rm.gates).reasons()` into `check_reel.run`; `process_episode` passes the episode reasons into `check_episode.run`; **`check_episode.main` is the fourth and is easy to miss** — Task 3 left it holding a loaded `Gates` as `g`, and without `g.reasons()` there a `check_episode --gates f.json` run writes a verdict with a moved bar and no reason beside it, which is exactly the gap design §2.4 item 1 exists to close. `check_reel.main` is **not** one of them: Task 4's review measured its `--gates` flag inert and the fix round deleted it, so there is no loaded `Gates` there to take reasons from. Reuse the existing parameter-passing shape at each call site; if `check_episode.run`'s signature has no room without churn, say so in your report with what you did instead.
 
 `Attestation` gains `gates: list[dict] = field(default_factory=list)` with `to_dict`/`from_dict` entries beside `look_checks`, plus a docstring line. `deliver` fills it from the manifest it already holds.
 
@@ -1053,7 +1053,9 @@ def test_an_authored_entropy_floor_changes_the_bar_end_to_end(tmp_path, ...):
     # WRONG way, so the proof cannot pass by accident on an already-passing render.
     ...
     assert report["checks"]["grade_damage"]["passed"] is False
-    assert report["checks"]["grade_damage"]["detail"]["authored"] == [
+    # NOTE: CheckResult.to_dict FLATTENS the detail ({**detail, "pass": ...}), so on
+    # disk the key is checks[name]["authored"], not checks[name]["detail"]["authored"].
+    assert report["checks"]["grade_damage"]["authored"] == [
         {"field": "entropy_floor", "value": 0.999, "default": 0.90,
          "why": "deliberately unreachable, to prove the bar moved"}]
 
@@ -1209,6 +1211,18 @@ would otherwise leave every list — the deferral rule's own failure mode:
 - A duplicate key in `GATES.json` silently keeps the last entry and the first
   entry's reason vanishes; a non-UTF-8 `GATES.json` raises `UnicodeDecodeError`
   with no path. **P4, XS.**
+
+- [ ] **Step 4c: The vocabulary is eleven, not twelve — sweep for the old count**
+
+Task 5 measured `loudness_target` to be a rendered set-point rather than a bar
+(design §0.2a: `mix.py:16` hardcodes `_TARGET_LUFS = -14.0` into the `loudnorm`
+filter and `mix.mix` takes no target, so authoring it moves the ruler and not the
+thing measured, and every reel then fails). It is now in `AUTHORED_ELSEWHERE`.
+Sweep every document and test for "twelve", "12 fields" and the old blocking count
+of seven — the design's §0.1 table, §0.6 arithmetic and §7 are already corrected;
+`gates.py`'s docstring, the skills and any test asserting a literal count are not
+necessarily. The derived assertions need no change, which is the point of deriving
+them.
 
 - [ ] **Step 5: Version**
 

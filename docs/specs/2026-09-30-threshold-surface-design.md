@@ -35,7 +35,7 @@ _ADVISORY_CHECKS = ("beat", "safe_zones", "key_action", "pad_bars", "transitions
 | `bar_symmetry_tol` | `ReelCheckSpec` | `pad_bars` | advisory |
 | `layout_jump_max` | `ReelCheckSpec` | `transitions` | advisory |
 | `chroma_spread_max` | `ReelCheckSpec` | `chroma_spread` | advisory |
-| `loudness_target` | `ReelCheckSpec` | `loudness` | **BLOCKING** |
+| ~~`loudness_target`~~ | `ReelCheckSpec` | `loudness` | **not a bar at all — see §0.2a** |
 | `loudness_tol` | `ReelCheckSpec` | `loudness` | **BLOCKING** |
 | `grade_residual_max` | `ReelCheckSpec` | `grade_faithful` | **BLOCKING** |
 | `length_retime_max` | `ReelCheckSpec` | `brief_length` (advisory) **and** `build_reel`'s absorb | **BLOCKING in effect** |
@@ -43,7 +43,7 @@ _ADVISORY_CHECKS = ("beat", "safe_zones", "key_action", "pad_bars", "transitions
 | `black_rel` | `CheckSpec` | `black_frames` | **BLOCKING** |
 | `entropy_floor` | `CheckSpec` | `grade_damage` | **BLOCKING** |
 
-**Seven blocking, five advisory.** Two names in that table are easy to get wrong
+**Six blocking, five advisory, and one that is not a threshold** (§0.2a, found by Task 5). Two names in that table are easy to get wrong
 and were, in this design's first draft: the episode-level black gate's key is
 `black_frames` (`check_episode.py:412`), not `black` — `black` is a *reel* check
 (`check_reel.py:436`) that reads no threshold at all; and an episode check has no
@@ -61,6 +61,33 @@ behaviour". It is read at two sites:
   failure into a silent re-target. That is the cry-wolf mechanism exactly, and it
   is why the field sits in the blocking bucket despite the advisory check that also
   reads it.
+
+### §0.2a `loudness_target` is not a bar, and authoring it would break every reel
+
+Found by Task 5 and verified: `mix.py:16` holds `_TARGET_LUFS = -14.0`, `mix.mix`
+takes no target parameter, and line 231 bakes that constant straight into the
+`loudnorm` filter that renders the stem. So `loudness_target` has **two**
+consumers — the renderer and the gate — and `GATES.json` would reach only the
+second. Authoring `-16` moves the ruler and not the thing measured: the stem is
+still rendered at −14, `_loudness_check(-14.0, target=-16)` fails, and the reel
+escalates to `audio-mix`. The only escape is widening `loudness_tol`, which is a
+waiver wearing the target's name — the exact mechanism §1 exists to stop.
+
+The category is the point. The other eleven are **bars**: a number a check
+compares against, whose whole meaning is "how far is too far". `loudness_target`
+is the value the pipeline **renders to**, and the gate's job is to confirm it got
+there. A file of gates is the wrong home for it, the same way a thermostat's
+set-point is not a tolerance.
+
+**It moves to `AUTHORED_ELSEWHERE`**, naming `mix._TARGET_LUFS` as its real home,
+and the vocabulary drops from twelve to **eleven**. `loudness_tol` stays: widening
+the band around a rendered −14 is a genuine authored waiver.
+
+This also sharpens §0.2. A platform table is not merely "four identical rows
+today" — it is the **only correct place** for this value, because it is the only
+shape that can set both consumers at once. A broadcast deliverable at −23 LUFS is
+a real need for a general tool, and it is filed (§7) as one row that moves the
+mixer and the gate together, never one of them.
 
 ### §0.2 Half the obvious work is removed by measurement
 
@@ -122,9 +149,13 @@ nowhere in `edl.py` or `edl_to_reel.py`; the `ReelManifest(...)` construction at
 `edl_to_reel.py:281` does not pass it, so it takes its dataclass default of 8 and
 diffs against a baseline of 8. Its only other inlet is
 `ReelManifest.from_dict`'s `d.get("variety_min", 8)` (`models.py:1744`) — a
-hand-edited `EPISODES.json`. So on every run this conveyor has ever made,
-`Attestation.overrides` is the empty list, by construction rather than by
-coincidence. (Derived from the code path, not read off a delivered artifact.)
+hand-edited `EPISODES.json`. And `spec_overrides` **cannot see even that**: it is
+called once, in phase 1's `_reel_manifest`, on the manifest phase 1 just built, so
+a hand-edit made between the phases is invisible to it (measured by Task 5:
+`check_spec.variety_min == 4` while `Attestation.overrides == []`). So on every
+run this conveyor has ever made, `Attestation.overrides` is the empty list, by
+construction rather than by coincidence. (Derived from the code path, not read off
+a delivered artifact.)
 
 Its docstring already promises more:
 
@@ -174,9 +205,12 @@ duplicated —
 | `composition` | `Manifest.composition`, per episode |
 | `grid` | `Manifest.grid`, per episode |
 | `attempt` | the retry loop's own counter, never an author's |
+| `loudness_target` | `mix._TARGET_LUFS` — the value the stem is rendered to, not a bar (§0.2a) |
 
-— leaving **17 − 5 = 12**, which is the row's twelve, arrived at from the
-dataclasses rather than from the row. So the vocabulary is derived, not typed:
+— leaving **17 − 6 = 11**. The row said twelve, and twelve is what the first
+five tasks built; Task 5 measured `loudness_target` to be a rendered set-point
+rather than a bar (§0.2a) and it joins the exempt set, which is the vocabulary
+correcting itself from the dataclasses rather than from the row. So the vocabulary is derived, not typed:
 a threshold added to either class later joins `GATES.json` the day it lands, with
 no second list to update. Same property `spec_overrides` has, and for the same
 reason.
@@ -343,7 +377,9 @@ already reports a verdict:
    `{field, value, default, scope, blocking, why}`. `spec_overrides` is left
    untouched and keeps answering its own question ("what differs from default,
    whatever the source") — it must keep working when there is no `GATES.json` at
-   all, and it is the only thing that sees a `variety_min` moved by a hand-edited `EPISODES.json` (§0.4). A
+   all. (An earlier draft said it is "the only thing that sees a hand-edited
+   `variety_min`"; §0.4 records that it cannot see that either, because it runs in
+   phase 1.) A
    reel-scope gate appearing in both lists is correct: it is both.
 3. **`montage status`.** A `gates` row carrying `_constraints`' own three states
    — absent, authored (with a count), or present-and-unreadable — found at the
@@ -480,8 +516,13 @@ authored value with a recorded reason, which is what makes it reviewable.
 
 ## §7 Deferred (to the backlog)
 
-- `PLATFORM_LOUDNESS` beside `SAFE_ZONES`, when a platform with a target other than
-  −14 LUFS enters the table (§0.2). P3.
+- **A delivery loudness that moves the mixer and the gate together** — the
+  `PLATFORM_LOUDNESS` table beside `SAFE_ZONES` threading its value into both
+  `mix.mix` and `ReelCheckSpec.loudness_target` (§0.2/§0.2a). Today `mix` hardcodes
+  −14 and all four platforms want it, so nothing is reachable and nothing is wrong;
+  a broadcast −23 or Apple Music −16 deliverable needs both to move at once, which
+  is why this is one row and not two. **P2** — a general tool that cannot deliver to
+  broadcast loudness is a real limit, not a tidiness one.
 - Per-episode gates, once an episode identity survives a re-cut (§6). P3.
 - Re-deriving any of the twelve on a second shoot — the existing blocked
   calibration rows, unchanged by this slice. P4.
