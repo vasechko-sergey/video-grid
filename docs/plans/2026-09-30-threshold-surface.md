@@ -577,7 +577,7 @@ back. I measured that none does, but measure again rather than assume.
 
 - [ ] **Step 4: Run the tests**
 
-Run: `.venv/bin/python -m pytest tests/lib/test_models.py tests/lib/test_check_episode.py tests/test_check_episode.py -q`
+Run: `.venv/bin/python -m pytest tests/lib/test_models.py tests/test_check_episode.py -q`
 Expected: PASS, including every pre-existing `ReelManifest` and `CheckSpec` test.
 
 - [ ] **Step 5: Commit**
