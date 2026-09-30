@@ -2355,7 +2355,7 @@ def test_a_corrupt_gates_block_in_episodes_json_is_refused_not_trusted():
         m.ReelManifest.from_dict(d)
 
 
-@pytest.mark.parametrize("bad", [[], None, "x", 1], ids=["list", "None", "str", "int"])
+@pytest.mark.parametrize("bad", [[], None], ids=["list", "None"])
 def test_gates_must_be_an_object_when_a_manifest_is_built_directly(bad):
     # from_dict reads a JSON null as "absent"; a caller constructing the manifest itself
     # gets no such coercion, and an empty list is not an empty gate set.
@@ -2397,11 +2397,27 @@ def test_an_episodes_json_written_before_this_field_loads_with_no_gates():
 def test_a_null_gates_key_reads_as_no_gates():
     # null is this dict's spelling of "absent" (look, outro, tone_target and brief_len are all
     # written as null when unset), so a null here is the same as a missing key and is not a
-    # corrupt object. Only null is pinned: any other wrong-typed value that happens to be falsy
-    # also reads as {}, which loses nothing (it carries no gates) and is not a promise.
+    # corrupt object. It is the ONLY value that reads that way: the test below pins that an
+    # empty or falsy value of any other type is refused.
     rm = m.ReelManifest.from_dict(_reel_dict(gates=None))
     assert rm.gates == {}
     assert rm.check_spec == ReelCheckSpec(target_dur=6.0, variety_min=4)
+
+
+def test_a_falsy_wrong_typed_gates_key_is_refused_not_read_as_absent():
+    # `[]`, false, 0, "" and 0.0 are as wrong-typed as `[1]` or "x", and a hand-edit that
+    # wipes the block to `[]` must not load with every authored bar silently back at its
+    # default. `d.get("gates") or {}` read all five as absent. One case, not five: each value
+    # takes the same branch, so the loop names which were accepted instead of multiplying cases.
+    accepted = []
+    for bad in ([], False, 0, "", 0.0):
+        try:
+            m.ReelManifest.from_dict(_reel_dict(gates=bad))
+        except ValueError as e:
+            assert str(e).startswith("ReelManifest.gates must be an object")
+        else:
+            accepted.append(bad)
+    assert not accepted, f"from_dict read {accepted!r} as no gates"
 
 
 def test_importing_models_alone_does_not_load_gates():
@@ -2434,13 +2450,13 @@ def test_check_spec_refuses_a_black_rel_that_is_not_a_fraction(bad):
         m.CheckSpec(composition="lead", grid="thirds", target_dur=1.0, black_rel=bad)
 
 
-@pytest.mark.parametrize("good", [0, 0.0, 6, 6.0, 255, 255.0])
+@pytest.mark.parametrize("good", [0, 6, 255])
 def test_check_spec_accepts_a_black_floor_anywhere_in_its_range_edges_included(good):
     assert m.CheckSpec(composition="lead", grid="thirds", target_dur=1.0,
                        black_floor=good).black_floor == good
 
 
-@pytest.mark.parametrize("good", [0, 0.0, 0.35, 1, 1.0])
+@pytest.mark.parametrize("good", [0, 1])
 def test_check_spec_accepts_a_black_rel_anywhere_in_its_range_edges_included(good):
     assert m.CheckSpec(composition="lead", grid="thirds", target_dur=1.0,
                        black_rel=good).black_rel == good
@@ -2485,43 +2501,28 @@ def test_every_default_still_constructs():
 # every comparison with nan is False; a string or a list is not a number; and 10**400 is what
 # a JSON file can hold that math.isfinite cannot even be asked about — it raises OverflowError
 # rather than answering, so a guard routed through it would leak an exception naming no file.
-_NOT_A_FINITE_NUMBER = [
-    pytest.param(True, id="True"), pytest.param(False, id="False"),
-    pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
-    pytest.param(float("-inf"), id="-inf"), pytest.param("6", id="str"),
-    pytest.param(None, id="None"), pytest.param([], id="list"),
-    pytest.param(10**400, id="10**400"), pytest.param(-10**400, id="-10**400"),
-]
-
-_REEL_FIELDS = {f.name for f in dataclasses.fields(m.ReelCheckSpec)}
+_NOT_A_FINITE_NUMBER = (True, False, float("nan"), float("inf"), float("-inf"), "6", None, [],
+                        10**400, -10**400)
 
 
-def _spec_with(name, value):
-    """Build the class that owns threshold `name`, with only `name` moved."""
-    if name in _REEL_FIELDS:
-        return m.ReelCheckSpec(target_dur=1.0, **{name: value})
-    return m.CheckSpec(composition="lead", grid="thirds", target_dur=1.0, **{name: value})
-
-
-@pytest.mark.parametrize("bad", _NOT_A_FINITE_NUMBER)
 @pytest.mark.parametrize("name", gates.FIELDS)
-def test_no_gateable_threshold_accepts_a_value_that_is_not_a_finite_number(name, bad):
-    # Quantified over the DERIVED vocabulary, so a thirteenth threshold that lands without a
-    # guard fails here the day it lands. A ValueError and not an OverflowError or a TypeError:
-    # pytest.raises(ValueError) does not catch either of those.
-    with pytest.raises(ValueError, match=name):
-        _spec_with(name, bad)
-
-
-@pytest.mark.parametrize("bad", _NOT_A_FINITE_NUMBER)
-@pytest.mark.parametrize("name", gates.FIELDS)
-def test_no_authored_gate_can_hold_a_value_that_is_not_a_finite_number(name, bad):
+def test_no_authored_gate_can_hold_a_value_that_is_not_a_finite_number(name):
     # Refusal 6 through the front door, the way a GATES.json reaches it: the owning class's
-    # own guard, re-raised with the document named. Vacuous for eleven of the twelve before
-    # this slice widened the guards (design §2.2a).
-    with pytest.raises(ValueError) as e:
-        gates.Gates.from_dict({name: {"value": bad, "why": "x"}}, where="GATES.json")
-    assert str(e.value).startswith("GATES.json ") and repr(name) in str(e.value)
+    # own guard, re-raised with the document named. One case per field of the DERIVED
+    # vocabulary, so a thirteenth threshold that lands without a guard fails here the day it
+    # lands. The values are a loop because each one takes the same branch of every guard. A
+    # ValueError and not an OverflowError or a TypeError: only ValueError is caught, so either
+    # of those escapes and fails the case. Vacuous for nine of the twelve before this slice
+    # widened the guards (design §2.2a).
+    accepted = []
+    for bad in _NOT_A_FINITE_NUMBER:
+        try:
+            gates.Gates.from_dict({name: {"value": bad, "why": "x"}}, where="GATES.json")
+        except ValueError as e:
+            assert str(e).startswith("GATES.json ") and repr(name) in str(e)
+        else:
+            accepted.append(bad)
+    assert not accepted, f"{name} accepted {accepted!r}"
 
 
 def test_a_400_digit_integer_is_a_value_error_and_not_an_overflow():

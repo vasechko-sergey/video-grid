@@ -28,7 +28,11 @@ def is_bbox_coord(v: object) -> bool:
     __post_init__ and hero.resolve(), which must agree because resolve() coerces with
     float() before handing over and would otherwise launder past HeroPin's guard.
 
-    Three silent landmines, one per term:
+    The predicate is is_finite_number's, which a threshold guard needs for exactly the same
+    reasons. This name says what the two readers here mean by it, and sharing one body is
+    what keeps the two spellings from drifting.
+
+    Three silent landmines, one per term of that body:
       - isinstance(True, int) is True, so a bare int test lets `hero: [true, ...]`
         become coordinate 1.0.
       - json.loads accepts bare Infinity/-Infinity/NaN and float() passes them
@@ -43,20 +47,25 @@ def is_bbox_coord(v: object) -> bool:
     converts its argument to a double first, so it raises the very OverflowError it
     is meant to catch on the 400-digit int (verified — it closes Infinity/NaN and
     nothing else). int-vs-float comparison is exact and cannot overflow, and NaN
-    fails it too, so one term covers both halves. Order matters: the isinstance terms
-    must short-circuit first, or abs() lands on a str.
+    fails it too, so one term covers both halves. Order matters in that body: the
+    isinstance terms must short-circuit first, or abs() lands on a str.
     """
-    return (isinstance(v, (int, float)) and not isinstance(v, bool)
-            and abs(v) <= sys.float_info.max)
+    return is_finite_number(v)
 
 
 def is_finite_number(v: object) -> bool:
-    """May `v` be a threshold — a real, finite int or float, and not a bool? Total: it
-    answers for any object and never raises, which the spec guards below rely on.
+    """May `v` be a threshold — a real, finite int or float, and not a bool?
 
-    The same predicate as is_bbox_coord, for the same three landmines (its docstring
-    has the derivation). Here they were measured against the spec classes' own guards
-    the day those values became authorable (design 2026-09-30 §2.2a):
+    Total over anything a JSON file can produce and over the standard and numpy numeric
+    types: it answers and does not raise, which the spec guards below rely on. An int or
+    float SUBCLASS with a hostile __abs__ or __le__ can raise from inside it. None can come
+    from JSON and no caller here builds one, so the claim is scoped to what can arrive
+    rather than the predicate widened to catch it.
+
+    is_bbox_coord delegates here, so there is one spelling and the two cannot drift; its
+    docstring has the derivation of the same three landmines from the hero-pin side. Here
+    they were measured against the spec classes' own guards the day those values became
+    authorable (design 2026-09-30 §2.2a):
       - isinstance(True, int) is True, so five guards passed `True` as 1.
       - every comparison with nan is False, so a `... or v <= 0` guard passes nan and the
         raise it exists for never fires, and inf clears any lower bound. Seven fields let
@@ -1796,6 +1805,11 @@ class ReelManifest:
                            path=e.get("path", ""), meta=e.get("meta", ""),
                            chroma=e.get("chroma"))
                for e in eps_in]
+        # Only a JSON null reads as "absent". An empty or falsy value of any other type is a
+        # wrong-typed block and goes to the constructor to be refused: a hand-edit that wiped
+        # the block to `[]` or `false` must not load as "no gates", with every authored bar
+        # silently back at its default, which is what `d.get("gates") or {}` made of it.
+        g = d.get("gates")
         return cls(episodes=eps, target_dur=d.get("target_dur"),
                    variety_min=d.get("variety_min", 8),
                    cap=d.get("cap", 3), changelog=d.get("changelog", ""),
@@ -1805,7 +1819,7 @@ class ReelManifest:
                    outro=d.get("outro"),
                    tone_target=tuple(d["tone_target"]) if d.get("tone_target") else None,
                    brief_len=d.get("brief_len"),
-                   gates=d.get("gates") or {},
+                   gates={} if g is None else g,
                    provenance=d.get("provenance") or {})
 
     @classmethod
