@@ -39,11 +39,16 @@ _ADVISORY_CHECKS = ("beat", "safe_zones", "key_action", "pad_bars", "transitions
 | `loudness_tol` | `ReelCheckSpec` | `loudness` | **BLOCKING** |
 | `grade_residual_max` | `ReelCheckSpec` | `grade_faithful` | **BLOCKING** |
 | `length_retime_max` | `ReelCheckSpec` | `brief_length` (advisory) **and** `build_reel`'s absorb | **BLOCKING in effect** |
-| `black_floor` | `CheckSpec` | `black` | **BLOCKING** |
-| `black_rel` | `CheckSpec` | `black` | **BLOCKING** |
+| `black_floor` | `CheckSpec` | `black_frames` | **BLOCKING** |
+| `black_rel` | `CheckSpec` | `black_frames` | **BLOCKING** |
 | `entropy_floor` | `CheckSpec` | `grade_damage` | **BLOCKING** |
 
-**Seven blocking, five advisory.** `length_retime_max` is the one that had to be
+**Seven blocking, five advisory.** Two names in that table are easy to get wrong
+and were, in this design's first draft: the episode-level black gate's key is
+`black_frames` (`check_episode.py:412`), not `black` — `black` is a *reel* check
+(`check_reel.py:436`) that reads no threshold at all; and an episode check has no
+advisory registry to be absent from, so it blocks by default rather than by
+membership. `length_retime_max` is the one that had to be
 traced rather than read off the table, and the first pass of this design got it
 wrong twice — first calling it "not a check threshold at all", then "a driver
 behaviour". It is read at two sites:
@@ -104,8 +109,18 @@ deleted with its check in 0.5.0.
 default-constructed one of its own class and is called once, from
 `edl_to_reel.py:307`, on `rm.check_spec` with `target_dur` exempt. Since
 `check_spec()` sets only `target_dur` and `variety_min`, the diff can report
-**exactly one field** — `variety_min` — and only when the EDL moved it. Its
-docstring already promises more:
+**exactly one field** — `variety_min`.
+
+**And it cannot report even that one on a sanctioned run.** `variety_min` occurs
+nowhere in `edl.py` or `edl_to_reel.py`; the `ReelManifest(...)` construction at
+`edl_to_reel.py:281` does not pass it, so it takes its dataclass default of 8 and
+diffs against a baseline of 8. Its only other inlet is
+`ReelManifest.from_dict`'s `d.get("variety_min", 8)` (`models.py:1744`) — a
+hand-edited `EPISODES.json`. So on every run this conveyor has ever made,
+`Attestation.overrides` is the empty list, by construction rather than by
+coincidence. (Derived from the code path, not read off a delivered artifact.)
+
+Its docstring already promises more:
 
 > A diff, NOT a registry: a threshold added to ReelCheckSpec later is covered the
 > day it lands, with no second place to remember to update.
@@ -149,7 +164,7 @@ duplicated —
 | name | where it is really authored |
 |---|---|
 | `target_dur` | the EDL (`EDL.target_dur`, from the footage via `_back_edge_target`) |
-| `variety_min` | `ReelManifest.variety_min`, off the EDL |
+| `variety_min` | `ReelManifest.variety_min` — in practice the `variety_min` key of a hand-edited `EPISODES.json`, since no producer sets it (§0.4) |
 | `composition` | `Manifest.composition`, per episode |
 | `grid` | `Manifest.grid`, per episode |
 | `attempt` | the retry loop's own counter, never an author's |
@@ -282,7 +297,7 @@ no project to derive from. An explicit path is right there and wrong in
 A `why` nobody reads is decoration. The reason is carried to every surface that
 already reports a verdict:
 
-1. **The check's own detail.** `loudness`, `grade_faithful`, `black`,
+1. **The check's own detail.** `loudness`, `grade_faithful`, `black_frames`,
    `grade_damage` and the length band each already emit a detail dict; an authored
    bar adds `"authored": {"value": …, "default": …, "why": …}`. The artifact that
    says PASS also says the bar was moved, and why. This is the load-bearing one: it

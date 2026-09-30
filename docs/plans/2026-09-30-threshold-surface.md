@@ -113,7 +113,7 @@ def test_a_field_authored_elsewhere_is_refused_and_the_message_says_where():
     with pytest.raises(ValueError) as e:
         gates.Gates.from_dict({"variety_min": {"value": 4, "why": "short reel"}})
     assert "variety_min" in str(e.value)
-    assert "EDL" in str(e.value)
+    assert "ReelManifest.variety_min" in str(e.value)
 
 
 def test_an_entry_that_is_a_bare_number_is_refused():
@@ -221,7 +221,8 @@ from scripts.lib.models import CheckSpec, ReelCheckSpec, _ADVISORY_CHECKS
 AUTHORED_ELSEWHERE = {
     "target_dur": "the EDL — EDL.target_dur, which edit_plan._back_edge_target "
                   "computes from the footage",
-    "variety_min": "the EDL, carried to the gate as ReelManifest.variety_min",
+    "variety_min": "the reel manifest — ReelManifest.variety_min, which is the "
+                   "'variety_min' key of EPISODES.json. No producer sets it today",
     "composition": "each episode's own manifest (Manifest.composition)",
     "grid": "each episode's own manifest (Manifest.grid)",
     "attempt": "the retry loop's own counter — it is not an author's value",
@@ -244,8 +245,12 @@ OF_CHECK = {
     # converts a blocking length failure into a silent re-target. The blast radius
     # is the driver's, and "length" is the name that carries it.
     "length_retime_max": "length",
-    "black_floor": "black",
-    "black_rel": "black",
+    # "black_frames", NOT "black": the episode gate's key is black_frames
+    # (check_episode.py:412) and `black` is a REEL check (check_reel.py:436) that
+    # reads no threshold. An episode check also has no advisory registry, so it
+    # blocks by absence rather than by membership.
+    "black_floor": "black_frames",
+    "black_rel": "black_frames",
     "entropy_floor": "grade_damage",
 }
 
@@ -556,6 +561,15 @@ lack it (`beat_tol`, `loudness_target`, `loudness_tol`, `layout_jump_max`,
 (those five plus `grade_residual_max`, `chroma_spread_max`). Keep each existing
 message; extend the wording to say "finite" where you added the check. Do not
 restructure guards that already work — this is an additive widening.
+
+**`math.isfinite` raises on a huge int.** `math.isfinite(10**400)` is
+`OverflowError: int too large to convert to float`, not `False` — and
+`gates.Gates.from_dict` wraps only `ValueError`, so a 400-digit integer in
+`GATES.json` would leak an `OverflowError` naming no file. Either write the guard
+so the huge int is refused before `isfinite` sees it (an explicit range check
+placed first does this: `0.0 <= 10**400 <= 255.0` is `False` and raises nothing),
+or widen `from_dict`'s `except`. Pick one, state which in your report, and add a
+test with a literal `10**400`.
 
 **If any pre-existing test breaks**, that is a real finding: report which test
 passed a non-finite or boolean threshold and stop rather than loosening the guard
@@ -922,7 +936,7 @@ def _authored(spec, reasons: dict, *names) -> list[dict]:
             if n in reasons and getattr(spec, n) != getattr(base, n)]
 ```
 
-Attach in `_loudness_check` (`loudness_target`, `loudness_tol`), `_grade_faithful_check` (`grade_residual_max`), `_brief_length_check` (`length_retime_max`), and the `chroma_spread` check (`chroma_spread_max`). The same shape, keyed on `CheckSpec`'s own defaults, goes in `check_episode` for `black` (`black_floor`, `black_rel`) and `grade_damage` (`entropy_floor`) — put the helper where both can reach it without a cycle, which is `gates.py` itself:
+Attach in `_loudness_check` (`loudness_target`, `loudness_tol`), `_grade_faithful_check` (`grade_residual_max`), `_brief_length_check` (`length_retime_max`), and the `chroma_spread` check (`chroma_spread_max`). The same shape, keyed on `CheckSpec`'s own defaults, goes in `check_episode` for `black_frames` (`black_floor`, `black_rel`) and `grade_damage` (`entropy_floor`) — put the helper where both can reach it without a cycle, which is `gates.py` itself:
 
 ```python
 def authored_rows(spec, reasons: dict, *names) -> list[dict]: ...
@@ -987,7 +1001,7 @@ def test_an_authored_reel_bar_survives_the_episodes_json_round_trip(tmp_path, ..
 def test_every_refusal_fires_end_to_end_with_the_path_in_the_message(tmp_path, ...):
     for doc, needle in [('[]', 'must be an object'),
                         ('{"nope": {"value": 1, "why": "x"}}', 'not a gate threshold'),
-                        ('{"variety_min": {"value": 4, "why": "x"}}', 'EDL'),
+                        ('{"variety_min": {"value": 4, "why": "x"}}', 'ReelManifest.variety_min'),
                         ('{"entropy_floor": 0.85}', "'value' and 'why'"),
                         ('{"entropy_floor": {"value": 0.85, "why": "  "}}', 'non-empty'),
                         ('{"entropy_floor": {"value": 1.5, "why": "x"}}', 'ratio in (0, 1]')]:
