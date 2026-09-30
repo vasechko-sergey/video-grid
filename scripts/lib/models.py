@@ -1688,10 +1688,11 @@ class ReelManifest:
     gates: dict = field(default_factory=dict)   # GATES.json as authored: the WHOLE set, both
                                        # scopes, {field: {"value", "why"}} (design
                                        # 2026-09-30 §2.3). build_reel's reprocess arm
-                                       # reads the episode subset off it after the
-                                       # EPISODES.json round trip, so a re-rendered
-                                       # episode is not judged against a different bar
-                                       # than its siblings. check_spec applies only what
+                                       # passes it straight through to process_episode
+                                       # after the EPISODES.json round trip, so a
+                                       # re-rendered episode is not judged against a
+                                       # different bar than its siblings. No caller
+                                       # partitions; check_spec applies only what
                                        # ReelCheckSpec owns. {} = every bar at its
                                        # default, and to_dict then omits the key.
     provenance: dict = field(default_factory=dict)   # run-level record threaded to deliver (§6)

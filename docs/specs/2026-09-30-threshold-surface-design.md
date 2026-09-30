@@ -278,12 +278,15 @@ carrier:
 
 - `ReelManifest.check_spec` applies the subset `ReelCheckSpec` owns and ignores
   the rest.
-- Phase 1's pool passes the subset `CheckSpec` owns into
+- Phase 1's pool passes the **whole authored document** into
   `process_episode(..., gates=…)` — a parameter, not a `Manifest` field, which
   keeps a gate a **run policy** rather than a per-episode value an agent could
-  author into an EDL.
-- `build_reel`'s reprocess arm re-runs `process_episode` and reads the same subset
-  off `rm.gates`. Without the whole set on the manifest it would have nowhere to
+  author into an EDL. No caller partitions: the one place a spec is constructed
+  does, with `for_spec`. A document-shaped `Gates.subset` was designed and then
+  deleted before it was built — it would have made every call site filter a set
+  the constructor filters anyway.
+- `build_reel`'s reprocess arm re-runs `process_episode` and passes `rm.gates`
+  straight through. Without the whole set on the manifest it would have nowhere to
   read it from, and a reprocessed episode would be judged against a different bar
   than its siblings — silently, which is the shape of defect the retry-record slice
   (design 2026-09-24 §0.7) just finished closing in the neighbouring field.
