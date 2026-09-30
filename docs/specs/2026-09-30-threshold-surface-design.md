@@ -222,6 +222,30 @@ dataclasses owns a field; the loader does.
    constructs a probe instance and lets the existing validator raise, re-raising
    with the `GATES.json` path attached. No second copy of eighteen range checks.
 
+**§2.2a — refusal 6 is vacuous today, and that is this slice's problem to fix.**
+Measured against the real classes while Task 1 landed:
+
+- `CheckSpec.__post_init__` validates `composition`, `grid`, `target_dur` and
+  `entropy_floor` and **nothing else**. `black_floor` and `black_rel` — two of the
+  seven blocking bars — accept `True`, `nan`, `inf`, `"6"`, `None` and `-1` without
+  a word. A string reaches `check_episode._black_frames_check` and dies there in a
+  bare `TypeError` naming no file; a negative value disables the check in silence.
+- `nan` passes **every** `> 0` guard in both classes, on seven further fields. The
+  guards are written `... or v <= 0`, and `nan <= 0` is `False`, so the raise never
+  fires. `inf` passes the same seven, and `True` passes five (`bool` is an `int`).
+
+Before this slice none of it was reachable — there was no way to author any of
+these values at all. This slice is what makes it reachable, so closing it is in
+scope and not a separate row. The fix goes where the other sixteen range checks
+already live, in the two dataclasses' own `__post_init__`: remedy 1, the structure
+enforcing it, at the layer that owns the field. It does **not** go in `gates.py` —
+a second copy of validation beside the first is exactly what refusal 6 exists to
+avoid, and it would drift.
+
+No default moves. Nothing in `scripts/` or `tests/` passes a non-default
+`black_floor` or `black_rel`, so the widened guards refuse only values that were
+already broken.
+
 ### §2.3 Where the values are read
 
 `edl_to_reel` finds the file beside the `project_path` it already holds, once, in
@@ -356,6 +380,12 @@ authored value with a recorded reason, which is what makes it reviewable.
   `entropy_floor` for every episode in the reel. Per-episode gating needs an
   episode identity that survives a re-cut, and the EDL's indices do not — a re-cut
   renumbers, so a waiver would silently migrate to a different shot. Filed, §7.
+- **The dataclasses now validate their own fields, and that is all refusal 6
+  promises.** §2.2a closes the reachable holes: type, `bool`, finiteness and range
+  on all twelve. It does not make any of the twelve *right* — a `black_floor` of
+  200 is a finite number in range and would pass every check while failing every
+  episode. The refusal catches a typo and a nonsense type. Judgement is the
+  reason's job, and the reason is free text.
 - **`check_episode --gates` is a flag, and flags are forgettable.** It is the
   standalone judge with no project to derive from, so there is no convention to use
   instead; a run through `edl_to_reel` never touches it. Recorded rather than

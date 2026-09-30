@@ -361,7 +361,7 @@ class Gates:
 - [ ] **Step 4: Run the tests**
 
 Run: `.venv/bin/python -m pytest tests/test_gates.py -q`
-Expected: PASS, 17 tests (the `why` parametrize contributes 4).
+Expected: PASS, 18 tests (14 plain plus the 4-case `why` parametrize).
 
 - [ ] **Step 5: Confirm nothing else moved**
 
@@ -381,7 +381,7 @@ git commit -m "feat: gates.py - the twelve thresholds, derived from the classes 
 
 **Files:**
 - Modify: `scripts/lib/models.py` (`ReelManifest` field list, `__post_init__`, `check_spec`, `to_dict`, `from_dict`)
-- Test: `tests/test_models.py`
+- Test: `tests/lib/test_models.py`
 
 **Interfaces:**
 - Consumes: `gates.Gates` from Task 1.
@@ -430,11 +430,11 @@ def test_a_manifest_with_no_gates_is_byte_identical_to_one_before_this_slice(one
     assert rm.to_dict()["gates"] == {}
 ```
 
-Use the file's existing episode fixture rather than building a new one; if there is no reusable `ReelEpisode` fixture in `tests/test_models.py`, build the minimal one the neighbouring `ReelManifest` tests already build and say so in your report.
+Use the file's existing episode fixture rather than building a new one; if there is no reusable `ReelEpisode` fixture in `tests/lib/test_models.py`, build the minimal one the neighbouring `ReelManifest` tests already build and say so in your report.
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `.venv/bin/python -m pytest tests/test_models.py -q -k gates`
+Run: `.venv/bin/python -m pytest tests/lib/test_models.py -q -k gates`
 Expected: FAIL — `ReelManifest.__init__() got an unexpected keyword argument 'gates'`.
 
 - [ ] **Step 3: Implement**
@@ -475,15 +475,101 @@ In `__post_init__`, after the existing validation:
 `to_dict`: add `"gates": dict(self.gates),` beside `"provenance"`.
 `from_dict`: add `gates=d.get("gates") or {},`.
 
+- [ ] **Step 3b: Close the vacuous half of refusal 6 — the two specs must validate their own fields**
+
+**Read design §2.2a first; it is new and it governs this step.** Measured on the
+real classes: `black_floor` and `black_rel` — two of the seven BLOCKING bars —
+have no validation at all and accept `True`, `nan`, `inf`, `"6"`, `None` and `-1`.
+And `nan` passes *every* `> 0` guard in both classes (seven further fields),
+because the guards read `... or v <= 0` and `nan <= 0` is `False`; `inf` passes the
+same seven and `True` passes five. Until this slice none of it was reachable —
+there was no way to author any of these values — so `gates.py`'s "let the owning
+dataclass raise" refusal is, today, substantially a no-op.
+
+Fix it where the other sixteen range checks already live. **Not in `gates.py`** — a
+second copy of validation is exactly what refusal 6 exists to avoid.
+
+Tests first, in `tests/lib/test_models.py`:
+
+```python
+@pytest.mark.parametrize("bad", [True, float("nan"), float("inf"), "6", None, -1, 300])
+def test_check_spec_refuses_a_black_floor_that_is_not_a_luma_code(bad):
+    with pytest.raises(ValueError, match="black_floor"):
+        CheckSpec(composition="lead", grid="thirds", target_dur=1.0, black_floor=bad)
+
+
+@pytest.mark.parametrize("bad", [True, float("nan"), float("inf"), "6", None, -1, 1.5])
+def test_check_spec_refuses_a_black_rel_that_is_not_a_fraction(bad):
+    with pytest.raises(ValueError, match="black_rel"):
+        CheckSpec(composition="lead", grid="thirds", target_dur=1.0, black_rel=bad)
+
+
+@pytest.mark.parametrize("name", ["beat_tol", "loudness_target", "loudness_tol",
+                                  "layout_jump_max", "length_retime_max",
+                                  "grade_residual_max", "chroma_spread_max"])
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_no_reel_threshold_accepts_a_non_finite_number(name, bad):
+    # `nan <= 0` is False, so every "or v <= 0" guard in this class passes nan.
+    with pytest.raises(ValueError, match=name):
+        ReelCheckSpec(target_dur=1.0, **{name: bad})
+
+
+@pytest.mark.parametrize("name", ["beat_tol", "loudness_target", "loudness_tol",
+                                  "layout_jump_max", "length_retime_max"])
+def test_no_reel_threshold_accepts_a_bool(name):
+    # bool is an int, so True passes every numeric guard as 1.
+    with pytest.raises(ValueError, match=name):
+        ReelCheckSpec(target_dur=1.0, **{name: True})
+
+
+def test_every_default_still_constructs(: 
+    # The control: widening the guards must refuse only values that were already
+    # broken. No default moves in this slice.
+    ReelCheckSpec(target_dur=1.0)
+    CheckSpec(composition="lead", grid="thirds", target_dur=1.0)
+```
+
+(Fix the stray syntax in the last signature — it is `def test_every_default_still_constructs():`. Left visible so you read the block rather than pasting it.)
+
+Then widen the guards. In `CheckSpec.__post_init__`, add — using `math.isfinite`,
+with `import math` at the top of `models.py` if it is not already there:
+
+```python
+        if (isinstance(self.black_floor, bool)
+                or not isinstance(self.black_floor, (int, float))
+                or not math.isfinite(self.black_floor)
+                or not 0.0 <= self.black_floor <= 255.0):
+            raise ValueError(f"CheckSpec.black_floor must be a finite luma code in "
+                             f"[0, 255], got {self.black_floor!r}")
+        if (isinstance(self.black_rel, bool)
+                or not isinstance(self.black_rel, (int, float))
+                or not math.isfinite(self.black_rel)
+                or not 0.0 <= self.black_rel <= 1.0):
+            raise ValueError(f"CheckSpec.black_rel must be a finite fraction of the "
+                             f"clip's own body median in [0.0, 1.0], got "
+                             f"{self.black_rel!r}")
+```
+
+In `ReelCheckSpec.__post_init__`, add `isinstance(x, bool)` to the five guards that
+lack it (`beat_tol`, `loudness_target`, `loudness_tol`, `layout_jump_max`,
+`length_retime_max`) and `math.isfinite` to all seven numeric guards
+(those five plus `grade_residual_max`, `chroma_spread_max`). Keep each existing
+message; extend the wording to say "finite" where you added the check. Do not
+restructure guards that already work — this is an additive widening.
+
+**If any pre-existing test breaks**, that is a real finding: report which test
+passed a non-finite or boolean threshold and stop rather than loosening the guard
+back. I measured that none does, but measure again rather than assume.
+
 - [ ] **Step 4: Run the tests**
 
-Run: `.venv/bin/python -m pytest tests/test_models.py -q`
-Expected: PASS, including every pre-existing `ReelManifest` test.
+Run: `.venv/bin/python -m pytest tests/lib/test_models.py tests/lib/test_check_episode.py tests/test_check_episode.py -q`
+Expected: PASS, including every pre-existing `ReelManifest` and `CheckSpec` test.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add scripts/lib/models.py tests/test_models.py
+git add scripts/lib/models.py tests/lib/test_models.py
 git commit -m "feat: ReelManifest.gates - one carrier for both scopes, re-validated on the round trip"
 ```
 
@@ -494,7 +580,7 @@ git commit -m "feat: ReelManifest.gates - one carrier for both scopes, re-valida
 **Files:**
 - Modify: `scripts/process_episode.py` (signature, docstring, the `CheckSpec(...)` at ~line 565)
 - Modify: `scripts/check_episode.py` (`build_parser`, `main`)
-- Test: `tests/test_process_episode.py`, `tests/test_check_episode.py`
+- Test: `tests/lib/test_process_episode.py`, `tests/test_check_episode.py`
 
 **Interfaces:**
 - Consumes: `gates.Gates` (Task 1).
@@ -503,7 +589,7 @@ git commit -m "feat: ReelManifest.gates - one carrier for both scopes, re-valida
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-# tests/test_process_episode.py
+# tests/lib/test_process_episode.py
 def test_an_authored_entropy_floor_reaches_the_check_spec(monkeypatch, ...):
     """The parameter is a run POLICY, not a manifest field — an agent authoring an
     EDL cannot set it, only the operator's GATES.json can (design §2.3)."""
@@ -543,7 +629,7 @@ Match the real positional order in `check_episode.build_parser` (`clip`, optiona
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `.venv/bin/python -m pytest tests/test_process_episode.py tests/test_check_episode.py -q -k gates`
+Run: `.venv/bin/python -m pytest tests/lib/test_process_episode.py tests/test_check_episode.py -q -k gates`
 Expected: FAIL — unexpected keyword argument / unrecognized argument.
 
 - [ ] **Step 3: Implement**
@@ -588,7 +674,7 @@ with `from scripts.lib import gates as gates_lib` at module top (no cycle: `proc
 
 - [ ] **Step 4: Run the tests**
 
-Run: `.venv/bin/python -m pytest tests/test_process_episode.py tests/test_check_episode.py -q`
+Run: `.venv/bin/python -m pytest tests/lib/test_process_episode.py tests/test_check_episode.py -q`
 Expected: PASS.
 
 - [ ] **Step 5: Regenerate the tool index and re-run its test**
@@ -601,7 +687,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add scripts/process_episode.py scripts/check_episode.py tests/test_process_episode.py tests/test_check_episode.py references/tools.md
+git add scripts/process_episode.py scripts/check_episode.py tests/lib/test_process_episode.py tests/test_check_episode.py references/tools.md
 git commit -m "feat: authored gates reach both CheckSpec construction sites"
 ```
 
@@ -612,7 +698,7 @@ git commit -m "feat: authored gates reach both CheckSpec construction sites"
 **Files:**
 - Modify: `scripts/edl_to_reel.py` (`_phase_one_setup` returns the gates; the pool `kwargs`; the `ReelManifest(...)` construction)
 - Modify: `scripts/build_reel.py` (the reprocess `process_episode` call at ~line 241)
-- Test: `tests/test_edl_to_reel.py`, `tests/test_build_reel.py`
+- Test: `tests/lib/test_edl_to_reel.py`, `tests/lib/test_build_reel.py`
 
 **Interfaces:**
 - Consumes: `ReelManifest.gates` (Task 2), `process_episode(gates=…)` (Task 3).
@@ -621,7 +707,7 @@ git commit -m "feat: authored gates reach both CheckSpec construction sites"
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-# tests/test_edl_to_reel.py
+# tests/lib/test_edl_to_reel.py
 def test_gates_json_beside_project_json_is_found_with_no_flag(tmp_path, ...):
     (tmp_path / "GATES.json").write_text(json.dumps(
         {"loudness_tol": {"value": 2.0, "why": "live room"},
@@ -656,7 +742,7 @@ def test_no_gates_file_means_no_gates_kwarg_at_all(tmp_path, monkeypatch, ...):
 ```
 
 ```python
-# tests/test_build_reel.py
+# tests/lib/test_build_reel.py
 def test_a_reprocess_is_judged_against_the_same_authored_bar_as_its_siblings(...):
     """Without the whole set on the manifest the reprocess arm has nowhere to read
     the episode subset from, and the re-rendered episode is judged against a
@@ -671,7 +757,7 @@ def test_a_reprocess_is_judged_against_the_same_authored_bar_as_its_siblings(...
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `.venv/bin/python -m pytest tests/test_edl_to_reel.py tests/test_build_reel.py -q -k gates`
+Run: `.venv/bin/python -m pytest tests/lib/test_edl_to_reel.py tests/lib/test_build_reel.py -q -k gates`
 Expected: FAIL.
 
 - [ ] **Step 3: Implement**
@@ -733,13 +819,13 @@ In `build_reel`'s reprocess arm:
 
 - [ ] **Step 4: Run the tests**
 
-Run: `.venv/bin/python -m pytest tests/test_edl_to_reel.py tests/test_build_reel.py -q`
+Run: `.venv/bin/python -m pytest tests/lib/test_edl_to_reel.py tests/lib/test_build_reel.py -q`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add scripts/edl_to_reel.py scripts/build_reel.py scripts/lib/gates.py tests/test_edl_to_reel.py tests/test_build_reel.py tests/test_gates.py
+git add scripts/edl_to_reel.py scripts/build_reel.py scripts/lib/gates.py tests/lib/test_edl_to_reel.py tests/lib/test_build_reel.py tests/test_gates.py
 git commit -m "feat: edl_to_reel finds GATES.json beside project.json; the reprocess reads the same bar"
 ```
 
@@ -753,7 +839,7 @@ git commit -m "feat: edl_to_reel finds GATES.json beside project.json; the repro
 - Modify: `scripts/lib/provenance.py` (`Attestation.gates`)
 - Modify: `scripts/deliver.py` (fill it)
 - Modify: `scripts/montage.py` (`_gates`)
-- Test: `tests/test_check_reel.py`, `tests/test_check_episode.py`, `tests/test_provenance.py`, `tests/test_montage.py`
+- Test: `tests/lib/test_check_reel.py`, `tests/test_check_episode.py`, `tests/lib/test_provenance.py`, `tests/lib/test_montage.py`
 
 **Interfaces:**
 - Consumes: `Gates.record()`, `Gates.reasons()`, `ReelManifest.gates`.
@@ -764,7 +850,7 @@ git commit -m "feat: edl_to_reel finds GATES.json beside project.json; the repro
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-# tests/test_check_reel.py
+# tests/lib/test_check_reel.py
 def test_an_authored_loudness_band_is_named_in_the_checks_own_detail():
     rep = check_reel.run(..., spec=ReelCheckSpec(target_dur=10.0, loudness_tol=2.0),
                          gate_reasons={"loudness_tol": "live room"})
@@ -787,7 +873,7 @@ def test_the_authored_record_rides_a_PASS_not_only_a_failure():
 ```
 
 ```python
-# tests/test_provenance.py
+# tests/lib/test_provenance.py
 def test_the_attestation_records_every_authored_gate_with_its_reason_and_scope():
     a = provenance.Attestation(..., gates=gates.Gates.from_dict(
         {"entropy_floor": {"value": 0.85, "why": "log profile"}}).record())
@@ -802,7 +888,7 @@ def test_spec_overrides_is_unchanged_by_this_slice():
 ```
 
 ```python
-# tests/test_montage.py
+# tests/lib/test_montage.py
 def test_status_names_the_three_gates_states(tmp_path):
     assert montage._gates(tmp_path) == {"present": False, "gates": [], "error": None}
     (tmp_path / "GATES.json").write_text(json.dumps(
@@ -815,7 +901,7 @@ def test_status_names_the_three_gates_states(tmp_path):
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `.venv/bin/python -m pytest tests/test_check_reel.py tests/test_provenance.py tests/test_montage.py -q -k "gates or authored"`
+Run: `.venv/bin/python -m pytest tests/lib/test_check_reel.py tests/lib/test_provenance.py tests/lib/test_montage.py -q -k "gates or authored"`
 Expected: FAIL.
 
 - [ ] **Step 3: Implement**
@@ -850,7 +936,7 @@ Thread the reasons: `edl_to_reel`/`build_reel` pass `gate_reasons=Gates.from_dic
 
 - [ ] **Step 4: Run the tests**
 
-Run: `.venv/bin/python -m pytest tests/test_check_reel.py tests/test_check_episode.py tests/test_provenance.py tests/test_montage.py tests/test_deliver.py -q`
+Run: `.venv/bin/python -m pytest tests/lib/test_check_reel.py tests/test_check_episode.py tests/lib/test_provenance.py tests/lib/test_montage.py tests/test_deliver.py tests/lib/test_deliver.py -q`
 Expected: PASS.
 
 - [ ] **Step 5: Run the whole unit tier**
@@ -947,13 +1033,13 @@ Each row: apply the mutation, run the named selection, confirm RED, restore with
 
 | # | mutation | file | expect | named test |
 |---|---|---|---|---|
-| 1 | `FIELDS` hardcoded to a 12-name literal | `gates.py` | RED | `test_the_vocabulary_is_derived_from_the_two_spec_classes_not_typed` — **note:** a correct literal cannot fail this test. Mutate to a literal that is correct TODAY, then also delete a field from `ReelCheckSpec` and confirm the derived version fails while the literal passes. If that two-step is impractical, record the row as non-discriminating with the reason, and add a test that asserts `FIELDS` changes when a field is added (via a synthetic dataclass through a parameterized `_OWNER` builder) — or state plainly that the property is unobservable and why. |
+| 1 | `FIELDS` hardcoded to a 12-name literal | `gates.py` | RED | **Corrected during Task 1, which ran this row early.** A literal that is correct today cannot fail an equality assertion, exactly as this row warned. Task 1 closed it with a test that adds a field to a synthetic spec class in a subprocess and asserts the derived vocabulary follows; use that test's name as it landed, not this row's original pointer |
 | 2 | `BLOCKING` computed with `in _ADVISORY_CHECKS` instead of `not in` | `gates.py` | RED | `test_the_blocking_set_is_derived_from_the_advisory_registry` |
 | 3 | `OF_CHECK["length_retime_max"]` → `"brief_length"` | `gates.py` | RED | same — this is design §0.1's whole correction; if no test discriminates it, that is a coverage hole and needs one |
 | 4 | the `AUTHORED_ELSEWHERE` check moved BELOW the `_OWNER` check | `gates.py` | RED | `test_a_field_authored_elsewhere_is_refused_and_the_message_says_where` (an elsewhere-name is not in `_OWNER`, so the wrong error fires) |
 | 5 | `why.strip()` → `why` (accept whitespace) | `gates.py` | RED | `test_a_value_without_a_written_reason_is_refused[   ]` |
 | 6 | the probe-construction `try` deleted | `gates.py` | RED | `test_a_value_the_owning_dataclass_rejects_is_refused_by_that_dataclass` |
-| 7 | `set(entry) != {"value","why"}` → `"value" not in entry` | `gates.py` | RED | `test_a_value_without_a_written_reason_is_refused[None]` |
+| 7 | `set(entry) != {"value","why"}` → `"value" not in entry` | `gates.py` | RED | **Corrected during Task 1.** The original pointer (`test_a_value_without_a_written_reason_is_refused[None]`) cannot see this mutation — a missing `why` is caught by the `why` check either way. Task 1 added `test_an_entry_that_is_not_exactly_value_and_why_is_refused`, which is the discriminating one |
 | 8 | `for_spec` returns everything, ignoring `_OWNER` | `gates.py` | RED | `test_an_authored_value_reaches_the_class_that_owns_it` |
 | 9 | `record()`'s `default` read off the authored value | `gates.py` | RED | `test_the_record_carries_value_default_scope_blocking_and_why` |
 | 10 | `ReelManifest.__post_init__`'s `Gates.from_dict` call deleted | `models.py` | RED | `test_a_corrupt_gates_block_in_episodes_json_is_refused_not_trusted` |
@@ -967,6 +1053,11 @@ Each row: apply the mutation, run the named selection, confirm RED, restore with
 | 18 | `_authored` filters on `n in reasons` only, dropping the `!= default` test | `check_reel.py`/`gates.py` | RED | `test_a_check_whose_bars_were_not_authored_carries_no_authored_key` — **predicted uncertain:** a reason present with an unchanged value may be unreachable through the drivers (the loader only records fields an author wrote, and writing the default value is legal but odd). If it comes back GREEN, say whether the guard is unreachable-by-construction (report it, consider deleting the clause) or a real hole (close it with a test) |
 | 19 | `Attestation.to_dict` omits `"gates"` | `provenance.py` | RED | `test_the_attestation_records_every_authored_gate_with_its_reason_and_scope` |
 | 20 | `montage._gates`'s `except ValueError` arm returns `{"present": False, ...}` | `montage.py` | RED | `test_status_names_the_three_gates_states` |
+| 21 | `CheckSpec.black_rel`'s new guard deleted | `models.py` | RED | `test_check_spec_refuses_a_black_rel_that_is_not_a_fraction` — and confirm the value then loads through `gates.Gates.from_dict`, which is what makes the row about refusal 6 rather than about a dataclass |
+| 22 | `math.isfinite` dropped from `ReelCheckSpec.loudness_tol` | `models.py` | RED | `test_no_reel_threshold_accepts_a_non_finite_number[inf-loudness_tol]` |
+| 23 | `isinstance(self.beat_tol, bool)` dropped | `models.py` | RED | `test_no_reel_threshold_accepts_a_bool[beat_tol]` |
+
+Task 1 ran rows 1-9 early, while it still owned the tests, and reports 35 of 36 of its own rows red with one presentational green (an unsorted `FIELDS`). Re-run them here anyway on the integrated tree — a row that discriminated in isolation can stop discriminating once a later task adds a caller.
 
 Report the roll-call: RED outright / closed with a new test / confirmed non-discriminating with its reason. **A GREEN row is either a documented non-discrimination or a real coverage hole — never silently accepted.** Any row whose named test turns out not to see its own mutation is a plan defect: correct the row in this file rather than leaving the wrong pointer for the next reader.
 
