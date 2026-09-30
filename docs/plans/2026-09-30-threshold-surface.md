@@ -702,9 +702,15 @@ Expected: PASS.
 
 - [ ] **Step 5: Regenerate the tool index and re-run its test**
 
-`references/tools.md` is generated from the parsers (`scripts/lib/toolindex.py`); a new flag changes it. Find the generator's own regeneration command by reading `tests/test_cli_help.py` / `scripts/lib/toolindex.py` — do NOT hand-edit `references/tools.md`.
+`references/tools.md` is generated from the parsers (`scripts/lib/toolindex.py`); a new flag changes it. Do NOT hand-edit it — regenerate:
 
-Run: `.venv/bin/python -m pytest tests/test_cli_help.py -q`
+```bash
+.venv/bin/python -m scripts.montage tools > references/tools.md
+```
+
+The staleness guard is `tests/test_tool_index.py` (not `test_cli_help.py`, which checks that parsers carry help text at all). Run both:
+
+Run: `.venv/bin/python -m pytest tests/test_tool_index.py tests/test_cli_help.py -q`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
