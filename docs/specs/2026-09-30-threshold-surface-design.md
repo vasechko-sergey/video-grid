@@ -306,7 +306,7 @@ already reports a verdict:
    `{field, value, default, scope, blocking, why}`. `spec_overrides` is left
    untouched and keeps answering its own question ("what differs from default,
    whatever the source") — it must keep working when there is no `GATES.json` at
-   all, and it is the only thing that sees the EDL-sourced `variety_min`. A
+   all, and it is the only thing that sees a `variety_min` moved by a hand-edited `EPISODES.json` (§0.4). A
    reel-scope gate appearing in both lists is correct: it is both.
 3. **`montage status`.** A `gates` row carrying `_constraints`' own three states
    — absent, authored (with a count), or present-and-unreadable — found at the

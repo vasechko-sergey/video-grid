@@ -32,7 +32,7 @@
 | `scripts/lib/gates.py` | **NEW.** Derived vocabulary, `Gate`/`Gates`, the six refusals, the per-class kwargs subset, the record. Pure; the only IO is `from_json`. |
 | `scripts/lib/models.py` | `ReelManifest.gates` field + validation + round trip; `check_spec()` applies its own subset. |
 | `scripts/process_episode.py` | `process_episode(..., gates=…)` reaching the `CheckSpec` construction at line 565. |
-| `scripts/check_episode.py` | `--gates PATH` on the standalone judge; the `black`/`grade_damage` details name an authored bar. |
+| `scripts/check_episode.py` | `--gates PATH` on the standalone judge; the `black_frames`/`grade_damage` details name an authored bar. |
 | `scripts/check_reel.py` | The `loudness`, `grade_faithful` and length details name an authored bar. |
 | `scripts/edl_to_reel.py` | The one finder (beside `project_path`), threaded into the pool and onto the manifest. |
 | `scripts/build_reel.py` | The reprocess arm reads the episode subset off `rm.gates`. |
@@ -849,7 +849,7 @@ git commit -m "feat: edl_to_reel finds GATES.json beside project.json; the repro
 
 **Files:**
 - Modify: `scripts/check_reel.py` (`_loudness_check`, `_grade_faithful_check`, `_brief_length_check` details; `run` takes the reasons)
-- Modify: `scripts/check_episode.py` (the `black` and `grade_damage` details)
+- Modify: `scripts/check_episode.py` (the `black_frames` and `grade_damage` details)
 - Modify: `scripts/lib/provenance.py` (`Attestation.gates`)
 - Modify: `scripts/deliver.py` (fill it)
 - Modify: `scripts/montage.py` (`_gates`)
@@ -897,7 +897,9 @@ def test_the_attestation_records_every_authored_gate_with_its_reason_and_scope()
 
 def test_spec_overrides_is_unchanged_by_this_slice():
     # It answers a different question and must keep working with no GATES.json at
-    # all — it is the only reader that sees the EDL-sourced variety_min.
+    # all — it is the only reader that sees a variety_min moved by a
+    # hand-edited EPISODES.json (NOT an EDL-sourced one: variety_min occurs
+    # nowhere in edl.py or edl_to_reel.py).
     ...
 ```
 
