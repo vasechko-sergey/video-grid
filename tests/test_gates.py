@@ -96,6 +96,25 @@ def test_a_value_the_owning_dataclass_rejects_is_refused_by_that_dataclass():
     assert "ratio in (0, 1]" in msg     # the existing CheckSpec.__post_init__ text
 
 
+@pytest.mark.parametrize("leak", [OverflowError, TypeError])
+def test_a_guard_that_leaks_anything_but_a_value_error_escapes_from_dict_unchanged(
+        monkeypatch, leak):
+    # from_dict rewords ValueError, and only ValueError, into a message that names the
+    # document. Anything else a guard raises is a defect IN THE GUARD (a 400-digit int reaching
+    # math.isfinite, a str reaching a `<=`) and has to surface as itself: widen the `except`
+    # and it is reworded into a file-naming ValueError that reads as a mistake in the author's
+    # file, and the front-door test in tests/lib/test_models.py, which leans on this narrowness,
+    # can no longer see a guard that leaks. It takes TWO defects together (a widened except AND
+    # a leaking guard) to show, so no single-site mutation of either finds it; that is why the
+    # except is pinned here directly instead of being left to the tests that exercise the guards.
+    def leaking(self):
+        raise leak("a defect in the guard, not a value the author got wrong")
+
+    monkeypatch.setattr(ReelCheckSpec, "__post_init__", leaking)
+    with pytest.raises(leak):
+        gates.Gates.from_dict({"beat_tol": {"value": 0.08, "why": "x"}})
+
+
 def test_from_json_names_the_path_it_could_not_load(tmp_path):
     p = tmp_path / "GATES.json"
     p.write_text("{not json")

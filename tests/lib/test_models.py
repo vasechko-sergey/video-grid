@@ -2501,8 +2501,13 @@ def test_every_default_still_constructs():
 # every comparison with nan is False; a string or a list is not a number; and 10**400 is what
 # a JSON file can hold that math.isfinite cannot even be asked about — it raises OverflowError
 # rather than answering, so a guard routed through it would leak an exception naming no file.
-_NOT_A_FINITE_NUMBER = (True, False, float("nan"), float("inf"), float("-inf"), "6", None, [],
-                        10**400, -10**400)
+# Labelled, so a failure prints a name and not a value: the two huge ints repr as 401 and 402
+# digits.
+_NOT_A_FINITE_NUMBER = {
+    "True": True, "False": False, "nan": float("nan"), "inf": float("inf"),
+    "-inf": float("-inf"), "'6'": "6", "None": None, "[]": [],
+    "10**400": 10**400, "-10**400": -(10**400),
+}
 
 
 @pytest.mark.parametrize("name", gates.FIELDS)
@@ -2510,19 +2515,27 @@ def test_no_authored_gate_can_hold_a_value_that_is_not_a_finite_number(name):
     # Refusal 6 through the front door, the way a GATES.json reaches it: the owning class's
     # own guard, re-raised with the document named. One case per field of the DERIVED
     # vocabulary, so a thirteenth threshold that lands without a guard fails here the day it
-    # lands. The values are a loop because each one takes the same branch of every guard. A
-    # ValueError and not an OverflowError or a TypeError: only ValueError is caught, so either
-    # of those escapes and fails the case. Vacuous for nine of the twelve before this slice
-    # widened the guards (design §2.2a).
+    # lands. The values are a loop and not a second parametrize axis because the loop runs
+    # EVERY one of them, so nothing is dropped. They are not interchangeable: in clip_tol,
+    # bar_symmetry_tol and entropy_floor a bool, a non-number and an out-of-range value trip
+    # three different clauses, so each is a distinct witness. A ValueError and not an
+    # OverflowError or a TypeError: from_dict catches only ValueError (tests/test_gates.py pins
+    # that), so either of those escapes and fails the case. Vacuous for nine of the twelve
+    # before this slice widened the guards (design §2.2a).
     accepted = []
-    for bad in _NOT_A_FINITE_NUMBER:
+    for label, bad in _NOT_A_FINITE_NUMBER.items():
         try:
             gates.Gates.from_dict({name: {"value": bad, "why": "x"}}, where="GATES.json")
         except ValueError as e:
-            assert str(e).startswith("GATES.json ") and repr(name) in str(e)
+            msg = str(e)
         else:
-            accepted.append(bad)
-    assert not accepted, f"{name} accepted {accepted!r}"
+            accepted.append(label)
+            continue
+        # Asserted OUTSIDE the except block, so a failure is not chained to the ValueError
+        # whose message embeds the offending value (401 digits for the huge ints).
+        named = msg.startswith("GATES.json ") and repr(name) in msg
+        assert named, f"{name} / {label}: refused without naming the document and field: {msg[:160]}"
+    assert not accepted, f"{name} accepted {', '.join(accepted)}"
 
 
 def test_a_400_digit_integer_is_a_value_error_and_not_an_overflow():

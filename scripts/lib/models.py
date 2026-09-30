@@ -58,9 +58,10 @@ def is_finite_number(v: object) -> bool:
 
     Total over anything a JSON file can produce and over the standard and numpy numeric
     types: it answers and does not raise, which the spec guards below rely on. An int or
-    float SUBCLASS with a hostile __abs__ or __le__ can raise from inside it. None can come
-    from JSON and no caller here builds one, so the claim is scoped to what can arrive
-    rather than the predicate widened to catch it.
+    float SUBCLASS with a hostile __abs__ can raise from inside it (a hostile __le__ alone
+    cannot: abs() hands the comparison an exact int or float). None can come from JSON and
+    no caller here builds one, so the claim is scoped to what can arrive rather than the
+    predicate widened to catch it.
 
     is_bbox_coord delegates here, so there is one spelling and the two cannot drift; its
     docstring has the derivation of the same three landmines from the hero-pin side. Here
