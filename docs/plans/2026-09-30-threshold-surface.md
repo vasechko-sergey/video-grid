@@ -30,7 +30,7 @@
 | File | Responsibility |
 |---|---|
 | `scripts/lib/gates.py` | **NEW.** Derived vocabulary, `Gate`/`Gates`, the six refusals, the per-class kwargs subset, the record. Pure; the only IO is `from_json`. |
-| `scripts/lib/models.py` | `ReelManifest.gates` field + validation + round trip; `check_spec()` applies its own subset. |
+| `scripts/lib/models.py` | `ReelManifest.gates` field + validation + round trip; `check_spec` applies its own subset. |
 | `scripts/process_episode.py` | `process_episode(..., gates=…)` reaching the `CheckSpec` construction at line 565. |
 | `scripts/check_episode.py` | `--gates PATH` on the standalone judge; the `black_frames`/`grade_damage` details name an authored bar. |
 | `scripts/check_reel.py` | The `loudness`, `grade_faithful` and length details name an authored bar. |
@@ -390,7 +390,7 @@ git commit -m "feat: gates.py - the twelve thresholds, derived from the classes 
 
 **Interfaces:**
 - Consumes: `gates.Gates` from Task 1.
-- Produces: `ReelManifest.gates: dict` (the raw `{field: {value, why}}` document, whole set, both scopes); `ReelManifest.check_spec()` applying the reel subset.
+- Produces: `ReelManifest.gates: dict` (the raw `{field: {value, why}}` document, whole set, both scopes); `ReelManifest.check_spec` (a **property**, not a method) applying the reel subset.
 
 **Import note:** `models.py` must NOT import `gates` at module scope — `gates` imports `models`. Import it inside the two methods that need it (`__post_init__`, `check_spec`), which is the same local-import shape `models.py` already uses where a cycle would otherwise form. If you find `models.py` has no such precedent, say so in your report rather than inventing a third pattern.
 
@@ -400,8 +400,8 @@ git commit -m "feat: gates.py - the twelve thresholds, derived from the classes 
 def test_a_reel_manifest_applies_its_authored_reel_gates_to_check_spec(one_episode):
     rm = ReelManifest(episodes=[one_episode], target_dur=10.0,
                       gates={"loudness_tol": {"value": 2.0, "why": "live room"}})
-    assert rm.check_spec().loudness_tol == 2.0
-    assert rm.check_spec().loudness_target == -14.0        # untouched
+    assert rm.check_spec.loudness_tol == 2.0
+    assert rm.check_spec.loudness_target == -14.0        # untouched
 
 
 def test_a_reel_manifest_carries_episode_gates_without_applying_them(one_episode):
@@ -410,7 +410,7 @@ def test_a_reel_manifest_carries_episode_gates_without_applying_them(one_episode
     rm = ReelManifest(episodes=[one_episode], target_dur=10.0,
                       gates={"entropy_floor": {"value": 0.85, "why": "log profile"}})
     assert rm.gates == {"entropy_floor": {"value": 0.85, "why": "log profile"}}
-    assert not hasattr(rm.check_spec(), "entropy_floor")   # it is not a reel field
+    assert not hasattr(rm.check_spec, "entropy_floor")   # it is not a reel field
 
 
 def test_gates_round_trip_through_to_dict_and_from_dict(one_episode):
@@ -453,7 +453,7 @@ Add the field last in the `ReelManifest` field list, after `provenance` is **not
                                        # after the EPISODES.json round trip and a
                                        # reprocessed episode is not judged against
                                        # a different bar than its siblings (design
-                                       # §2.3). check_spec() applies only what
+                                       # §2.3). check_spec applies only what
                                        # ReelCheckSpec owns.
 ```
 
@@ -478,6 +478,15 @@ In `__post_init__`, after the existing validation:
 ```
 
 `to_dict`: add `"gates": dict(self.gates),` beside `"provenance"`.
+
+> **Correction, made after Task 2 landed:** that instruction is wrong and the
+> implementer was right to deviate. Emitting the key unconditionally contradicts
+> this plan's own Global Constraint ("with no `GATES.json` present, every artifact
+> is byte-identical") and Task 6's control proof. What shipped emits the key only
+> when the set is non-empty, the same conditional-emission idiom `PathMeta` uses
+> for `max_speed`/`smooth_window_s` and for the same reason. Task 2's test 5
+> asserts the key's ABSENCE. Battery row 12's mutation is therefore "delete the
+> `if self.gates:` block", which still discriminates.
 `from_dict`: add `gates=d.get("gates") or {},`.
 
 - [ ] **Step 3b: Close the vacuous half of refusal 6 — the two specs must validate their own fields**
@@ -729,7 +738,7 @@ def test_gates_json_beside_project_json_is_found_with_no_flag(tmp_path, ...):
     rm, stop = edl_to_reel._build_manifest(..., project_path=str(tmp_path / "project.json"), ...)
     assert rm.gates == {"loudness_tol": {"value": 2.0, "why": "live room"},
                         "entropy_floor": {"value": 0.85, "why": "log profile"}}
-    assert rm.check_spec().loudness_tol == 2.0
+    assert rm.check_spec.loudness_tol == 2.0
 
 
 def test_the_pool_hands_the_authored_gates_to_every_episode(tmp_path, monkeypatch, ...):
@@ -997,7 +1006,7 @@ def test_an_authored_reel_bar_survives_the_episodes_json_round_trip(tmp_path, ..
     EPISODES.json alone. build_reel never sees project.json, so if the value did
     not ride the manifest it is gone."""
     ...
-    assert rm_reloaded.check_spec().loudness_tol == 2.0
+    assert rm_reloaded.check_spec.loudness_tol == 2.0
 
 
 def test_every_refusal_fires_end_to_end_with_the_path_in_the_message(tmp_path, ...):
@@ -1059,7 +1068,7 @@ Each row: apply the mutation, run the named selection, confirm RED, restore with
 | 8 | `for_spec` returns everything, ignoring `_OWNER` | `gates.py` | RED | `test_an_authored_value_reaches_the_class_that_owns_it` |
 | 9 | `record()`'s `default` read off the authored value | `gates.py` | RED | `test_the_record_carries_value_default_scope_blocking_and_why` |
 | 10 | `ReelManifest.__post_init__`'s `Gates.from_dict` call deleted | `models.py` | RED | `test_a_corrupt_gates_block_in_episodes_json_is_refused_not_trusted` |
-| 11 | `check_spec()` drops the `**for_spec(...)` splat | `models.py` | RED | `test_a_reel_manifest_applies_its_authored_reel_gates_to_check_spec` |
+| 11 | `check_spec` drops the `**for_spec(...)` splat | `models.py` | RED | `test_a_reel_manifest_applies_its_authored_reel_gates_to_check_spec` |
 | 12 | `to_dict` omits `"gates"` | `models.py` | RED | `test_gates_round_trip_through_to_dict_and_from_dict` |
 | 13 | `process_episode`'s `**for_spec(CheckSpec)` dropped | `process_episode.py` | RED | `test_an_authored_entropy_floor_reaches_the_check_spec` |
 | 14 | `edl_to_reel`'s finder reads `Path(project_path) / "GATES.json"` (not `.parent`) | `edl_to_reel.py` | RED | `test_gates_json_beside_project_json_is_found_with_no_flag` |
@@ -1076,6 +1085,18 @@ Each row: apply the mutation, run the named selection, confirm RED, restore with
 Task 1 ran rows 1-9 early, while it still owned the tests, and reports 35 of 36 of its own rows red with one presentational green (an unsorted `FIELDS`). Re-run them here anyway on the integrated tree — a row that discriminated in isolation can stop discriminating once a later task adds a caller.
 
 Report the roll-call: RED outright / closed with a new test / confirmed non-discriminating with its reason. **A GREEN row is either a documented non-discrimination or a real coverage hole — never silently accepted.** Any row whose named test turns out not to see its own mutation is a plan defect: correct the row in this file rather than leaving the wrong pointer for the next reader.
+
+- [ ] **Step 1b: Amend the imports section of `docs/coding-standards.md`**
+
+Task 2 found the standard has no case for this: its Imports section forbids a
+function-local import except for a heavy optional dependency, and `models.py` had
+no precedent for one. But `gates.py` derives `FIELDS` and `BLOCKING` from
+`ReelCheckSpec`/`CheckSpec` **at import time**, so it cannot defer its own import
+— which leaves `models.py` as the only side where the cycle can be broken. The
+local import in `ReelManifest.check_spec` is correct and is not the exception the
+standard names. Add the case: a module-scope import cycle whose other side cannot
+defer, with the requirement that the import carries a comment saying which side
+cannot defer and why (the one in `check_spec` is the model).
 
 - [ ] **Step 2: Sweep the tree for statements this slice made false**
 
