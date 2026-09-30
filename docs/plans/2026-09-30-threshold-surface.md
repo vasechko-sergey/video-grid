@@ -1127,8 +1127,19 @@ would otherwise leave every list — the deferral rule's own failure mode:
   It fails **closed** — `checks.length` and `check_reel`'s length gate both compute
   `abs(x - target) <= tol`, which is `False` for `nan` — so it is a gap, not a live
   defect. **P3, S.**
-- `loudness_tol == 0` is untested; the same boundary on the other five `> 0` bars
-  is pinned by pre-existing tests. **P4, XS.**
+- **Three untested threshold boundaries**, found as the only surviving mutants of
+  a 79-row kill matrix over `models.py`'s guards: nothing constructs
+  `loudness_tol == 0`, `clip_tol == 0`/`bar_symmetry_tol == 0` (their lower edge),
+  or `entropy_floor == 1.0` (its upper edge). All three pre-date this slice; the
+  same boundary on the other five `> 0` bars is pinned by existing tests. Two
+  scoped re-reviews then widened the set with everything else that survives the
+  whole unit tier at these guards: `black_floor`'s upper bound (255 -> 256),
+  `grade_residual_max` and `chroma_spread_max` drifting `<= 0` to `<= 1`,
+  `loudness_tol` drifting `<= 0` to `<= -1`, `Gates.from_dict`'s `raise ... from e`
+  unpinned, and `ReelManifest.to_dict` returning the live `gates` dict rather than a
+  copy (an aliasing class, not a boundary — its output goes straight to
+  `json.dumps`, so nothing reaches it today). All pre-date this slice. One row.
+  **P4, XS.**
 - `gates.py`'s `_OWNER` loop resolves a name present on BOTH spec classes by
   raising (Task 1 fix round 1) — but `Gates` validation still lives only in
   `from_dict`, so a directly constructed `Gate("bogus", 1, "")` bypasses all six
