@@ -2082,7 +2082,11 @@ def test_the_pool_hands_the_authored_gates_to_every_episode(arm, tmp_path, monke
     kwargs are built 'only when it carries something', which keeps the call shape identical to
     the pre-gates one. That second half is a control INSIDE this test and not beside it, so the
     instrument has just been shown able to see a `gates` kwarg before it is trusted to report
-    the absence of one."""
+    the absence of one.
+
+    The announcement is pinned whole — the count, WHICH bars, and the project.json the file was
+    found beside — because that line is the only sign a GATES.json beside the wrong project.json
+    was or was not picked up: dropping the names or the path must not stay green."""
     (tmp_path / "with").mkdir()
     (tmp_path / "without").mkdir()
 
@@ -2091,7 +2095,9 @@ def test_the_pool_hands_the_authored_gates_to_every_episode(arm, tmp_path, monke
     assert [c.get("gates") for c in ran["passed"]] == [GATES_DOC, GATES_DOC]
     if "rm" in ran:
         assert ran["rm"].gates == GATES_DOC
-    assert "2 authored threshold(s)" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "2 authored threshold(s) (loudness_tol, entropy_floor)" in err
+    assert str(tmp_path / "with" / "project.json") in err
 
     ran = {}
     _run_arm(arm, tmp_path / "without", monkeypatch, None, ran)

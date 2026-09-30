@@ -429,7 +429,9 @@ def test_an_episode_manifest_cannot_carry_gates(tmp_path):
 # judged its siblings against the authored bar would be the silent different-bar defect the
 # build_reel reprocess arm exists to close, reached by the other door.
 
-CLI_GATES_DOC = {"entropy_floor": {"value": 0.85, "why": "log profile"}}
+CLI_GATES_DOC = {"entropy_floor": {"value": 0.85, "why": "log profile"},
+                 "loudness_tol": {"value": 2.0, "why": "live room"}}    # both scopes: the whole
+                                                                        # document goes through
 
 
 def _drive_main(monkeypatch, tmp_path, *argv):
@@ -452,27 +454,40 @@ def _drive_main(monkeypatch, tmp_path, *argv):
     return seen
 
 
-def test_the_cli_finds_gates_json_beside_the_project_it_was_given(tmp_path, monkeypatch):
+def test_the_cli_finds_gates_json_beside_the_project_it_was_given(
+        tmp_path, monkeypatch, capsys):
     """Beside `--project`, found by convention exactly as edl_to_reel finds it. The manifest
-    and the scratch dir sit elsewhere, so a lookup beside either of THEM finds nothing."""
+    and the scratch dir sit elsewhere, so a lookup beside either of THEM finds nothing.
+
+    And it SAYS so, as edl_to_reel does (count, which bars, which project.json): `--project`
+    is optional on this CLI, so a GATES.json that was not picked up — no flag, or the wrong
+    one — reads as silence and judges against the defaults. The document goes through whole,
+    both scopes, because process_episode partitions where a spec is built."""
     run = tmp_path / "run"
     run.mkdir()
     (run / "GATES.json").write_text(json.dumps(CLI_GATES_DOC))
     seen = _drive_main(monkeypatch, tmp_path, "--project", str(run / "project.json"))
     assert seen["gates"] == CLI_GATES_DOC
+    err = capsys.readouterr().err
+    assert "2 authored threshold(s) (entropy_floor, loudness_tol)" in err
+    assert str(run / "project.json") in err
 
 
-def test_the_cli_hands_no_gates_when_no_file_sits_beside_the_project(tmp_path, monkeypatch):
+def test_the_cli_hands_no_gates_when_no_file_sits_beside_the_project(
+        tmp_path, monkeypatch, capsys):
     """The common case — every run that authored no gates — and the one a lookup written
     without an existence check would break. A guard, and green before the lookup existed,
-    because nothing read a file then either."""
+    because nothing read a file then either. It says nothing either: an announcement printed
+    for an empty set would be noise on every run."""
     run = tmp_path / "run"
     run.mkdir()
     seen = _drive_main(monkeypatch, tmp_path, "--project", str(run / "project.json"))
     assert not seen.get("gates")           # None and {} both mean "no gates in force"
+    assert "authored threshold" not in capsys.readouterr().err
 
 
-def test_the_cli_without_a_project_never_goes_looking_for_a_gates_file(tmp_path, monkeypatch):
+def test_the_cli_without_a_project_never_goes_looking_for_a_gates_file(
+        tmp_path, monkeypatch, capsys):
     """No --project means no project.json to look beside, and a guess from the working
     directory would be a second, silent way to move a bar. A GATES.json in exactly the place a
     guess would try — the cwd, which is also beside episode.json — changes nothing. A guard,
@@ -480,6 +495,7 @@ def test_the_cli_without_a_project_never_goes_looking_for_a_gates_file(tmp_path,
     (tmp_path / "GATES.json").write_text(json.dumps(CLI_GATES_DOC))
     monkeypatch.chdir(tmp_path)
     assert not _drive_main(monkeypatch, tmp_path).get("gates")
+    assert "authored threshold" not in capsys.readouterr().err
 
 
 def test_the_cli_refuses_a_broken_gates_file_beside_the_project_and_names_it(

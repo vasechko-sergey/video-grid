@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import imagehash
 import pytest
@@ -1115,72 +1114,3 @@ def test_chroma_spread_fails_through_the_real_run_but_never_fails_the_reel(monke
     assert rep.checks["chroma_spread"].passed is False
     assert rep.overall is True
     assert not any(f.check == "chroma_spread" for f in rep.fail_reasons)
-
-
-# --- threshold-surface Task 4, Step 3b: `--gates` on the standalone reel judge ---
-# (design 2026-09-30 §2.3/§6.) A flag here and a convention in edl_to_reel, because this
-# judge has no project.json to look beside — the same asymmetry check_episode records.
-
-def _judge_reel(monkeypatch, *argv):
-    """Run check_reel.main() over `argv` with the judge itself faked, and return the
-    ReelCheckSpec it would have judged against. The master and episodes never exist: what is
-    under test is which bars the CLI built, and run() is the only thing that needs files."""
-    seen = {}
-
-    def fake_run(master, episodes, spec, out, **kw):
-        seen["spec"] = spec
-        return SimpleNamespace(overall=True)
-    monkeypatch.setattr(check_reel, "run", fake_run)
-    monkeypatch.setattr("sys.argv", ["check_reel", "m.mp4", "e0.mp4", "--target-dur", "6",
-                                     "--report", "r.json", *argv])
-    with pytest.raises(SystemExit) as e:
-        check_reel.main()
-    assert e.value.code == 0
-    return seen["spec"]
-
-
-def test_the_gates_flag_moves_the_bar_the_reel_judge_uses(tmp_path, monkeypatch):
-    gates = tmp_path / "GATES.json"
-    gates.write_text(json.dumps({
-        "loudness_tol": {"value": 2.0, "why": "live room"},
-        "entropy_floor": {"value": 0.85, "why": "an episode bar: not this judge's to apply"}}))
-    assert _judge_reel(monkeypatch, "--gates", str(gates)) == ReelCheckSpec(
-        target_dur=6.0, loudness_tol=2.0)
-
-
-@pytest.mark.parametrize("path", ["", "GATE.json"], ids=["empty", "missing"])
-def test_a_gates_path_that_is_not_a_file_is_refused_not_read_as_no_gates(
-        path, tmp_path, monkeypatch):
-    """"Absent means defaults" is true of the convention file beside project.json and must not
-    leak onto an explicit flag. `--gates ""` is what an unset shell variable produces (a
-    truthiness test reads it as no flag at all), and a typo'd path is the likeliest real silent
-    revert (an existence guard copied from the convention idiom, or a swallowed
-    FileNotFoundError, reads it as no file). The two cases are not interchangeable: a
-    truthiness test survives the missing path, and a swallow of FileNotFoundError alone
-    survives the empty one, since `Path("")` is a directory and not a missing file."""
-    monkeypatch.chdir(tmp_path)
-    with pytest.raises(OSError):
-        _judge_reel(monkeypatch, "--gates", path)
-
-
-def test_a_gates_file_the_loader_refuses_stops_the_reel_judge_and_names_the_file(
-        tmp_path, monkeypatch):
-    gates = tmp_path / "GATES.json"
-    gates.write_text(json.dumps({"loudness_tol": 2.0}))                # a bare value: no reason
-    with pytest.raises(ValueError) as e:
-        _judge_reel(monkeypatch, "--gates", str(gates))
-    assert str(gates) in str(e.value)
-
-
-def test_the_reel_judge_never_goes_looking_for_a_gates_file(tmp_path, monkeypatch):
-    """This judge has no project.json to look beside, and guessing a file from the working
-    directory would be a second, silent way to move a bar. A GATES.json in the cwd — exactly
-    where a lookup would try — changes nothing without the flag.
-
-    A guard, and green before `--gates` existed, because nothing looked anywhere then either.
-    It is also the one test that runs `main()` with no flag at all, so it is what pins that
-    the flag is optional and that an absent flag builds the spec `main` built before."""
-    (tmp_path / "GATES.json").write_text(json.dumps(
-        {"loudness_tol": {"value": 2.0, "why": "moves the bar if anything reads this file"}}))
-    monkeypatch.chdir(tmp_path)
-    assert _judge_reel(monkeypatch) == ReelCheckSpec(target_dur=6.0)

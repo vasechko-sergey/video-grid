@@ -9,6 +9,7 @@ run of failures returns a finding, it does not paper over them (§4.1).
 """
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
 
@@ -679,6 +680,13 @@ def main() -> None:
     # `--project ""` is handed on, and process_episode refuses it there.
     authored = (gates_lib.beside_project(a.project) if a.project is not None
                 else gates_lib.Gates())
+    if authored.gates:
+        # Said out loud, as edl_to_reel says it: --project is optional here, so a GATES.json
+        # that was not picked up (no flag, or the wrong one) reads as silence and judges
+        # against the defaults. stderr, because stdout is the JSON result.
+        print(f"process_episode: gates: {len(authored.gates)} authored threshold(s) "
+              f"({', '.join(g.field for g in authored.gates)}) from GATES.json beside "
+              f"{a.project}", file=sys.stderr)
     result = process_episode(md, a.project_dir, route_path=a.route, project=a.project,
                              keyframes_path=a.keyframes, gates=authored.to_dict())
     print(json.dumps(result, indent=2))

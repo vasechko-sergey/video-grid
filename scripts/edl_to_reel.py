@@ -674,7 +674,11 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="drive a hand-authored EDL.json → delivered REEL_v1.mp4")
     ap.add_argument("edl", nargs="?", default=None,
                     help="path to an EDL.json (omit with --from-episodes / --from-geometry)")
-    ap.add_argument("--project", default=None, help="project.json — episodes inherit canvas/delivery")
+    ap.add_argument("--project", default=None,
+                    help="project.json — episodes inherit canvas/delivery, and a GATES.json "
+                         "beside it (if any) moves the check thresholds (design 2026-09-30); "
+                         "every phase-1 run reads it afresh, and --from-episodes carries the "
+                         "set phase 1 froze into EPISODES.json")
     ap.add_argument("--footage-root", default=None, help="dir the EDL 'source' paths resolve against")
     ap.add_argument("--work-dir", required=True, help="scratch for segments / per-episode / reel master")
     ap.add_argument("--out-dir", default=None,

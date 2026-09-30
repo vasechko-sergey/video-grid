@@ -12,8 +12,7 @@ import imagehash
 from PIL import Image
 
 from scripts import color_measure
-from scripts.lib import (color, ffbin, gates as gates_lib, outro as outro_mod, proc, provenance,
-                         reel_final, safezones)
+from scripts.lib import color, ffbin, outro as outro_mod, proc, provenance, reel_final, safezones
 from scripts.lib.models import (CheckResult, CropPath, MusicSpec, PathMeta, ReelCheckSpec,
                                 ReelFailure, ReelReport, route_from_json)
 
@@ -601,22 +600,12 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--target-dur", type=float, required=True,
                     help="the reel's intended length, seconds")
     ap.add_argument("--report", required=True, help="ReelReport JSON output path")
-    ap.add_argument("--gates", default=None,
-                    help="GATES.json — authored thresholds with the reason each was "
-                         "moved (design 2026-09-30). A flag here and not a convention "
-                         "because the standalone judge has no project.json to look "
-                         "beside; a run through edl_to_reel finds the file itself")
     return ap
 
 
 def main() -> None:
     a = build_parser().parse_args()
-    # `is not None`, not truthiness: `--gates ""` is what an unset shell variable
-    # produces, and reading it as "no gates" would put every authored bar silently back
-    # at its default — the dropped-flag defect design 2026-09-30 §4 exists to avoid.
-    g = gates_lib.Gates.from_json(a.gates) if a.gates is not None else gates_lib.Gates()
-    spec = ReelCheckSpec(target_dur=a.target_dur, **g.for_spec(ReelCheckSpec))
-    rep = run(a.master, a.episodes, spec, a.report)
+    rep = run(a.master, a.episodes, ReelCheckSpec(target_dur=a.target_dur), a.report)
     raise SystemExit(0 if rep.overall else 1)
 
 
