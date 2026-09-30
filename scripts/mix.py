@@ -13,7 +13,10 @@ import tempfile
 from scripts.lib import assembly, ffbin, proc
 from scripts.lib.models import MusicSpec
 
-_TARGET_LUFS = -14.0                                  # EBU R128 (montage §5.12)
+_TARGET_LUFS = -14.0                                  # EBU R128 (montage §5.12). The gate's copy is
+                                                      # ReelCheckSpec.loudness_target and the two must
+                                                      # agree — tests/test_gates.py pins it, and GATES.json
+                                                      # refuses to move either (design 2026-09-30 §0.2a)
 _TP_MAX = -1.5                                         # true-peak ceiling (dBTP)
 _LRA_TARGET = 11                                       # loudness range target
 _FADE = 0.5     # default bookend fade, seconds per end. The DEFAULT, not a fixed

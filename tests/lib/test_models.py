@@ -2481,8 +2481,9 @@ def test_no_reel_threshold_accepts_a_bool(name):
 
 
 def test_a_reel_threshold_still_accepts_an_ordinary_authored_number():
-    # The guards refuse the broken and nothing else. -23 is the broadcast LUFS figure and
-    # exactly what an author would write, and it is an int, and it is negative.
+    # The guards refuse the broken and nothing else. -23 is the broadcast LUFS figure: no
+    # longer authorable through GATES.json (design §0.2a), but exactly what a platform table
+    # will construct, and it is an int, and it is negative.
     s = ReelCheckSpec(target_dur=1.0, loudness_target=-23, loudness_tol=0.5, beat_tol=0.08,
                       layout_jump_max=1, length_retime_max=2, grade_residual_max=6,
                       chroma_spread_max=8)
@@ -2521,7 +2522,8 @@ def test_no_authored_gate_can_hold_a_value_that_is_not_a_finite_number(name):
     # three different clauses, so each is a distinct witness. A ValueError and not an
     # OverflowError or a TypeError: from_dict catches only ValueError (tests/test_gates.py pins
     # that), so either of those escapes and fails the case. Vacuous for nine of the twelve
-    # before this slice widened the guards (design §2.2a).
+    # then in the vocabulary (eleven since loudness_target left it, design §0.2a) before this
+    # slice widened the guards (design §2.2a).
     accepted = []
     for label, bad in _NOT_A_FINITE_NUMBER.items():
         try:

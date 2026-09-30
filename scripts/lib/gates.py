@@ -1,14 +1,20 @@
 """Authored gate thresholds (design docs/specs/2026-09-30-threshold-surface-design.md).
 
-Twelve thresholds decide whether a reel or an episode ships, and until this module
+Eleven thresholds decide whether a reel or an episode ships, and until this module
 none of them was reachable from any authoring surface: no flag, no manifest field,
 no file. The only way to move a bar was to edit models.py — which is to say, to
 patch the engine. A tool whose bars move only by patching it is a tool for the one
 shoot its bars were measured on.
 
+What belongs here is a BAR: a number a check compares against, whose whole meaning is
+"how far is too far". A value the pipeline RENDERS TO is a set-point, not a bar —
+loudness_target is the one ReelCheckSpec carries — and a file of gates is the wrong
+home for it the way a thermostat's set-point is not a tolerance: moving it here moves
+the ruler and not the thing measured (design §0.2a). It is refused by name instead.
+
 Three things here are DERIVED rather than typed, and all must stay that way:
 
-- FIELDS, from the two spec classes' own dataclass fields minus the five names
+- FIELDS, from the two spec classes' own dataclass fields minus the six names
   authored elsewhere (design §0.6). A threshold added to either class joins
   GATES.json the day it lands, with no second list to update — the property
   provenance.spec_overrides already has, for the same reason.
@@ -56,6 +62,17 @@ AUTHORED_ELSEWHERE: dict[str, str] = {
     "composition": "each episode's own manifest (Manifest.composition)",
     "grid": "each episode's own manifest (Manifest.grid)",
     "attempt": "the retry loop, which counts attempts itself",
+    # The odd one out, and the reason is a category and not a preference: the other five are
+    # authored on some other surface of the tree, while this one is the value a stage RENDERS
+    # TO. A GATES.json can reach only the gate that confirms it, so authoring -16 would leave the
+    # stem rendered at -14 and fail every reel with audio, and the only escape (widening
+    # loudness_tol) is a waiver wearing the target's name (design §0.2a). Checked against the
+    # tree by tests/test_gates.py: the symbol exists and equals ReelCheckSpec's default.
+    "loudness_target": "mix._TARGET_LUFS (scripts/mix.py), the value the stem is RENDERED to: "
+                       "mix bakes it into its loudnorm filter and takes no parameter for it, and "
+                       "check_reel only confirms the stem got there. It is a set-point and not a "
+                       "bar, so moving it here would move the ruler and not the thing measured, "
+                       "and every reel with audio would fail `loudness`",
 }
 
 #: field -> the check whose bar it sets. BLOCKING is derived from this table, so for a
@@ -71,7 +88,6 @@ OF_CHECK: dict[str, str] = {
     "bar_symmetry_tol": "pad_bars",
     "layout_jump_max": "transitions",
     "chroma_spread_max": "chroma_spread",
-    "loudness_target": "loudness",
     "loudness_tol": "loudness",
     "grade_residual_max": "grade_faithful",
     # NOT "brief_length", though that advisory check borrows this value as a band.

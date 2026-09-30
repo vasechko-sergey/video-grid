@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts import mix
 from scripts.lib import gates
 from scripts.lib.models import CheckResult, CheckSpec, ReelCheckSpec, _ADVISORY_CHECKS
 
@@ -16,14 +17,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_the_vocabulary_is_derived_from_the_two_spec_classes_not_typed():
-    # The row's twelve, arrived at from the dataclasses (design §0.6). This test is
-    # what fails the day a thirteenth threshold lands without a decision about it.
+    # The row said twelve; the dataclasses say eleven, because loudness_target is a
+    # rendered set-point and not a bar (design §0.2a, §0.6). This test is what fails the
+    # day a twelfth threshold lands without a decision about it.
     # Not the derivation's guard: a hand-typed list passes it. The real guard is
     # test_a_threshold_or_an_advisory_check_added_upstream_reaches_the_vocabulary.
     names = {f.name for f in dc_fields(ReelCheckSpec)} | {f.name for f in dc_fields(CheckSpec)}
     assert len(names) == 17
     assert set(gates.FIELDS) == names - set(gates.AUTHORED_ELSEWHERE)
-    assert len(gates.FIELDS) == 12
+    assert len(gates.FIELDS) == 11
 
 
 def test_every_gateable_field_names_the_check_it_sets_the_bar_for():
@@ -35,9 +37,8 @@ def test_the_blocking_set_is_derived_from_the_advisory_registry():
     # test_a_threshold_or_an_advisory_check_added_upstream_reaches_the_vocabulary.
     assert gates.BLOCKING == frozenset(
         n for n, c in gates.OF_CHECK.items() if c not in _ADVISORY_CHECKS)
-    assert gates.BLOCKING == {"loudness_target", "loudness_tol", "grade_residual_max",
-                              "length_retime_max", "black_floor", "black_rel",
-                              "entropy_floor"}
+    assert gates.BLOCKING == {"loudness_tol", "grade_residual_max", "length_retime_max",
+                              "black_floor", "black_rel", "entropy_floor"}
 
 
 def test_an_authored_value_reaches_the_class_that_owns_it():
@@ -182,9 +183,33 @@ def test_an_entry_that_is_not_exactly_value_and_why_is_refused(entry, needle):
         assert "what this file exists to prevent" in msg        # the tail's reason clause
 
 
+def test_loudness_target_is_refused_and_the_message_names_what_the_stem_is_rendered_to():
+    """loudness_target is the value the pipeline RENDERS TO, not a bar a check compares against
+    (design §0.2a). mix bakes its own constant into the loudnorm filter and takes no parameter
+    for it, so a GATES.json that moved only the gate would fail every reel with audio — and
+    the only escape, widening loudness_tol, is a waiver wearing the target's name. The generic
+    elsewhere test below proves the refusal fires; this one proves it points at the real home
+    and says WHY, which is the part a reader who just tried to author −16 needs."""
+    with pytest.raises(ValueError) as e:
+        gates.Gates.from_dict({"loudness_target": {"value": -16, "why": "the platform wants -16"}})
+    msg = str(e.value)
+    assert "mix._TARGET_LUFS" in msg and "scripts/mix.py" in msg
+    assert "RENDERED" in msg and "every reel" in msg
+    assert "loudness_target" not in gates.FIELDS        # left the vocabulary, not merely refused
+
+
+def test_the_home_loudness_target_points_at_is_real_and_is_what_the_gate_confirms():
+    """A pointer in a refusal is a claim about the tree, and claims rot: variety_min's was once
+    wrong for exactly that reason. There are two constants with one meaning — what mix renders
+    to, and what check_reel's default confirms — and the refusal exists because GATES.json could
+    have moved only one. Until a platform table sets both from one place (design §7), their
+    agreement is pinned here; a rename of mix._TARGET_LUFS also breaks the pointer, loudly."""
+    assert mix._TARGET_LUFS == ReelCheckSpec(target_dur=1.0).loudness_target
+
+
 @pytest.mark.parametrize("name", sorted(gates.AUTHORED_ELSEWHERE))
 def test_every_name_authored_elsewhere_is_refused_not_ignored(name):
-    # Design §0.6: five names, each authored somewhere else. A value silently dropped
+    # Design §0.6: six names, each authored somewhere else. A value silently dropped
     # here would READ as authored, so each is refused, the refusal says where, and it says
     # what to DO: a reader told only where a value lives still has to work out that the
     # line in this file is the thing to delete.
@@ -265,7 +290,7 @@ def _probe(body: str) -> subprocess.CompletedProcess:
 def test_a_threshold_or_an_advisory_check_added_upstream_reaches_the_vocabulary():
     # The two DERIVED claims, made observable, for BOTH spec classes. `set(FIELDS) ==
     # names - ELSEWHERE` cannot fail for a correct hand-typed list: it recomputes the same
-    # thing, so a tuple of twelve literals passes it today and rots the day a thirteenth
+    # thing, so a tuple of eleven literals passes it today and rots the day a twelfth
     # lands. Here the INPUTS move instead: a fresh interpreter widens ReelCheckSpec AND
     # CheckSpec by one field each, and the advisory registry by one check, BEFORE importing
     # gates, and the module has to follow all three. Widening only one class would let a
@@ -294,8 +319,7 @@ def test_a_threshold_or_an_advisory_check_added_upstream_reaches_the_vocabulary(
     seen = json.loads(run.stdout)
     assert "extra_tol" in seen["fields"]                       # the ReelCheckSpec half follows
     assert "extra_floor" in seen["fields"]                     # ...and the CheckSpec half
-    assert "loudness_target" not in seen["blocking"]           # BLOCKING follows the registry
-    assert "loudness_tol" not in seen["blocking"]
+    assert "loudness_tol" not in seen["blocking"]              # BLOCKING follows the registry
     assert "grade_residual_max" in seen["blocking"]            # ...and only what moved
 
 
@@ -446,7 +470,7 @@ def test_every_reel_bar_is_named_on_the_check_that_reads_it():
     and moves no BLOCKING answer, since both are advisory). length_retime_max is named on TWO
     checks: `length`, where build_reel's absorb converts a blocking failure into a silent re-target
     (design §0.1), and `brief_length`, whose advisory band borrows the same number."""
-    moved = dict(loudness_target=-16.0, loudness_tol=2.0, grade_residual_max=6.0,
+    moved = dict(loudness_tol=2.0, grade_residual_max=6.0,
                  chroma_spread_max=8.0, length_retime_max=3.0, beat_tol=0.08, clip_tol=0.05,
                  bar_symmetry_tol=0.05, layout_jump_max=0.9)
     spec = ReelCheckSpec(target_dur=6.0, **moved)
@@ -454,7 +478,7 @@ def test_every_reel_bar_is_named_on_the_check_that_reads_it():
                      "beat", "key_action", "pad_bars", "transitions", "black", "variety")
     gates.name_authored(checks, spec, _authors(moved))
     assert _named(checks) == {
-        "loudness": ["loudness_target", "loudness_tol"],
+        "loudness": ["loudness_tol"],
         "grade_faithful": ["grade_residual_max"],
         "chroma_spread": ["chroma_spread_max"],
         "length": ["length_retime_max"],
@@ -490,15 +514,15 @@ def test_a_named_bar_carries_its_value_its_default_and_its_reason():
 
 
 def test_only_a_bar_that_moved_with_a_written_reason_is_named():
-    """Both halves of the filter, in one call. `loudness_target` has a reason and sits at its
-    default: an author may legally write the default value, and the bar did not move. `beat_tol`
-    moved and has no reason: this function names reasons, and a value moved by hand is
+    """Both halves of the filter, in one call. `clip_tol` has a reason and sits at its default:
+    an author may legally write the default value, and the bar did not move. `beat_tol` moved
+    and has no reason: this function names reasons, and a value moved by hand is
     provenance.spec_overrides' business. Only `loudness_tol` moved AND was explained."""
     spec = ReelCheckSpec(target_dur=6.0, loudness_tol=2.0, beat_tol=0.08)
-    checks = _judged("loudness", "beat")
+    checks = _judged("loudness", "beat", "key_action")
     gates.name_authored(checks, spec, {"loudness_tol": "live room",
-                                       "loudness_target": "pinned at the default on purpose"})
-    assert _named(checks) == {"loudness": ["loudness_tol"], "beat": []}
+                                       "clip_tol": "pinned at the default on purpose"})
+    assert _named(checks) == {"loudness": ["loudness_tol"], "beat": [], "key_action": []}
 
 
 def test_a_check_that_examined_nothing_does_not_claim_a_bar_it_never_read():

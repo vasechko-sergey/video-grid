@@ -1161,7 +1161,8 @@ class ReelCheckSpec:
     target_dur: float
     variety_min: int = 8               # min phash Hamming distance between adjacent episodes
     beat_tol: float = 0.05             # advisory: max cut-vs-beat deviation (s) that still reads "on beat"
-    loudness_target: float = -14.0     # EBU R128 integrated LUFS target (montage §5.12)
+    loudness_target: float = -14.0     # LUFS the stem is RENDERED to (= mix._TARGET_LUFS): a set-point
+                                       # check_reel confirms, not a bar; GATES.json refuses it (2026-09-30 §0.2a)
     loudness_tol: float = 1.0          # ± band around the target
     clip_tol: float = 0.02             # advisory: frame-edge overshoot fraction tolerated before key_action flags
     bar_symmetry_tol: float = 0.02     # advisory: max left/right (top/bottom) pad-bar mismatch (canvas fraction)
