@@ -508,11 +508,28 @@ authored value with a recorded reason, which is what makes it reviewable.
   working as designed — they measure what a grade *did*, and nothing did anything —
   but an operator who authors `entropy_floor` on a reel with no tone pair has
   authored a no-op, and nothing says so.
-  The same measurement gives the reachable range on that footage, which is the
-  only calibration anyone has: `highlight: 0.7` reads **0.963**, a conductor tone
-  pair reads **1.016**, and `black_point` at 0.05 and 0.10 reads **1.008** and
-  **1.011** — it *raises* entropy rather than lowering it, so the sensor is
-  directional and a "damage" knob can move the ratio the safe way.
+  The same measurement gives the reachable range, and **the exposure it was taken
+  at is part of the reading** — the figures below are `golden_ride.mp4` re-exposed
+  at `DARK` 0.83x, not the neutral `golden_ride_segment`, and the same knob reads
+  differently at each:
+
+  | knob | neutral | DARK 0.83x | BRIGHT 1.09x |
+  |---|---|---|---|
+  | `highlight` 0.70 | 0.932 | 0.963 | 0.918 |
+  | `black_point` 0.05 | 1.015 | 1.008 | 1.015 |
+  | `black_point` 0.10 | 1.021 | 1.011 | 1.019 |
+
+  Two directional facts hold at **every** exposure and are what the sensor can be
+  trusted on: an ungraded episode reads exactly 1.0 (and residual exactly 0.0), and
+  `black_point` *raises* the ratio rather than lowering it — so the sensor is
+  directional, and a "damage" knob can move it the safe way.
+
+  What does **not** generalize, and an earlier draft of this section asserted
+  anyway: a conductor tone pair reads **1.016 on ep0 but 0.962 on ep1** of the same
+  reel — below 1.0, and between the two candidate floors. So "no floor in (0, 1]
+  can refuse a conductor-graded episode" is a statement about one episode, not
+  about the conductor. The implementer's report carried the `(ep0)` qualifier and
+  this design dropped it.
 - **Gates are reel-wide, not per-episode.** One episode's legitimate grade widens
   `entropy_floor` for every episode in the reel. Per-episode gating needs an
   episode identity that survives a re-cut, and the EDL's indices do not — a re-cut

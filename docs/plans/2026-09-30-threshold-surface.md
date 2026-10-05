@@ -1140,6 +1140,10 @@ Each row: apply the mutation, run the named selection, confirm RED, restore with
 | 21 | `CheckSpec.black_rel`'s new guard deleted | `models.py` | RED | `test_check_spec_refuses_a_black_rel_that_is_not_a_fraction` — and confirm the value then loads through `gates.Gates.from_dict`, which is what makes the row about refusal 6 rather than about a dataclass |
 | 22 | `math.isfinite` dropped from `ReelCheckSpec.loudness_tol` | `models.py` | RED | `test_no_reel_threshold_accepts_a_non_finite_number[inf-loudness_tol]` |
 | 23 | `isinstance(self.beat_tol, bool)` dropped | `models.py` | RED | `test_no_reel_threshold_accepts_a_bool[beat_tol]` |
+| 24 | the episode floor judged at `max(floor, 0.90)` — an authored LOOSENING clamped back to the default | `check_episode.py` | RED | **Added after Task 6's review, which found this survives everything.** Loosening is what a `GATES.json` is FOR, and no proof exercised that direction; tightening cannot distinguish "the value arrived" from "it was clamped". Needs the waiver proof Task 6's fix round adds |
+| 25 | the reel max judged at `min(max, 4.0)` — the same clamp, reel scope | `check_reel.py` | RED | same. Measured to survive the whole unit tier AND 72 neighbouring integration tests, which is the Task 4 "inert on the real path" shape one hop deeper |
+| 26 | `rm.gates = {}` immediately before `build_reel` inside `assemble_reel` | `edl_to_reel.py` | RED | **Added after Task 6's review.** `assemble_reel` is the `--from-episodes` entry the router actually delivers through, and design §6's claim that phase 2 carries the frozen set was untested at any tier. Needs the phase-2 proof Task 6's fix round adds |
+| 27 | `rm.gates = {}` inside `_episodes_ready`, the writer both phase-1 arms end with | `edl_to_reel.py` | RED | same proof |
 
 Task 1 ran rows 1-9 early, while it still owned the tests, and reports 35 of 36 of its own rows red with one presentational green (an unsorted `FIELDS`). Re-run them here anyway on the integrated tree — a row that discriminated in isolation can stop discriminating once a later task adds a caller.
 
