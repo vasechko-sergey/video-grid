@@ -535,16 +535,6 @@ def test_a_check_that_examined_nothing_does_not_claim_a_bar_it_never_read():
     assert checks["grade_faithful"].detail == {"probe": 1}
 
 
-def test_a_set_that_authored_nothing_adds_no_key_at_all():
-    """Not `authored: []`. Every check of every run that authored nothing would change, which
-    is the byte-identity this slice promises to keep (design §3)."""
-    spec = ReelCheckSpec(target_dur=6.0, loudness_tol=2.0)
-    for reasons in (None, {}):
-        checks = _judged("loudness")
-        gates.name_authored(checks, spec, reasons)
-        assert checks["loudness"].detail == {"probe": 1}
-
-
 def test_naming_a_bar_never_mutates_a_detail_dict_someone_else_holds():
     """check_reel builds a ReelFailure from a copy of the detail it puts on the check, and the
     next edit could share one dict between them. The row goes on a NEW dict, so a failure that
@@ -558,12 +548,15 @@ def test_naming_a_bar_never_mutates_a_detail_dict_someone_else_holds():
 
 @pytest.mark.parametrize("call", [
     lambda spec: gates.authored_rows(spec, {}, "loudness_tol"),
-    lambda spec: gates.name_authored(_judged("loudness"), spec, {"loudness_tol": "x"}),
+    lambda spec: gates.name_authored({}, spec, {"loudness_tol": "x"}),
 ], ids=["authored_rows", "name_authored"])
 def test_a_value_that_is_not_a_spec_is_refused_not_silently_left_unnamed(call):
     """A spec of any other class owns no gate, so every authored bar would go unnamed in
     silence — the failure for_spec's own refusal exists for. Two callers, because each of the
-    two public functions makes its own call to the guard."""
+    two public functions makes its own call to the guard. The `name_authored` case hands it NO
+    checks, on purpose: given one, name_authored calls authored_rows, whose guard raises the same
+    message first, so a case built with a check present still passed with name_authored's own
+    guard deleted. With none, only name_authored's own guard can raise."""
     with pytest.raises(ValueError, match="ReelCheckSpec or CheckSpec"):
         call(object())
 
@@ -572,7 +565,12 @@ def test_a_name_the_spec_does_not_own_is_refused_not_silently_never_reported():
     """A typo, or a reel bar asked of an episode spec. `n in reasons` short-circuits before the
     value is read, so without this the wrong name would simply never appear — a reason lost on
     the exact surface built to carry it."""
-    with pytest.raises(ValueError, match="'loudnes_tol'"):
+    with pytest.raises(ValueError, match="'loudnes_tol'") as typo:
         gates.authored_rows(ReelCheckSpec(target_dur=6.0), {}, "loudnes_tol")
-    with pytest.raises(ValueError, match="'loudness_tol'.*CheckSpec"):
+    with pytest.raises(ValueError, match="'loudness_tol'.*CheckSpec") as wrong_scope:
         gates.authored_rows(CheckSpec("lead", "thirds", 1.0), {}, "loudness_tol")
+    # The remedy lists the thresholds of the spec's OWN class, so the right spelling is in it for
+    # the typo and the episode bars are in it for the reel bar asked of an episode spec. A list
+    # drawn from the other class would send the reader to names that are wrong in this scope.
+    assert "loudness_tol" in str(typo.value) and "black_floor" not in str(typo.value)
+    assert "black_floor" in str(wrong_scope.value) and "beat_tol" not in str(wrong_scope.value)

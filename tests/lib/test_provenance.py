@@ -107,6 +107,8 @@ def test_attestation_round_trips_through_json(tmp_path):
              edl={"digest": "e", "state": "intact"},
              overrides=[{"field": "variety_min", "value": 4, "default": 8}],
              episode_qc={"state": "judged", "judged": {"0": "aa"}, "reprocessed_after": [1]},
+             look_checks=[{"check": "vignette", "status": "pass", "detail": "",
+                           "measured": 9.1, "expected": 8.0}],
              delivered_at="2026-08-04T10:00:00")
     p = tmp_path / "REEL_v1.attest.json"
     a.write(p)
@@ -289,6 +291,32 @@ def test_an_attestation_that_authored_no_gates_has_no_gates_key(tmp_path):
     assert "gates" not in _att().to_dict()
     old = {k: v for k, v in _att().to_dict().items() if k != "gates"}
     assert provenance.Attestation.from_dict(old).gates == []
+
+
+def test_verify_delivery_surfaces_the_authored_gates_beside_overrides(tmp_path):
+    """montage status reads deliveries[] from this function, and it is the one place a human
+    looks. `overrides` reads [] on EVERY sanctioned run (design §0.4: spec_overrides runs once, in
+    phase 1, and no producer sets variety_min), so a status that showed only `overrides` would say
+    "no waivers" about a delivery whose sidecar carries them — the silence §2.4 exists to end. The
+    first sidecar below is that exact case: overrides empty, one authored gate. The second is its
+    mirror, an override and no gate (what a hand-edited EPISODES.json can produce), so each list
+    is pinned by a value its own default does not equal — a pass-through that dropped either one
+    would otherwise read as the empty default."""
+    rows = gates.Gates.from_dict({"entropy_floor": {"value": 0.85, "why": "log profile"}}).record()
+    reel = tmp_path / "REEL_v1.mp4"
+    reel.write_bytes(b"one")
+    _att(reel_digest=provenance.digest_file(reel), overrides=[], gates=rows).write(
+        provenance.attest_path(reel))
+    got = provenance.verify_delivery(reel)
+    assert got["state"] == "attested" and got["overrides"] == [] and got["gates"] == rows
+
+    mirror = tmp_path / "REEL_v2.mp4"
+    mirror.write_bytes(b"two")
+    waiver = [{"field": "variety_min", "value": 4, "default": 8}]
+    _att(reel="REEL_v2.mp4", reel_digest=provenance.digest_file(mirror), overrides=waiver).write(
+        provenance.attest_path(mirror))
+    got = provenance.verify_delivery(mirror)
+    assert got["overrides"] == waiver and got["gates"] == [] and got["overall"] is True
 
 
 def test_spec_overrides_is_unchanged_by_this_slice():

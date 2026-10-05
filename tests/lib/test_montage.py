@@ -492,7 +492,7 @@ def test_status_reports_an_unattested_delivery(tmp_path):
     (lay.deliveries / "REEL_v1.mp4").write_bytes(b"hand-concatenated")
     got = montage.next_action(str(run))["deliveries"]
     assert got == [{"file": "REEL_v1.mp4", "state": "unattested", "overall": None,
-                    "overrides": [], "engine_drift": False, "episode_qc": "unknown",
+                    "overrides": [], "gates": [], "engine_drift": False, "episode_qc": "unknown",
                     "detail": ("no attestation sidecar — the look gate withheld it, the "
                                "delivery was interrupted after the encode, or this file "
                                "was not produced by deliver at all. The file itself is "
@@ -748,30 +748,61 @@ def test_status_is_silent_about_freezing_when_nothing_was_authored_or_frozen(tmp
     "{not json",
     "[]",
     json.dumps({"gates": {"beat_tol": 0.08}}),
-], ids=["not-json", "not-an-object", "corrupt-block"])
+    None,
+], ids=["not-json", "not-an-object", "corrupt-block", "directory"])
 def test_an_unreadable_frozen_set_reads_as_unreadable_not_a_traceback(tmp_path, text):
     """The inspector never replaces a whole status report with a traceback, and a frozen set it
-    cannot read is neither 'same' nor 'nothing frozen'. Three different ways: broken JSON, valid
-    JSON that is not an object (`.get` on a list — a different member of the except tuple), and a
-    gates block the loader refuses (a bare value, no reason), which a comparison of the raw block
-    would have trusted instead of refusing."""
+    cannot read is neither 'same' nor 'nothing frozen'. Four ways: broken JSON (a ValueError out of
+    json), valid JSON that is not an object (`.get` on a list: an AttributeError), a gates block the
+    loader refuses (a bare value, no reason), which a comparison of the raw block would have
+    trusted instead of refusing, and an EPISODES.json that is a DIRECTORY: it exists, so the
+    missing-file arm does not fire, and read_text() raises an OSError that no loader ever sees.
+    Between them every member of the except tuple has a case that fails without it."""
     ep = runlayout.RunLayout(tmp_path).episodes
     ep.mkdir(parents=True)
-    (ep / "EPISODES.json").write_text(text)
+    if text is None:
+        (ep / "EPISODES.json").mkdir()
+    else:
+        (ep / "EPISODES.json").write_text(text)
     frozen = next_action(str(tmp_path))["gates"]["frozen"]
     assert frozen["state"] == "unreadable" and "EPISODES.json" in frozen["detail"]
+    # The broken thing is EPISODES.json, so GATES.json must not be named as the culprit: the
+    # loader words its refusal after the document it is told it was handed, and a message that
+    # said GATES.json would send the operator to edit a file that is not the problem.
+    assert "GATES.json" not in frozen["detail"]
 
 
+@pytest.mark.parametrize("how", ["broken-json", "directory"])
 def test_an_unreadable_gates_file_beside_a_frozen_set_reads_as_unreadable_not_a_traceback(
-        tmp_path):
+        tmp_path, how):
     """The other direction of the comparison. The file's own error is reported by `gates`, and the
-    frozen block must not read 'same' or 'differs' against a file nobody can read."""
+    frozen block must not read 'same' or 'differs' against a file nobody can read. Broken JSON is
+    the loader's ValueError; a directory where the file should be raises an OSError from
+    read_text, which that arm does not cover — each member of this side's except tuple has a case."""
     _freeze(tmp_path, _BEAT)
-    (tmp_path / "GATES.json").write_text("{broken")
+    if how == "directory":
+        (tmp_path / "GATES.json").mkdir()
+    else:
+        (tmp_path / "GATES.json").write_text("{broken")
     res = next_action(str(tmp_path))["gates"]
     assert res["error"]
     assert res["frozen"]["state"] == "unreadable"
     assert str(tmp_path / "GATES.json") in res["frozen"]["detail"]
+
+
+def test_a_reason_only_edit_reads_as_drift_not_as_the_same_set(tmp_path):
+    """The frozen set records why a bar was moved as well as to what, and the attestation carries
+    that reason (design §2.4 item 2), so a file whose VALUE is untouched but whose reason was
+    rewritten is a different record and must not read `same`. A comparison of values alone passes
+    every other test here, because each of them changes a value or a key. Whitespace around a
+    reason is NOT drift — the padded-`why` case in test_status_says_which_phase_froze_the_set,
+    which the loader normalizes away — so this is exactly the line between the two."""
+    _freeze(tmp_path, _BEAT)
+    (tmp_path / "GATES.json").write_text(json.dumps(
+        {"beat_tol": {"value": 0.08, "why": "the click track is back, loosen it anyway"}}))
+    frozen = next_action(str(tmp_path))["gates"]["frozen"]
+    assert frozen["state"] == "differs"
+    assert "changed since: beat_tol" in frozen["detail"]
 
 
 def test_the_match_grade_stage_keys_on_the_json_not_the_markdown():

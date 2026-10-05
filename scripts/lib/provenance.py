@@ -217,10 +217,16 @@ def verify_delivery(reel_path: str | Path, *, rehash: bool = False) -> dict:
     is distinguishable from an unjudged one — "judged" / "stale" / "absent" / "unknown"
     (no sidecar at all, or one predating the field, both read as "unknown": there is no
     QC record to report either way; "stale" is judged, then re-rendered — see
-    _episode_qc_state)."""
+    _episode_qc_state).
+
+    `overrides` and `gates` are both surfaced, and the second is not optional: `overrides` is
+    computed once, in phase 1, from a manifest whose only gateable inlet is a hand-edited
+    EPISODES.json, so it reads [] on every sanctioned run (design 2026-09-30 §0.4). A status that
+    showed only it would say "no waivers" about a delivery whose sidecar records authored bars
+    with their reasons — the silence §2.4 exists to end, at the one place a human looks."""
     p = Path(reel_path)
     out: dict = {"file": p.name, "state": "unattested", "overall": None, "overrides": [],
-                 "engine_drift": False, "episode_qc": "unknown",
+                 "gates": [], "engine_drift": False, "episode_qc": "unknown",
                  "detail": ("no attestation sidecar — the look gate withheld it, the "
                             "delivery was interrupted after the encode, or this file "
                             "was not produced by deliver at all. The file itself is "
@@ -235,7 +241,7 @@ def verify_delivery(reel_path: str | Path, *, rehash: bool = False) -> dict:
         out["detail"] = f"attestation unreadable ({e})"
         return out
     a, b = att.engine_at_start, att.engine_at_deliver
-    out.update(overall=att.overall, overrides=list(att.overrides),
+    out.update(overall=att.overall, overrides=list(att.overrides), gates=list(att.gates),
                engine_drift=bool(a.get("sha") and b.get("sha") and a != b),
                episode_qc=_episode_qc_state(att), detail="")
     if not att.overall:

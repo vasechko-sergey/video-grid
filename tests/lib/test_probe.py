@@ -376,6 +376,35 @@ def test_probe_geometry_names_the_absence_when_it_cannot_look_for_the_gates(
     assert why in r["gates"]["reason"] and "DEFAULT" in r["gates"]["reason"]
 
 
+def test_probe_geometry_refuses_a_gates_file_it_cannot_load_before_rendering_anything(
+        tmp_path, monkeypatch):
+    """The arm where the project DOES resolve and the file beside it is broken. Phase 1b would
+    refuse the same file, so a probe that swallowed the refusal into "no gates" would predict, at
+    the default floor and without a word, a run that cannot happen — a silent prediction against
+    the wrong bar, which is the defect this whole lookup exists to prevent. And it must refuse
+    BEFORE a frame is rendered: the lookup's position in probe_grade_geometry says so in a comment,
+    and nothing held it. Moved below the renders, the same ValueError still comes out of the same
+    probe, only after it has spent them. Both halves are asserted because each mutant passes the
+    other's assertion: a swallow renders everything and raises nothing; a late lookup raises
+    exactly what the shipped code raises."""
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "project.json").write_text("{}")
+    (run / "GATES.json").write_text("{broken")
+    geo = _geometry(tmp_path, monkeypatch, str(run / "project.json"))
+    rendered = []
+    graded_half, plain_half = probe._render, probe.reframe.plan_frames_rgb
+    monkeypatch.setattr(probe, "_render",
+                        lambda *a, **k: rendered.append("graded") or graded_half(*a, **k))
+    monkeypatch.setattr(probe.reframe, "plan_frames_rgb",
+                        lambda *a, **k: rendered.append("plain") or plain_half(*a, **k))
+
+    with pytest.raises(ValueError) as e:
+        probe.probe_grade_geometry(geo, 0, out_dir=str(tmp_path / "p"))
+    assert str(run / "GATES.json") in str(e.value)
+    assert rendered == []
+
+
 def test_probe_tone_is_gone():
     assert not hasattr(probe, "_tone")
 
