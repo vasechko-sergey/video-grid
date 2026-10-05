@@ -497,6 +497,22 @@ authored value with a recorded reason, which is what makes it reviewable.
   every episode to change a number applied at `check_reel` time. The remedy is
   **visibility, not freshness** — `montage status` shows the authored set and says
   which phase froze it (§2.4 item 3).
+- **Two of the six blocking bars cannot fire at all on an ungraded reel, so
+  authoring them there does nothing.** Measured by Task 6 while building the
+  proofs, on the suite's own `golden_ride_segment`: `grade_damage` divides the
+  graded render's luma entropy by the plain one's, and with no grade declared the
+  two renders are the *same* render, so the ratio is exactly **1.0** and no floor
+  below 1 can refuse it. `grade_faithful` compares the delivered profile against
+  what the episode's own declared chain predicts, and with nothing declared the
+  residual is exactly **0.0**, so no positive bar can refuse it either. Both are
+  working as designed — they measure what a grade *did*, and nothing did anything —
+  but an operator who authors `entropy_floor` on a reel with no tone pair has
+  authored a no-op, and nothing says so.
+  The same measurement gives the reachable range on that footage, which is the
+  only calibration anyone has: `highlight: 0.7` reads **0.963**, a conductor tone
+  pair reads **1.016**, and `black_point` at 0.05 and 0.10 reads **1.008** and
+  **1.011** — it *raises* entropy rather than lowering it, so the sensor is
+  directional and a "damage" knob can move the ratio the safe way.
 - **Gates are reel-wide, not per-episode.** One episode's legitimate grade widens
   `entropy_floor` for every episode in the reel. Per-episode gating needs an
   episode identity that survives a re-cut, and the EDL's indices do not — a re-cut
