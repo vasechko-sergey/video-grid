@@ -292,11 +292,11 @@ fixed.** Until then, the mechanical gate this pair fed into measured how far
 the grade moved the tracked subject's colour from its own source — and a
 grade IS movement, so a real conductor pair routinely crossed it: on the one
 real 8-episode reel every episode had a subject-luma band that exceeded the
-old 5.0 dE00 ceiling, with no waiver anywhere. `check_episode.color_fidelity`
+old 5.0 dE00 ceiling, and that gate had no lever at all. `check_episode.color_fidelity`
 is now `grade_damage`: it renders the episode's OWN declared grade twice —
 once as declared, once with every colour knob at identity — and asks whether
 the declared map DESTROYED information (Shannon entropy of the luma
-histogram, against `CheckSpec.entropy_floor = 0.90`), not whether it moved
+histogram, against `CheckSpec.entropy_floor`, 0.90 by default), not whether it moved
 anything. A tone pair authored here reads as movement, which the sensor is
 now built to ignore, and passes cleanly; the old dE00 reading survives only as
 an advisory number in `report.json`, read by the QC judge, never a gate. If a
@@ -304,6 +304,15 @@ an advisory number in `report.json`, read by the QC judge, never a gate. If a
 genuinely too aggressive (e.g. `black_point`/`highlight` near their legal
 limit) — soften it in the episode's colour block via **edit-plan**; it is no
 longer this stage's own pair being misdiagnosed.
+
+The floor is the one bar here an operator may move, and only through a `GATES.json`
+beside `project.json` whose `entropy_floor` entry carries a written reason — refused
+at load without one, then named beside the verdict it bought, in the attestation and in
+`montage status`. That is the user's decision for footage the default is wrong for,
+never this stage's and never a way to wave through a pair it authored: a `grade-damage`
+finding is still routed to the episode's colour block. With no colour block declared the
+graded and plain renders are the same render, the ratio is exactly 1.0, and no floor
+can refuse it — moving the floor on an ungraded reel changes nothing.
 
 ## Not this skill
 

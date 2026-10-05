@@ -104,7 +104,15 @@ def spec_overrides(spec, *, exempt: tuple[str, ...] = ("target_dur",)) -> list[d
     day it lands, with no second place to remember to update. `exempt` must name
     every field the class has no default for (that is how the baseline instance is
     built) plus any field that is legitimately per-reel rather than a loosening —
-    target_dur is both."""
+    target_dur is both.
+
+    Its scope is narrower than "every loosened gate", and callers should not read it as
+    that. edl_to_reel calls it once, in phase 1, on `rm.check_spec` — a ReelCheckSpec — so
+    it sees the reel-scope thresholds a GATES.json authored and no episode-scope one
+    (`entropy_floor`, `black_floor`, `black_rel` live on CheckSpec), and a hand-edit made to
+    EPISODES.json after phase 1 is invisible to it. It carries no reason either. The record
+    of what an author moved and WHY, both scopes, is Attestation.gates (design 2026-09-30
+    §2.4 item 2); the two answer different questions and both stay."""
     base = type(spec)(**{n: getattr(spec, n) for n in exempt})
     return [{"field": f.name, "value": getattr(spec, f.name), "default": getattr(base, f.name)}
             for f in fields(spec)

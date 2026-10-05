@@ -244,6 +244,21 @@ opposite of the row's: not "widened silently" but "cannot be set at all". That
 is a contract slice of its own, and it is promoted to P1 rather than folded in
 here.
 
+> **Corrected 2026-10-05 by the slice this promoted**
+> ([threshold-surface](2026-09-30-threshold-surface-design.md)); three statements
+> above are not true of the shipped tree. **Eleven** thresholds are authorable, not
+> twelve: `loudness_target` is the value `mix` renders to and not a bar, so a gate
+> file can reach only the check that confirms it and authoring it would fail every
+> reel (§0.2a). Of the eleven, **six block and five are advisory** (§0.1) —
+> `length_retime_max` blocks through `build_reel`'s shortfall absorb, not through
+> the advisory check that also reads it. And `GATES.json` beside `project.json` is
+> now the authoring surface for all eleven, every entry refused at load without a
+> written reason. Separately, `spec_overrides` could never have reported even
+> `variety_min` on a sanctioned run: it runs once, in phase 1, on the manifest phase
+> 1 just built, so `Attestation.overrides` has been `[]` on every delivery by
+> construction (§0.4). The measurements in this section describe the tree as it
+> stood on 2026-09-29, and are left as measured.
+
 ---
 
 ## §1 The rule

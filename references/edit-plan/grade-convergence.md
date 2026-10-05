@@ -84,7 +84,20 @@ freshly-written file:
 It writes `<run>/reels/<reel>/build/ep<N>/probe/probe.jpg` (the frames) and `probe.json`
 (naturalness flags plus `tone_profile`, ONE pooled `(p5, p50, p95)` triple
 across all the probe's frames together — not a reading per frame — which
-reads straight into a `tone_src`/`tone_dst` pair). Look at the pixels, edit
+reads straight into a `tone_src`/`tone_dst` pair).
+
+`probe.json`'s `grade_damage` is a prediction of the blocking gate, so it is made
+against the `entropy_floor` the run's `GATES.json` authored, not CheckSpec's default
+(an unauthored run is unchanged). `--episodes` reads the set `EPISODES.json` froze;
+`--geometry` looks beside the project `GEOMETRY.json` recorded. **When that project
+cannot be found from where you run the probe** — nothing recorded, moved since, or a
+relative path read from another directory — `probe.json` gains
+`"gates": {"status": "not-read", "reason": …}`. That key is the named absence:
+it means `grade_damage.floor` above is the DEFAULT and was **not** read from
+`GATES.json`, so it may not be the bar these episodes will be judged by. Run the probe
+from the directory the project was recorded in, or re-run `--stop-after-geometry` with
+an absolute `--project`. The key is absent whenever the file could be looked for, so
+its absence says nothing about whether any gates exist. Look at the pixels, edit
 `selection.json`, rebuild, probe again. This `--episodes` mode's probe
 **refuses** if the recomputed crop path differs from the
 frozen one: that means something other than colour changed (a re-track, a
@@ -170,7 +183,13 @@ in either case is wrong, not merely redundant. Read the `stabilize`/`pan` line
 the command above printed before choosing:
 
     "$VG" scripts.process_episode <run>/reels/<reel>/build/ep<N>/manifest.json \
-      --project-dir <run>/reels/<reel>/build/ep<N> [--route <run>/reels/<reel>/build/ep<N>/route.json]
+      --project-dir <run>/reels/<reel>/build/ep<N> --project <run>/project.json \
+      [--route <run>/reels/<reel>/build/ep<N>/route.json]
+
+`--project` is not optional here: it is how this hand-driven re-render finds a `GATES.json`
+beside `project.json`, and without it the episode is judged at the DEFAULT thresholds while
+its siblings were judged at the ones the operator authored — silently. The episode's own
+manifest already carries its canvas and delivery, so the flag changes nothing else.
 
 Omit `--route` entirely when `stabilize` or `pan` printed truthy — for
 `stabilize` this pays for one re-track on the re-stabilized segment (still far

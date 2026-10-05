@@ -36,6 +36,8 @@ Announce on entry: **"Using using-montage to conduct footage -> reel."**
 what is in it stays true:
 
     <run>/project.json  CONSTRAINTS.json      the project: canvas, delivery, standing rules
+    <run>/GATES.json    REGIONS.json          optional, found by convention beside project.json:
+                                              authored check bars (each with a reason), tone regions
     <run>/footage/                            a function of the raw clips; survives every re-cut
     <run>/music/                              downloaded tracks, shared by every reel
     <run>/reels/<reel>/                       one editorial variant; <reel> is `main` by default
@@ -130,7 +132,10 @@ look at it, `deliver` renamed it into place before the gate ever ran);
 next most often the process was killed AFTER the rename but before the
 attestation was written (a window of seconds now, not the old window of
 an entire encode); rarest of all, the file genuinely predates `deliver`.
-`montage status`'s own `interrupted` list is the separate, cheaper signal
+If `verify` lists `gates`, name each moved bar and its written reason beside the
+reel: they are waivers the operator authored, and this is where a human reads them
+(a blocking bar's reason is also in `REEL_v{n}.attest.json`). `montage status`'s
+own `interrupted` list is the separate, cheaper signal
 for the failure that used to hide behind this one: a non-empty list
 names a leftover `.REEL_v{n}.part.<container>` from an encode killed
 mid-write — that delivery consumed no version and is invisible as one,
@@ -221,8 +226,11 @@ guessing a path.
    something with the right filename is already on disk. Also check
    `interrupted` — a non-empty list names a delivery killed mid-encode (a
    leftover `.REEL_v{n}.part.<container>`); it consumed no version and needs
-   no cleanup, just a re-run of `deliver`. Read the brief and parse intent into
-   params (table below).
+   no cleanup, just a re-run of `deliver`. Read `gates` too: it lists any check
+   threshold the operator moved beside `project.json`, with its reason; an `error`
+   there means the file is broken and the next `edl_to_reel` will refuse it; and a
+   `frozen` block says whether the set a render froze still matches the file. Read
+   the brief and parse intent into params (table below).
    **A run from before the `montage/` convention** lives directly in the footage
    folder. If `<run>` is empty but `<footage_root>/project.json` exists, say so and
    ask which to use — starting fresh silently would re-scan every clip.
@@ -403,11 +411,18 @@ aspect (project-init's own "ask, don't guess").
   tool-generated `EDL.json`, even to fix a small thing; revise `selection.json` and
   re-run the build instead.
 - **You may not disable, lower, or downgrade any quality gate.** A gate that
-  blocks is routed back to its stage's skill, never loosened to pass. There is
-  currently no CLI flag on any conveyor stage for loosening a reel-level check
-  threshold — the last one, `--color-delta-max`, was retired with the check it
-  bounded (design 2026-08-29, colour-convergence-retire) rather than kept as
-  an escape hatch. If a `ReelCheckSpec` field is ever hand-loosened through a
-  manifest, `provenance.spec_overrides` still records it, never silently, and
-  shows it at CP3. `episode-qc` carries no override at all (§7) — not even a
-  measured one.
+  blocks is routed back to its stage's skill, never loosened to pass. No flag on
+  any stage this router drives loosens a check threshold — the last one,
+  `--color-delta-max`, was retired with the check it bounded (design 2026-08-29,
+  colour-convergence-retire) rather than kept as an escape hatch. There is exactly
+  one sanctioned lever and it is the user's, not yours: a `GATES.json` beside
+  `project.json` (design 2026-09-30), each entry carrying a written `why` — refused
+  at load without one — that is named beside the verdict it bought, in
+  `REEL_v{n}.attest.json`'s `gates`, and in `montage status`/`verify`. Write an
+  entry only when the user has said a bar is wrong for their footage, with *their*
+  reason in `why`; never author one to clear a finding, and show every `gates` row at
+  CP3. The attestation's `overrides` is a different, narrower list (a diff of the
+  reel spec, no reason, computed once in phase 1) and reads `[]` on a sanctioned run,
+  so an empty one is not evidence that no bar moved — read `gates`. `episode-qc`
+  carries no override at all (§7) — not even a measured one, and `GATES.json` cannot
+  reach it.

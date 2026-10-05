@@ -1,7 +1,10 @@
 # Threshold surface — an authoring surface must carry its threshold's blast radius
 
-**Status:** design, 2026-09-30. Backlog P1 (promoted by the unenforced-rules slice,
-design 2026-09-29 §0.6), with R2.4 folded in.
+**Status:** shipped 2026-10-05, version 0.15.0 (MINOR — new contract fields, a new CLI
+flag, no breaking change). Designed 2026-09-30; §0.2a, §2.2a, §2.3 and §6 were written or
+rewritten during the slice as measurements overturned the plan, and should be read as the
+as-built record. Backlog P1 (promoted by the unenforced-rules slice, design 2026-09-29 §0.6), with
+R2.4 folded in.
 
 **Row, as filed:** twelve of the eighteen fields of `ReelCheckSpec` and `CheckSpec`
 are unreachable from any authoring surface — no CLI flag, no manifest field, no
@@ -12,11 +15,11 @@ construction.
 
 ## §0 Measurements
 
-### §0.1 The twelve are not one population — and the split is the design
+### §0.1 The row's twelve are not one population — and the split is the design
 
 The row treats all twelve alike. They are not alike: five govern a check that
-cannot block, seven govern one that can. Widening an advisory tolerance changes a
-number in a report nobody gates on. Widening a blocking bar is a waiver written in
+cannot block, six govern one that can, and one is not a bar at all (§0.2a). Widening an
+advisory tolerance changes a number in a report nobody gates on. Widening a blocking bar is a waiver written in
 numbers, and the repo has already watched that mechanism run once —
 `color_delta_max` went 12 → 44 → 56 to switch a gate off (colour-convergence-retire
 design §0.1).
@@ -192,10 +195,10 @@ require re-cutting the reel.
 and already reads `ProjectConfig.from_json(project_path)` from it, so the finder
 costs nothing.
 
-### §0.6 The vocabulary is exactly the twelve, and it derives itself
+### §0.6 The vocabulary is exactly the eleven, and it derives itself
 
 `ReelCheckSpec` has 11 fields, `CheckSpec` 7, sharing the name `target_dur`: 17
-distinct names. Five are authored elsewhere and must be refused rather than
+distinct names. Six are authored elsewhere and must be refused rather than
 duplicated —
 
 | name | where it is really authored |
@@ -267,8 +270,8 @@ dataclasses owns a field; the loader does.
 `gates.Gates.from_json` refuses — never warns, never stores-and-ignores:
 
 1. a non-object document;
-2. an unknown field name, naming the twelve;
-3. one of the five §0.6 names, naming **where that value is really authored** (a
+2. an unknown field name, naming the eleven;
+3. one of the six §0.6 names, naming **where that value is really authored** (a
    value silently ignored here would read as authored);
 4. an entry that is not a `{"value": …, "why": …}` object;
 5. a missing, non-string, or blank `why` — **this is remedy 1**, the structural
@@ -282,7 +285,7 @@ Measured against the real classes while Task 1 landed:
 
 - `CheckSpec.__post_init__` validates `composition`, `grid`, `target_dur` and
   `entropy_floor` and **nothing else**. `black_floor` and `black_rel` — two of the
-  seven blocking bars — accept `True`, `nan`, `inf`, `"6"`, `None` and `-1` without
+  six blocking bars — accept `True`, `nan`, `inf`, `"6"`, `None` and `-1` without
   a word. A string reaches `check_episode._black_frames_check` and dies there in a
   bare `TypeError` naming no file; a negative value disables the check in silence.
 - `nan` passes **every** `> 0` guard in both classes, on seven further fields. The
@@ -368,11 +371,26 @@ reports a **named absence** rather than silently predicting against the default.
 A `why` nobody reads is decoration. The reason is carried to every surface that
 already reports a verdict:
 
-1. **The check's own detail.** `loudness`, `grade_faithful`, `black_frames`,
-   `grade_damage` and the length band each already emit a detail dict; an authored
-   bar adds `"authored": {"value": …, "default": …, "why": …}`. The artifact that
-   says PASS also says the bar was moved, and why. This is the load-bearing one: it
-   puts the reason next to the verdict it bought.
+1. **The check's own detail.** Every check that judges by a bar an author moved
+   carries `"authored"`: a **list** of `{field, value, default, why}` rows, one per
+   moved bar the check reads. (The first draft of this section said a single
+   `{value, default, why}` object, on five named checks. Both were wrong: a check can
+   read two bars — `black_frames` reads `black_floor` and `black_rel` — and the set
+   of checks is not a list anyone should type.) Which checks read which bars is
+   **derived** — `gates.fields_judged_by`, from `OF_CHECK` plus one named peer
+   (`brief_length` borrows `length_retime_max` as its band) — so a threshold added
+   later is named beside its verdict the day `OF_CHECK` learns where it belongs,
+   the property `FIELDS` and `BLOCKING` already have. Today that is eleven checks:
+   nine on the reel (`beat`, `key_action`, `pad_bars`, `transitions`,
+   `chroma_spread`, `loudness`, `grade_faithful`, `length`, `brief_length`) and two
+   on the episode (`black_frames`, `grade_damage`). The key is **absent** — never
+   an empty list — when no bar the check reads was moved, so an unauthored run is
+   byte-identical; a bar written at its own default is not reported (nothing
+   moved); and a check that reached no verdict (`passed is None`) is skipped, so a
+   row never claims a bar shaped a result that does not exist. On disk the key is
+   `checks[name]["authored"]`, because `CheckResult.to_dict` flattens the detail.
+   The artifact that says PASS also says the bar was moved, and why. This is the
+   load-bearing one: it puts the reason next to the verdict it bought.
 2. **The attestation.** `Attestation.gates`, a new list of
    `{field, value, default, scope, blocking, why}`. `spec_overrides` is left
    untouched and keeps answering its own question ("what differs from default,
@@ -381,15 +399,24 @@ already reports a verdict:
    `variety_min`"; §0.4 records that it cannot see that either, because it runs in
    phase 1.) A
    reel-scope gate appearing in both lists is correct: it is both.
-3. **`montage status`.** A `gates` row carrying `_constraints`' own three states
-   — absent, authored (with a count), or present-and-unreadable — found at the
-   same place by the same rule (`montage._constraints` reads
+3. **`montage status`.** A `gates` block, `{present, gates, error}`, carrying
+   `_constraints`' own three states — absent (`present: false`), authored (the rows
+   of `Gates.record()`: value, default, scope, blocking, why), or present-and-
+   unreadable (`present: true` with an `error`) — found at the same place by the
+   same rule (`montage._constraints` reads
    `run / "CONSTRAINTS.json"`, and the run dir is where `project.json` lives). A
    broken `GATES.json` must read as broken, never as "no gates": reporting
    "nothing moved the bars" when the truth is "nobody can tell" is the worse of
    the two lies, which is that function's own ruling (cheap-P2-chores design
    §3.1) applied unchanged. The load refusal is caught here and nowhere else —
-   `edl_to_reel` still refuses, loudly, with no waiver.
+   `edl_to_reel` still refuses, loudly, with no waiver. An unreadable file (a
+   directory, a permission) is caught with it. Once an `EPISODES.json` exists the
+   block gains `frozen`: `same`, `differs` or `unreadable` — whether the set phase 1b
+   froze into it is still what the file says (§6), absent when both sides are empty.
+   Each delivery row that `status`/`verify` report carries the attestation's `gates`
+   as well, because `overrides` there reads `[]` on every sanctioned run (§0.4) and a
+   status showing only it would say "no waivers" about a delivery whose sidecar
+   records authored bars with their reasons.
 
 ### §2.5 Advisory and blocking take the same shape
 
@@ -403,7 +430,8 @@ field→check map rather than typed a second time.
 
 ## §3 What does not change
 
-- No threshold's default value. Not one of the twelve moves. This slice builds the
+- No threshold's default value. Not one of the eleven moves (nor `loudness_target`'s, which
+  is no longer a gate but is still a default). This slice builds the
   surface; re-deriving a number on footage that does not exist yet is a different
   row, already filed, and blocked on that footage.
 - No check's logic, no escalation routing, no `_ADVISORY_CHECKS` membership.
@@ -415,13 +443,13 @@ field→check map rather than typed a second time.
 
 ## §4 The direction rejected
 
-**A CLI flag per threshold.** Twelve flags across four drivers, each forgettable,
+**A CLI flag per threshold.** Eleven flags across four drivers, each forgettable,
 and `edl_to_reel` is re-run — the whole retry story is re-running it — so a dropped
 flag silently reverts the bar. This is the exact defect `EDL.platform` shipped with
 (housekeeping design 2026-08-12) and the reason both existing convention files have
 no flag. Rejected on precedent the repo has already paid for.
 
-**Blocking thresholds not authorable at all** — advisory only, and the seven
+**Blocking thresholds not authorable at all** — advisory only, and the six
 blocking bars closed with "they stay where they are". This is the conservative
 reading of the repo's own no-waiver doctrine (`episode_qc`, `CONSTRAINTS.json`),
 and it is wrong here for the reason the row was promoted to P1: a bar calibrated on
@@ -443,7 +471,7 @@ authored value with a recorded reason, which is what makes it reviewable.
 - The same for a reel-scope field through `check_reel`, including across the
   `EPISODES.json` round trip into `build_reel`.
 - Each of the six §2.2 refusals fires, with the path in the message.
-- The derived vocabulary equals the twelve, machine-checked against the two
+- The derived vocabulary equals the eleven, machine-checked against the two
   dataclasses — so the test fails the day a thirteenth threshold lands without a
   decision about it.
 - With no `GATES.json`, the full suite is unchanged.
@@ -452,7 +480,7 @@ authored value with a recorded reason, which is what makes it reviewable.
 
 ## §6 Honest limits
 
-- **Authoring is not calibration.** This slice makes the twelve reachable. It does
+- **Authoring is not calibration.** This slice makes the eleven reachable. It does
   not make any of them right, and every one of them is still a first cut from one
   shoot. The rows that re-derive them on other footage stay open and stay blocked
   on footage that does not exist.
@@ -536,7 +564,7 @@ authored value with a recorded reason, which is what makes it reviewable.
   renumbers, so a waiver would silently migrate to a different shot. Filed, §7.
 - **The dataclasses now validate their own fields, and that is all refusal 6
   promises.** §2.2a closes the reachable holes: type, `bool`, finiteness and range
-  on all twelve. It does not make any of the twelve *right* — a `black_floor` of
+  on all eleven. It does not make any of the eleven *right* — a `black_floor` of
   200 is a finite number in range and would pass every check while failing every
   episode. The refusal catches a typo and a nonsense type. Judgement is the
   reason's job, and the reason is free text.
@@ -557,5 +585,5 @@ authored value with a recorded reason, which is what makes it reviewable.
   is why this is one row and not two. **P2** — a general tool that cannot deliver to
   broadcast loudness is a real limit, not a tidiness one.
 - Per-episode gates, once an episode identity survives a re-cut (§6). P3.
-- Re-deriving any of the twelve on a second shoot — the existing blocked
+- Re-deriving any of the eleven on a second shoot — the existing blocked
   calibration rows, unchanged by this slice. P4.

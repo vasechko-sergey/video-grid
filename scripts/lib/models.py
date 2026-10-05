@@ -1777,8 +1777,9 @@ class ReelManifest:
     def check_spec(self) -> ReelCheckSpec:
         # lazy import: gates imports models at module scope, because it derives FIELDS and
         # BLOCKING from ReelCheckSpec/CheckSpec at import time and so cannot defer its own
-        # import — which leaves this side as the only place a cycle can be broken. Not the
-        # heavy-optional-dependency exception coding-standards names.
+        # import — which leaves this side as the only place a cycle can be broken. This is the
+        # coding-standards 'import cycle whose other side cannot defer' exception, and not the
+        # heavy-optional-dependency one.
         from scripts.lib import gates as gates_lib
         authored = gates_lib.Gates.from_dict(self.gates, where="ReelManifest.gates")
         return ReelCheckSpec(self.target_dur, self.variety_min,
