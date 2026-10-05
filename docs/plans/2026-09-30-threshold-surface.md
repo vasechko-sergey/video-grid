@@ -1140,8 +1140,8 @@ Each row: apply the mutation, run the named selection, confirm RED, restore with
 | 21 | `CheckSpec.black_rel`'s new guard deleted | `models.py` | RED | `test_check_spec_refuses_a_black_rel_that_is_not_a_fraction` — and confirm the value then loads through `gates.Gates.from_dict`, which is what makes the row about refusal 6 rather than about a dataclass |
 | 22 | `math.isfinite` dropped from `ReelCheckSpec.loudness_tol` | `models.py` | RED | `test_no_reel_threshold_accepts_a_non_finite_number[inf-loudness_tol]` |
 | 23 | `isinstance(self.beat_tol, bool)` dropped | `models.py` | RED | `test_no_reel_threshold_accepts_a_bool[beat_tol]` |
-| 24 | the episode floor judged at `max(floor, 0.90)` — an authored LOOSENING clamped back to the default | `check_episode.py` | RED | **Added after Task 6's review, which found this survives everything.** Loosening is what a `GATES.json` is FOR, and no proof exercised that direction; tightening cannot distinguish "the value arrived" from "it was clamped". Needs the waiver proof Task 6's fix round adds |
-| 25 | the reel max judged at `min(max, 4.0)` — the same clamp, reel scope | `check_reel.py` | RED | same. Measured to survive the whole unit tier AND 72 neighbouring integration tests, which is the Task 4 "inert on the real path" shape one hop deeper |
+| 24 | the episode floor judged at `max(floor, 0.90)` **inside `gradedamage.evaluate`** — i.e. DOWNSTREAM of the report's own echo of `floor` | `gradedamage.py` | RED | **Added after Task 6's review, which found this survives everything.** Loosening is what a `GATES.json` is FOR, and no proof exercised that direction; tightening cannot distinguish "the value arrived" from "it was clamped". **Upstream vs downstream of the echo is the whole distinction**, and Task 6's implementer corrected me on it: a clamp at the CALL SITE dies on an existing test that reads `floor` off the report, because the echoed value moves with it. Only a clamp below the echo survives, and only the waiver proof kills it |
+| 25 | the reel max judged at `min(max, 4.0)` at the comparison itself, downstream of the echo | `check_reel.py` | RED | same. Measured to survive the whole unit tier AND 72 neighbouring integration tests, which is the Task 4 "inert on the real path" shape one hop deeper |
 | 26 | `rm.gates = {}` immediately before `build_reel` inside `assemble_reel` | `edl_to_reel.py` | RED | **Added after Task 6's review.** `assemble_reel` is the `--from-episodes` entry the router actually delivers through, and design §6's claim that phase 2 carries the frozen set was untested at any tier. Needs the phase-2 proof Task 6's fix round adds |
 | 27 | `rm.gates = {}` inside `_episodes_ready`, the writer both phase-1 arms end with | `edl_to_reel.py` | RED | same proof |
 
@@ -1218,6 +1218,13 @@ would otherwise leave every list — the deferral rule's own failure mode:
   It fails **closed** — `checks.length` and `check_reel`'s length gate both compute
   `abs(x - target) <= tol`, which is `False` for `nan` — so it is a gap, not a live
   defect. **P3, S.**
+- **The waiver direction is proven for two of the eleven bars, one per scope**
+  (`entropy_floor` and `grade_residual_max`). A clamp at another bar's own
+  comparison site — `black_floor`, `loudness_tol`, `length_retime_max` and the rest
+  — is not reached at the integration tier. This is a coverage statement, not a
+  defect: the mechanism is shared, and Task 6's two proofs are what established
+  that a clamp below the report's echo is invisible to everything else. A row so
+  the next reader knows which bars are actually exercised end to end. **P3, S.**
 - **Three untested threshold boundaries**, found as the only surviving mutants of
   a 79-row kill matrix over `models.py`'s guards: nothing constructs
   `loudness_tol == 0`, `clip_tol == 0`/`bar_symmetry_tol == 0` (their lower edge),
