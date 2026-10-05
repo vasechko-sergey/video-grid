@@ -1161,6 +1161,23 @@ cannot defer and why (the one in `check_spec` is the model).
 
 `grep` for text asserting that a threshold is unreachable, that `spec_overrides` can report only `variety_min`, or that `check_spec` takes two fields. **Also confirm one sentence that shipped one task early on purpose:** `check_episode --gates`'s help text says `edl_to_reel` finds the file itself, which Task 3 landed and Task 4 Step 3 makes true. Re-read it against what Task 4 actually built. Check at minimum: `docs/specs/2026-09-29-unenforced-rules-design.md` §0.6 (the row that promoted this), `scripts/lib/provenance.py:99`'s docstring, `scripts/lib/models.py`'s `check_spec`, and every skill page naming `CONSTRAINTS.json` or `REGIONS.json` as "the convention files" — there are now three. Correct each in place.
 
+**Four targets Task 5's review named, verified to still be stale:**
+
+- `docs/backlog.md:57` — the open P1 row still says "twelve of the eighteen" and
+  lists `loudness_target` among them. This row is the one Step 4 closes to the
+  archive, so correct the counts in the closure note rather than in place.
+- Design §2.4 item 1 describes `"authored": {value, default, why}`; what shipped
+  is a **list** of `{field, value, default, why}` rows, per the brief. It also names
+  five checks, while D1's derived-from-`OF_CHECK` map widened it to the advisory
+  peers and `length`. Correct the design in place — it is the source of truth.
+- **"No waiver anywhere" for `grade_damage` is now false** in three places:
+  `references/using-montage/episodes.md:26`, `skills/match-grade/SKILL.md:295` and
+  `:299`. There is now exactly one waiver and it requires a written reason; say
+  that, rather than deleting the sentence.
+- `references/edit-plan/grade-convergence.md` should document `probe.json`'s
+  `gates: "not-read"` key, which is the named absence a reader has to be able to
+  recognise.
+
 - [ ] **Step 3: Skills**
 
 `skills/process-episode/SKILL.md` (~line 71) documents the hand-driven CLI path;
