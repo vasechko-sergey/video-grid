@@ -94,7 +94,8 @@ _Last updated: 2026-10-12._
   closure entry in `backlog-closed.md` with the measured counts, and every Step 4b
   row and §7 deferral confirmed present in `backlog.md`. Archive hand re-count:
   **74 closure entries** (24 P1 + 44 P2 table rows + 6 P3 entries; 76 backlog rows,
-  because the luma-tone-transfer entry and this one each close two).
+  because the luma-tone-transfer entry and this one each close two) — 75 and 77 after the
+  final-review fix round below closed a P3 row.
 
   **The battery — 27 rows plus two, one process at a time** (Rule Zero: this laptop
   thermal-throttles, so no xdist, no concurrent runs, and no parallel mutation

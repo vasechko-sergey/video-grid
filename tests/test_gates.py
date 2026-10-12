@@ -123,6 +123,33 @@ def test_from_json_names_the_path_it_could_not_load(tmp_path):
     with pytest.raises(ValueError, match="delete the file") as e:
         gates.Gates.from_json(p)
     assert str(p) in str(e.value)
+    assert "is not valid JSON" in str(e.value)    # the syntax arm keeps its own wording
+
+
+def test_a_gates_file_that_is_not_utf8_is_refused_naming_the_path(tmp_path):
+    """read_text() raises UnicodeDecodeError on a Latin-1 save of a GATES.json whose `why`
+    holds an accented letter, which is a ValueError but not a JSONDecodeError. The loader caught
+    only the second, so the run died on a bare codec message that names no file (final review
+    M4; filed by Task 1's review)."""
+    p = tmp_path / "GATES.json"
+    p.write_bytes(b'{"entropy_floor": {"value": 0.85, "why": "caf\xe9 light"}}')
+    with pytest.raises(ValueError, match="delete the file") as e:
+        gates.Gates.from_json(p)
+    assert str(p) in str(e.value)
+    assert "utf-8" in str(e.value).lower()
+
+
+def test_an_integer_past_the_digit_limit_is_refused_naming_the_path(tmp_path):
+    """json.loads raises a bare ValueError ("Exceeds the limit (4300 digits)...") for a longer
+    integer, again not a JSONDecodeError. 400 digits was always clean (is_finite_number refuses
+    it and from_dict names the file); 4301 stopped the run naming nothing (final review M4;
+    filed by Task 2's review)."""
+    p = tmp_path / "GATES.json"
+    p.write_text('{"entropy_floor": {"value": ' + "9" * 4301 + ', "why": "x"}}')
+    with pytest.raises(ValueError, match="delete the file") as e:
+        gates.Gates.from_json(p)
+    assert str(p) in str(e.value)
+    assert "4300" in str(e.value)
 
 
 def test_a_loaded_gate_set_cannot_be_changed_after_it_was_loaded():

@@ -224,6 +224,15 @@ class Gates:
         except json.JSONDecodeError as e:
             raise ValueError(f"{p} is not valid JSON ({e}) — fix the syntax, or "
                              f"delete the file to run every threshold at default") from e
+        except ValueError as e:
+            # What is left is a ValueError that is not a syntax error, and each is a way a
+            # file the author never meant to break stops the run naming no path: read_text()
+            # raising UnicodeDecodeError on a file saved as Latin-1, and json.loads refusing an
+            # integer past Python's 4300-digit limit. (JSONDecodeError is a ValueError too,
+            # which is why it is caught first.)
+            raise ValueError(f"{p} could not be read as JSON ({e}) — save it as UTF-8 text "
+                             f"with ordinary numbers, or delete the file to run every "
+                             f"threshold at default") from e
         return cls.from_dict(d, where=str(p))
 
     def to_dict(self) -> dict:
