@@ -1,6 +1,6 @@
 # Threshold surface — an authoring surface must carry its threshold's blast radius
 
-**Status:** shipped 2026-10-05, version 0.15.0 (MINOR — new contract fields, a new CLI
+**Status:** shipped 2026-10-12, version 0.15.0 (MINOR — new contract fields, a new CLI
 flag, no breaking change). Designed 2026-09-30; §0.2a, §2.2a, §2.3 and §6 were written or
 rewritten during the slice as measurements overturned the plan, and should be read as the
 as-built record. Backlog P1 (promoted by the unenforced-rules slice, design 2026-09-29 §0.6), with
@@ -156,9 +156,12 @@ hand-edited `EPISODES.json`. And `spec_overrides` **cannot see even that**: it i
 called once, in phase 1's `_reel_manifest`, on the manifest phase 1 just built, so
 a hand-edit made between the phases is invisible to it (measured by Task 5:
 `check_spec.variety_min == 4` while `Attestation.overrides == []`). So on every
-run this conveyor has ever made, `Attestation.overrides` is the empty list, by
-construction rather than by coincidence. (Derived from the code path, not read off
-a delivered artifact.)
+run this conveyor made before this slice, `Attestation.overrides` was the empty
+list, by construction rather than by coincidence. (Derived from the code path, not
+read off a delivered artifact.) This slice changes that for the reel scope only:
+phase 1 now sets authored reel-scope bars on the manifest before `spec_overrides`
+runs, so they appear in `overrides` — still with no reason, and never an
+episode-scope bar (§2.4 item 2).
 
 Its docstring already promises more:
 
@@ -414,9 +417,14 @@ already reports a verdict:
    block gains `frozen`: `same`, `differs` or `unreadable` — whether the set phase 1b
    froze into it is still what the file says (§6), absent when both sides are empty.
    Each delivery row that `status`/`verify` report carries the attestation's `gates`
-   as well, because `overrides` there reads `[]` on every sanctioned run (§0.4) and a
-   status showing only it would say "no waivers" about a delivery whose sidecar
-   records authored bars with their reasons.
+   as well, because `overrides` there covers only reel-scope bars and carries no
+   reason: an authored episode-scope bar never appears in it at all. (It read `[]` on
+   every run before this slice, §0.4 — and an earlier draft of this sentence kept
+   saying so in the present tense, which the slice itself had made false: phase 1
+   sets the authored reel-scope bars on the manifest before `spec_overrides` runs,
+   so they DO appear in `overrides` now, which §2.4 item 2 already said.) A status
+   showing only `overrides` would say "no waivers" about a delivery whose sidecar
+   records an authored `entropy_floor` with its reason.
 
 ### §2.5 Advisory and blocking take the same shape
 
@@ -532,7 +540,11 @@ authored value with a recorded reason, which is what makes it reviewable.
   two renders are the *same* render, so the ratio is exactly **1.0** and no floor
   below 1 can refuse it. `grade_faithful` compares the delivered profile against
   what the episode's own declared chain predicts, and with nothing declared the
-  residual is exactly **0.0**, so no positive bar can refuse it either. Both are
+  residual measured exactly **0.0**, so no positive bar refused it either. The two
+  halves differ in strength: for `entropy_floor` it is arithmetic (the ratio is 1.0
+  and the floor is at most 1.0); for `grade_residual_max` it is one measurement on
+  one fixture, no test pins the zero, and a bar below about 1 luma unit could in
+  principle fire through encode rounding on other footage. Both are
   working as designed — they measure what a grade *did*, and nothing did anything —
   but an operator who authors `entropy_floor` on a reel with no tone pair has
   authored a no-op, and nothing says so.

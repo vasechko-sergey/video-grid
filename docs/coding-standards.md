@@ -40,7 +40,7 @@ _Last updated: 2026-07-09._
 ## Imports
 
 - **All imports at module top.** No imports inside functions.
-- **Sole exception: a heavy, optional third-party dependency**, lazy-loaded on
+- **First exception: a heavy, optional third-party dependency**, lazy-loaded on
   purpose so the module stays importable (and testable) without it. Today the
   sanctioned cases are `from ultralytics import YOLO` inside `scripts/track.py`
   and `scripts/intake.py` (ultralytics pulls in torch), `import librosa` inside

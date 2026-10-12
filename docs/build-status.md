@@ -138,9 +138,10 @@ _Last updated: 2026-10-12._
   which exist to measure rows 24–25's claim rather than trust it: a clamp upstream of
   the report's echo dies on the one existing test that reads the echoed value, and only
   a clamp BELOW the echo survives the unit tier — which is why Task 6's waiver proofs
-  exist. None came back GREEN, none was a documented non-discrimination, and no named
-  test turned out not to see its own mutation, so the plan's battery table needed no
-  pointer corrected. Rows 22–23 were written as hand-spelled variants of the guard
+  exist. None came back GREEN, none was a documented non-discrimination, and every
+  named test saw its own mutation. Four rows' mutation-SITE descriptions (10, 14, 22,
+  23) had already been corrected in the plan during the slice, and rows 1, 7 and 18
+  carry measured notes; no test pointer needed changing. Rows 22–23 were written as hand-spelled variants of the guard
   rather than as a mutation of `is_finite_number` itself, for Task 5's reason: mutating
   the one shared predicate would kill every per-field guard at once and mask which of
   them is independently deletable.

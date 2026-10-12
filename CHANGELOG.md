@@ -10,7 +10,7 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
-## 0.15.0 — 2026-10-05
+## 0.15.0 — 2026-10-12
 
 ### Check thresholds are authorable — and a moved bar must say why
 

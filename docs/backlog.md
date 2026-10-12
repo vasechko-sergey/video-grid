@@ -52,7 +52,7 @@ is still P3.
 
 ## P1 — next
 
-**P1 is empty.** The threshold surface was the only row; it closed 2026-10-05 by threshold-surface (0.15.0) — [the archive](backlog-closed.md) carries the closure note. Unlike an empty P0, an empty P1 is not the resting state (P1 is supposed to hold *next*) — it means nothing has been promoted since the last row closed. Read P2 below for what the queue actually continues with.
+**P1 is empty.** The threshold surface was the only row; it closed 2026-10-12 by threshold-surface (0.15.0) — [the archive](backlog-closed.md) carries the closure note. Unlike an empty P0, an empty P1 is not the resting state (P1 is supposed to hold *next*) — it means nothing has been promoted since the last row closed. Read P2 below for what the queue actually continues with.
 
 ## P2 — soon
 
@@ -462,7 +462,7 @@ places; the rest of this row stays open. The natural first instalment of the
 existing open row on `grade_damage`/`grade_faithful` naming the same shape
 of absence in different words (bound-reports, whole-branch review) ·
 this slice's near-miss looked like R2.4 (folded into the P1 row on
-2026-09-29, and closed with it by threshold-surface on 2026-10-05) but is a different
+2026-09-29, and closed with it by threshold-surface on 2026-10-12) but is a different
 mechanism — a RENDERED value (`max_speed`) with no manifest field at all, not a
 THRESHOLD widened by hand with no reason recorded — so R2.4 was not merged into
 this row and this row did not touch it (retry-record §6) ·

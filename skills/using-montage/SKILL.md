@@ -421,8 +421,9 @@ aspect (project-init's own "ask, don't guess").
   `REEL_v{n}.attest.json`'s `gates`, and in `montage status`/`verify`. Write an
   entry only when the user has said a bar is wrong for their footage, with *their*
   reason in `why`; never author one to clear a finding, and show every `gates` row at
-  CP3. The attestation's `overrides` is a different, narrower list (a diff of the
-  reel spec, no reason, computed once in phase 1) and reads `[]` on a sanctioned run,
-  so an empty one is not evidence that no bar moved — read `gates`. `episode-qc`
+  CP3. The attestation's `overrides` is a different, narrower list: it lists only
+  reel-scope bars that differ from default, with no reason, and no episode-scope one
+  (`entropy_floor`, `black_floor`, `black_rel`), so an empty one is not evidence that
+  no bar moved — read `gates`. `episode-qc`
   carries no override at all (§7) — not even a measured one, and `GATES.json` cannot
   reach it.

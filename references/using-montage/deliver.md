@@ -31,8 +31,10 @@ binds it. Every bar an author moved is written into `REEL_v{n}.attest.json`'s
 `gates` — field, value, default, scope, whether the bar can block, and the written
 reason — and `montage verify` shows them. Name each one beside the reel at
 Checkpoint 3: a moved blocking bar is a waiver, and this is where a human reads it.
-The sidecar's `overrides` is a different list (a diff of the reel spec, no reason,
-computed once in phase 1) and reads `[]` on a sanctioned run, so an empty
+The sidecar's `overrides` is a different, narrower list: it lists only the reel-scope bars that differ from their default (a
+diff of the `ReelCheckSpec`, computed once in phase 1, with no reason) and none of
+the episode-scope ones (`entropy_floor`, `black_floor`, `black_rel`); before 0.15.0
+it read `[]` on every run, because nothing could set a reel-scope bar. So an empty
 `overrides` is not evidence that no bar moved — read `gates`.
 
 **`episode-qc-reprocessed` is a stop, not a warning.** Phase 2 refuses to deliver when `build_reel`'s retry loop

@@ -295,9 +295,10 @@ def test_an_attestation_that_authored_no_gates_has_no_gates_key(tmp_path):
 
 def test_verify_delivery_surfaces_the_authored_gates_beside_overrides(tmp_path):
     """montage status reads deliveries[] from this function, and it is the one place a human
-    looks. `overrides` reads [] on EVERY sanctioned run (design §0.4: spec_overrides runs once, in
-    phase 1, and no producer sets variety_min), so a status that showed only `overrides` would say
-    "no waivers" about a delivery whose sidecar carries them — the silence §2.4 exists to end. The
+    looks. `overrides` covers only reel-scope bars, with no reason (design §2.4: spec_overrides
+    runs once, in phase 1, on the ReelCheckSpec), so an authored episode-scope bar never reaches
+    it, and a status that showed only `overrides` would say "no waivers" about a delivery whose
+    sidecar carries them — the silence §2.4 exists to end. The
     first sidecar below is that exact case: overrides empty, one authored gate. The second is its
     mirror, an override and no gate (what a hand-edited EPISODES.json can produce), so each list
     is pinned by a value its own default does not equal — a pass-through that dropped either one

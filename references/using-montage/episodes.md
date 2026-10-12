@@ -50,9 +50,10 @@ verdict it bought (`report.json`'s `checks.<name>.authored`), in the attestation
 `gates`, and in `montage status`'s `gates` block. **Never write an entry to get a
 red check past.** Write one only when the user has said a bar is wrong for their
 footage, and put the user's reason in `why` — a blocking finding is still routed to
-its stage's skill, exactly as above. Two of the six blocking bars (`entropy_floor`,
-`grade_residual_max`) cannot fire on a reel with no tone pair or colour block, so
-moving one there changes nothing; do not offer it as a fix for an ungraded reel.
+its stage's skill, exactly as above. On a reel with no tone pair or colour block,
+`entropy_floor` cannot fire at all and `grade_residual_max` measured a zero residual,
+so moving either there changes nothing in practice; do not offer it as a fix for an
+ungraded reel.
 
 **Built, not obvious:** the cap-3 **parallel** episode fan-out landed
 2026-07-18 — `edl_to_reel` processes episodes across a bounded thread pool
