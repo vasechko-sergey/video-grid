@@ -66,11 +66,13 @@ _Last updated: 2026-10-12._
 
   **Task 5 — the reason reaches the verdict, the attestation and the inspector**
   (`9c36c7f`, `58c40a5`, `b47bea5`). `checks[name]["authored"]`, `Attestation.gates`,
-  `montage status`/`verify`, `probe grade` (which had been predicting `grade_damage`
-  against the dataclass default). F1: `loudness_target` leaves the vocabulary, 17−5
+  `montage status`/`verify`; and `probe grade`, which now predicts `grade_damage` against
+  the authored floor (the value only: no `authored` row, no reason) where it had read the
+  dataclass default. F1: `loudness_target` leaves the vocabulary, 17−5
   becoming 17−6. F2: `spec_overrides` cannot see even `variety_min` — it runs once in
-  phase 1 — so `Attestation.overrides` has been `[]` on every delivery, by
-  construction. The task's own first battery reported 59/59 RED; honestly re-measured
+  phase 1 — so before 0.15.0 `Attestation.overrides` was `[]` on every delivery, by
+  construction; since then it lists the authored reel-scope bars, with no reason and never
+  an episode-scope one. The task's own first battery reported 59/59 RED; honestly re-measured
   against a pristine tree it was **60 of 66**, because one row mutated a shared
   helper's body and masked an independently deletable guard — hence Task 7's rule of
   mutating call sites as well as callees.

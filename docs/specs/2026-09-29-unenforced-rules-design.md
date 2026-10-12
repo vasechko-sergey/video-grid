@@ -244,7 +244,7 @@ opposite of the row's: not "widened silently" but "cannot be set at all". That
 is a contract slice of its own, and it is promoted to P1 rather than folded in
 here.
 
-> **Corrected 2026-10-05 by the slice this promoted**
+> **Corrected 2026-10-12 by the slice this promoted**
 > ([threshold-surface](2026-09-30-threshold-surface-design.md)); three statements
 > above are not true of the shipped tree. **Eleven** thresholds are authorable, not
 > twelve: `loudness_target` is the value `mix` renders to and not a bar, so a gate

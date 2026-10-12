@@ -445,7 +445,12 @@ field→check map rather than typed a second time.
 - No check's logic, no escalation routing, no `_ADVISORY_CHECKS` membership.
 - `SAFE_ZONES`, and every stage that reads `platform`.
 - `spec_overrides`, and every reading of `Attestation.overrides`.
-- With no `GATES.json` present, every artifact is byte-identical.
+- With no `GATES.json` present, every artifact is byte-identical — with one named
+  exception: `probe grade --geometry`'s `probe.json` gains
+  `gates: {"status": "not-read", "reason": ...}` when the project cannot be resolved
+  (§2.3). That is deliberate: a prediction made against the default floor because the
+  project could not be found must say so, and it is the one artifact whose content
+  depends on whether a lookup was *possible* rather than on whether a file existed.
 
 ---
 

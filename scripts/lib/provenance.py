@@ -228,10 +228,12 @@ def verify_delivery(reel_path: str | Path, *, rehash: bool = False) -> dict:
     _episode_qc_state).
 
     `overrides` and `gates` are both surfaced, and the second is not optional: `overrides` is
-    computed once, in phase 1, from a manifest whose only gateable inlet is a hand-edited
-    EPISODES.json, so it reads [] on every sanctioned run (design 2026-09-30 §0.4). A status that
-    showed only it would say "no waivers" about a delivery whose sidecar records authored bars
-    with their reasons — the silence §2.4 exists to end, at the one place a human looks."""
+    computed once, in phase 1, so it never sees a hand edit made between the phases; it lists
+    only the REEL-scope bars GATES.json authored (phase 1 sets them on the manifest before it
+    runs), carries no reason, and never an episode-scope bar (design 2026-09-30 §0.4, §2.4 item
+    2). Before 0.15.0 nothing could set a reel-scope bar, so it read [] on every run. A status
+    that showed only it would say "no waivers" about a delivery whose sidecar records authored
+    bars with their reasons — the silence §2.4 exists to end, at the one place a human looks."""
     p = Path(reel_path)
     out: dict = {"file": p.name, "state": "unattested", "overall": None, "overrides": [],
                  "gates": [], "engine_drift": False, "episode_qc": "unknown",

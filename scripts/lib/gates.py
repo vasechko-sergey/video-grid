@@ -1,10 +1,11 @@
 """Authored gate thresholds (design docs/specs/2026-09-30-threshold-surface-design.md).
 
-Eleven thresholds decide whether a reel or an episode ships, and until this module
-none of them was reachable from any authoring surface: no flag, no manifest field,
-no file. The only way to move a bar was to edit models.py — which is to say, to
-patch the engine. A tool whose bars move only by patching it is a tool for the one
-shoot its bars were measured on.
+Eleven thresholds set the bars a reel or an episode is judged against — six of them can
+stop a delivery and five only advise (BLOCKING below) — and until this module none of
+them was reachable from any authoring surface: no flag, no manifest field, no file.
+The only way to move a bar was to edit models.py — which is to say, to patch the engine.
+A tool whose bars move only by patching it is a tool for the one shoot its bars were
+measured on.
 
 What belongs here is a BAR: a number a check compares against, whose whole meaning is
 "how far is too far". A value the pipeline RENDERS TO is a set-point, not a bar —
