@@ -1091,3 +1091,22 @@ def test_the_attestation_is_handed_every_authored_gate_with_its_scope_and_reason
          "blocking": True, "why": "log profile"},
         {"field": "loudness_tol", "value": 2.0, "default": 1.0, "scope": "reel",
          "blocking": True, "why": "live room"}]
+
+
+def test_a_stale_gates_block_in_the_provenance_never_reaches_the_attestation(
+        monkeypatch, tmp_path):
+    """The comment at the call says the attestation's rows are DERIVED from the set that judged
+    the reel, never copied through provenance, which a hand-edited EPISODES.json can leave
+    disagreeing with `gates`. That held only when something was authored: with `gates` empty
+    the branch was skipped and a stale `gates` key already sitting in `provenance` survived
+    `dict(rm.provenance)` into the attestation, naming a bar no check was judged by (final
+    review M5). The control is the previous test: an authored set replaces whatever was there."""
+    stale = [{"field": "entropy_floor", "value": 0.1, "default": 0.9, "scope": "episode",
+              "blocking": True, "why": "left over from an earlier edit"}]
+    seen = {}
+    _wire(monkeypatch, [_pass()])
+    monkeypatch.setattr(build_reel.deliver, "deliver",
+                        lambda *a, **k: seen.update(k) or "out/REEL_v1.mp4")
+    build_reel.build_reel(dataclasses.replace(_rm(), provenance={"gates": stale}),
+                          str(tmp_path / "o"), str(tmp_path / "w"))
+    assert "gates" not in seen["run_provenance"]

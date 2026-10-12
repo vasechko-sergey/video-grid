@@ -207,6 +207,11 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
             # one it always was.
             if authored.gates:
                 prov["gates"] = authored.record()
+            else:
+                # Derived means derived in BOTH directions: a `gates` key a hand-edited
+                # EPISODES.json left in the provenance block would otherwise survive
+                # dict(rm.provenance) above and name a bar no check was judged by.
+                prov.pop("gates", None)
             out = deliver.deliver(master, REEL_H264, out_dir, rm.changelog, report,
                                   scratch_dir=work_dir,   # build/reel — never the deliveries bucket
                                   audio=audio, titles=titles, platform=rm.platform,
