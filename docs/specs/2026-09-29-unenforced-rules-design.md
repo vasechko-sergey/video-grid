@@ -255,8 +255,9 @@ here.
 > now the authoring surface for all eleven, every entry refused at load without a
 > written reason. Separately, `spec_overrides` could never have reported even
 > `variety_min` on a sanctioned run: it runs once, in phase 1, on the manifest phase
-> 1 just built, so `Attestation.overrides` has been `[]` on every delivery by
-> construction (§0.4). The measurements in this section describe the tree as it
+> 1 just built, so before 0.15.0 `Attestation.overrides` was `[]` on every delivery by
+> construction (§0.4) — and since then it lists only the authored reel-scope bars, with no
+> reason. The measurements in this section describe the tree as it
 > stood on 2026-09-29, and are left as measured.
 
 ---
