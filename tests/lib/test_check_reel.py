@@ -1114,3 +1114,51 @@ def test_chroma_spread_fails_through_the_real_run_but_never_fails_the_reel(monke
     assert rep.checks["chroma_spread"].passed is False
     assert rep.overall is True
     assert not any(f.check == "chroma_spread" for f in rep.fail_reasons)
+
+
+# --- 2026-09-30 threshold surface Task 5: the reason rides the verdict it bought ---
+# (design §2.4 item 1.) A bar an author moved is a waiver in numeric clothing, and a waiver whose
+# reason is not recorded is how color_delta_max went 12 -> 44 -> 56. The row has to sit in the
+# artifact that says PASS, and the artifact is the report ON DISK — the assertions below read the
+# file, because a row attached after rep.write() is in memory and nowhere a later reader looks.
+
+
+def _loudness_run(tmp_path, monkeypatch, spec, measured, **kw):
+    """Two episodes, a stem measured at `measured` LUFS, and run()'s own report path."""
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    monkeypatch.setattr(check_reel, "_loudnorm_measure", lambda audio: measured)
+    return check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], spec,
+                          str(tmp_path / "r.json"), audio="stem.aac", **kw)
+
+
+def test_an_authored_loudness_band_is_named_in_the_checks_own_detail(tmp_path, monkeypatch):
+    rep = _loudness_run(tmp_path, monkeypatch,
+                        ReelCheckSpec(target_dur=6.0, loudness_tol=2.0), -14.0,
+                        gate_reasons={"loudness_tol": "live room"})
+    row = {"field": "loudness_tol", "value": 2.0, "default": 1.0, "why": "live room"}
+    assert rep.checks["loudness"].detail["authored"] == [row]
+    on_disk = json.loads((tmp_path / "r.json").read_text())
+    assert on_disk["checks"]["loudness"]["authored"] == [row]
+
+
+def test_a_check_whose_bars_were_not_authored_carries_no_authored_key(tmp_path, monkeypatch):
+    """Both ways a check can have nothing to name, and neither writes `authored: []`: no set at
+    all, and a set that holds a reason for a bar sitting at its DEFAULT — legal, because the
+    loader refuses nothing about a value that equals the default, and not a bar that moved."""
+    for reasons in ({}, {"loudness_tol": "pinned at the default on purpose"}):
+        rep = _loudness_run(tmp_path, monkeypatch, ReelCheckSpec(target_dur=6.0), -14.0,
+                            gate_reasons=reasons)
+        assert all("authored" not in c.detail for c in rep.checks.values())
+
+
+def test_the_authored_record_rides_a_PASS_not_only_a_failure(tmp_path, monkeypatch):
+    # The whole point: a moved bar that let the reel through is exactly the case a later
+    # reader must be able to see. -10 LUFS is 4 off the target — a FAIL at the default band,
+    # which the control inside this test shows, and a pass only because the band was moved.
+    widened = ReelCheckSpec(target_dur=6.0, loudness_tol=6.0)
+    rep = _loudness_run(tmp_path, monkeypatch, widened, -10.0,
+                        gate_reasons={"loudness_tol": "live room"})
+    assert rep.checks["loudness"].passed is True
+    assert rep.checks["loudness"].detail["authored"][0]["value"] == 6.0
+    at_default = _loudness_run(tmp_path, monkeypatch, ReelCheckSpec(target_dur=6.0), -10.0)
+    assert at_default.checks["loudness"].passed is False

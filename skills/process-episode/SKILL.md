@@ -71,7 +71,7 @@ Run the orchestrator (never re-implement its loop in prose):
 "$VG" scripts.process_episode <manifest.json> --project-dir <scratch> [--project <project.json>]
 ```
 
-Pass `--project <project.json>` (written by project-init) so an episode manifest that omits `canvas`/`delivery` inherits them from the project.
+Pass `--project <project.json>` (written by project-init) so an episode manifest that omits `canvas`/`delivery` inherits them from the project. It also reads a `GATES.json` beside that file (if any) and judges the episode against the thresholds it moved, saying so on stderr — the same lookup `edl_to_reel` makes, so a hand-driven re-render is judged against the bar its siblings were — provided the file still matches what phase 1b froze: phase 2 and the delivery's attestation use the frozen set, not the live file, so check `montage status`'s `gates.frozen.state` first (`differs` means restore the file or re-run `--from-geometry`). With no `--project`, no gates are read and the episode is judged at the defaults, silently.
 
 ## Ask-before-start (§4.1)
 
@@ -128,13 +128,20 @@ Both hold → the episode is done. Either fails → `stop_and_report` with which
 
 **You may not disable, lower, or downgrade any quality gate.** A gate that
 blocks is routed back to its stage's skill (here: `stop_and_report` /
-`escalate`, upstream to the EDL), never loosened to pass. This is structural,
-not a courtesy — `check_episode`'s thresholds are not parameters this skill's
-invocation can reach. A reel-level check's threshold belongs to `edl_to_reel`
-(there is currently no CLI flag exposing one — the last, `--color-delta-max`,
-was retired with the check it bounded, 2026-08-29), and any hand-loosening of
-one is recorded in the delivery's attestation regardless — never something a
-per-episode worker reaches for to make a failing episode pass.
+`escalate`, upstream to the EDL), never loosened to pass. The thresholds move in
+exactly one place, and it is not this skill's: a `GATES.json` beside
+`project.json` — the operator's file, every entry carrying a written reason and
+refused at load without one — which `--project` makes this invocation read (above)
+so that a hand-driven re-render is judged against the bar its siblings were —
+provided the file still matches what phase 1b froze (check `montage status`'s
+`gates.frozen.state` first; on `differs`, re-run phase 1b rather than editing the file).
+That is a lookup and not a lever you hold: never write or edit one to make a failing
+episode pass. Any bar it moved is named beside the verdict, and in the delivery's
+attestation only when phase 1b froze it.
+A reel-level check's threshold belongs to `edl_to_reel`, which reads the same file;
+no CLI flag exposes one (the last, `--color-delta-max`, was retired with the check it
+bounded, 2026-08-29). A per-episode worker never reaches for either to make a failing
+episode pass.
 
 ## Red Flags
 

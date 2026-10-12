@@ -104,7 +104,15 @@ def spec_overrides(spec, *, exempt: tuple[str, ...] = ("target_dur",)) -> list[d
     day it lands, with no second place to remember to update. `exempt` must name
     every field the class has no default for (that is how the baseline instance is
     built) plus any field that is legitimately per-reel rather than a loosening —
-    target_dur is both."""
+    target_dur is both.
+
+    Its scope is narrower than "every loosened gate", and callers should not read it as
+    that. edl_to_reel calls it once, in phase 1, on `rm.check_spec` — a ReelCheckSpec — so
+    it sees the reel-scope thresholds a GATES.json authored and no episode-scope one
+    (`entropy_floor`, `black_floor`, `black_rel` live on CheckSpec), and a hand-edit made to
+    EPISODES.json after phase 1 is invisible to it. It carries no reason either. The record
+    of what an author moved and WHY, both scopes, is Attestation.gates (design 2026-09-30
+    §2.4 item 2); the two answer different questions and both stay."""
     base = type(spec)(**{n: getattr(spec, n) for n in exempt})
     return [{"field": f.name, "value": getattr(spec, f.name), "default": getattr(base, f.name)}
             for f in fields(spec)
@@ -120,7 +128,13 @@ def attest_path(reel_path: str | Path) -> Path:
 class Attestation:
     """A delivery's record: what was shipped, which gate it passed, on which engine,
     which EDL it came from, and every gate threshold loosened to let it through.
-    Written by deliver beside the encode; read by montage status/verify (design §6)."""
+    Written by deliver beside the encode; read by montage status/verify (design §6).
+
+    `overrides` and `gates` are two lists answering two questions and both stay: `overrides`
+    is what differs from the default WHATEVER the source (a diff of the effective spec, no
+    reason); `gates` is what a human AUTHORED in GATES.json — {field, value, default, scope,
+    blocking, why}, both scopes, each with the reason it was moved and whether the bar can
+    stop a delivery (design 2026-09-30 §2.4 item 2). A reel-scope gate appears in both."""
     reel: str
     reel_digest: str
     master_digest: str
@@ -137,14 +151,22 @@ class Attestation:
     # proof that the declared vignette/fade/titles reached the delivered pixels
     # (design 2026-08-15 §7). A "not-checked" row is a real outcome: the source could
     # not discriminate. An empty list means nothing was declared.
+    gates: list[dict] = field(default_factory=list)   # every threshold GATES.json moved
+    # (Gates.record() rows), or [] when none was. Absent from to_dict when empty, unlike
+    # look_checks: an empty list here would change the sidecar of every run that authored
+    # nothing, and a run that authored nothing must be byte-identical to one made before the
+    # field existed (design 2026-09-30 §3).
 
     def to_dict(self) -> dict:
-        return {"v": self.v, "reel": self.reel, "reel_digest": self.reel_digest,
-                "master_digest": self.master_digest, "report_digest": self.report_digest,
-                "overall": self.overall, "engine_at_start": dict(self.engine_at_start),
-                "engine_at_deliver": dict(self.engine_at_deliver), "edl": dict(self.edl),
-                "overrides": list(self.overrides), "episode_qc": dict(self.episode_qc),
-                "delivered_at": self.delivered_at, "look_checks": list(self.look_checks)}
+        d = {"v": self.v, "reel": self.reel, "reel_digest": self.reel_digest,
+             "master_digest": self.master_digest, "report_digest": self.report_digest,
+             "overall": self.overall, "engine_at_start": dict(self.engine_at_start),
+             "engine_at_deliver": dict(self.engine_at_deliver), "edl": dict(self.edl),
+             "overrides": list(self.overrides), "episode_qc": dict(self.episode_qc),
+             "delivered_at": self.delivered_at, "look_checks": list(self.look_checks)}
+        if self.gates:
+            d["gates"] = list(self.gates)
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "Attestation":
@@ -159,7 +181,7 @@ class Attestation:
                    edl=d.get("edl") or {}, overrides=d.get("overrides") or [],
                    episode_qc=d.get("episode_qc") or {},
                    delivered_at=d.get("delivered_at", ""), v=d.get("v", PROV_V),
-                   look_checks=d.get("look_checks") or [])
+                   look_checks=d.get("look_checks") or [], gates=d.get("gates") or [])
 
     def write(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))
@@ -203,10 +225,18 @@ def verify_delivery(reel_path: str | Path, *, rehash: bool = False) -> dict:
     is distinguishable from an unjudged one — "judged" / "stale" / "absent" / "unknown"
     (no sidecar at all, or one predating the field, both read as "unknown": there is no
     QC record to report either way; "stale" is judged, then re-rendered — see
-    _episode_qc_state)."""
+    _episode_qc_state).
+
+    `overrides` and `gates` are both surfaced, and the second is not optional: `overrides` is
+    computed once, in phase 1, so it never sees a hand edit made between the phases; it lists
+    only the REEL-scope bars GATES.json authored (phase 1 sets them on the manifest before it
+    runs), carries no reason, and never an episode-scope bar (design 2026-09-30 §0.4, §2.4 item
+    2). Before 0.15.0 nothing could set a reel-scope bar, so it read [] on every run. A status
+    that showed only it would say "no waivers" about a delivery whose sidecar records authored
+    bars with their reasons — the silence §2.4 exists to end, at the one place a human looks."""
     p = Path(reel_path)
     out: dict = {"file": p.name, "state": "unattested", "overall": None, "overrides": [],
-                 "engine_drift": False, "episode_qc": "unknown",
+                 "gates": [], "engine_drift": False, "episode_qc": "unknown",
                  "detail": ("no attestation sidecar — the look gate withheld it, the "
                             "delivery was interrupted after the encode, or this file "
                             "was not produced by deliver at all. The file itself is "
@@ -221,7 +251,7 @@ def verify_delivery(reel_path: str | Path, *, rehash: bool = False) -> dict:
         out["detail"] = f"attestation unreadable ({e})"
         return out
     a, b = att.engine_at_start, att.engine_at_deliver
-    out.update(overall=att.overall, overrides=list(att.overrides),
+    out.update(overall=att.overall, overrides=list(att.overrides), gates=list(att.gates),
                engine_drift=bool(a.get("sha") and b.get("sha") and a != b),
                episode_qc=_episode_qc_state(att), detail="")
     if not att.overall:

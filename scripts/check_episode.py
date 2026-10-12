@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image, ImageStat
 from scripts import reframe
 from scripts.lib import (checks as checks_mod, color, color_fidelity, ffbin,
-                         geometry, gradedamage, proc, regions)
+                         gates as gates_lib, geometry, gradedamage, proc, regions)
 from scripts.lib.models import CheckResult, CheckSpec, PathMeta, Report, route_from_json, CropPath, RoutePoint
 from scripts.lib.motion import classify, travel_direction
 
@@ -292,7 +292,8 @@ def _route_window(route: list[dict]) -> int:
 
 def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out: str,
         source: str | None = None,
-        plans: "tuple[reframe.RenderPlan, reframe.RenderPlan] | None" = None) -> Report:
+        plans: "tuple[reframe.RenderPlan, reframe.RenderPlan] | None" = None,
+        gate_reasons: dict[str, str] | None = None) -> Report:
     """The sidecar is read FIRST — it carries the provenance (`meta.pan`) that the
     rest of this function branches on, before anything asks for a route at all.
 
@@ -307,6 +308,12 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     changes nothing else; process_episode passes the reframe input segment as
     `source` and builds `plans` from the same manifest, which is what makes the
     check blocking in practice (design 2026-08-31 §3).
+
+    `gate_reasons` maps each threshold an author moved in GATES.json to why
+    (Gates.reasons()), and is what lets `black_frames` and `grade_damage` name the bar they
+    judged by: a moved bar that lets an episode through is a waiver, and the report that says
+    PASS must say so (design 2026-09-30 §2.4 item 1). It may hold the whole authored set —
+    only the episode-scope bars are named here — and None or empty adds nothing.
     """
     path = CropPath.from_json(path_path).xs
     path_obj = CropPath.from_json(path_path)   # extent_at_times needs the object, not just .xs
@@ -415,6 +422,10 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     checks["horizon"] = CheckResult("horizon", None, {"status": "not-implemented"})
     checks["head_power_point"] = CheckResult("head_power_point", None, {"status": "not-implemented"})
 
+    # After every check exists and BEFORE the report is built and written: a row added later
+    # would sit in memory and be absent from the artifact a reader opens (design §2.4 item 1).
+    gates_lib.name_authored(checks, spec, gate_reasons)
+
     report = Report(checks=checks, attempt=spec.attempt)
     report.write(out)
     return report
@@ -439,14 +450,23 @@ def build_parser() -> argparse.ArgumentParser:
                     help="the length this episode was cut to, seconds")
     ap.add_argument("--attempt", type=int, default=1,
                     help="which retry attempt this is, 1-based — recorded in the report")
+    ap.add_argument("--gates", default=None,
+                    help="GATES.json — authored thresholds with the reason each was "
+                         "moved (design 2026-09-30). A flag here and not a convention "
+                         "because the standalone judge has no project.json to look "
+                         "beside; a run through edl_to_reel finds the file itself")
     return ap
 
 
 def main() -> None:
     a = build_parser().parse_args()
+    # `is not None`, not truthiness: `--gates ""` is what an unset shell variable
+    # produces, and reading it as "no gates" would put every authored bar silently back
+    # at its default — the dropped-flag defect design 2026-09-30 §4 exists to avoid.
+    g = gates_lib.Gates.from_json(a.gates) if a.gates is not None else gates_lib.Gates()
     spec = CheckSpec(composition=a.composition, grid=a.grid, target_dur=a.target_dur,
-                     attempt=a.attempt)
-    run(a.clip, a.route, a.path, spec, a.out)
+                     attempt=a.attempt, **g.for_spec(CheckSpec))
+    run(a.clip, a.route, a.path, spec, a.out, gate_reasons=g.reasons())
 
 
 if __name__ == "__main__":

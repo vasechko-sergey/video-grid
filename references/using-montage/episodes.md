@@ -23,7 +23,8 @@ the remedy (`--stop-after-geometry` again, or restore the EDL). A
 surfaced verbatim — never fixed forward; route it to the culprit stage's
 skill. **One reason names a genuine colour defect and must be recognised
 by name: `grade-damage`** (`check_episode`'s `grade_damage`, blocking at
-an entropy-ratio floor of 0.90 with no waiver anywhere) names edit-plan's
+an entropy-ratio floor of 0.90 by default — the only thing that moves it is the
+operator's `GATES.json`, below, never you) names edit-plan's
 colour block as its culprit. Since 2026-09-02 this diagnosis is
 trustworthy rather than a trap: `grade_damage` renders the episode's own
 declared grade against an identity render of the SAME clip and fails only
@@ -34,6 +35,32 @@ So a `grade-damage` finding is not `match-grade`'s pair being
 misdiagnosed; it means the named colour knob really is too aggressive —
 soften it in the episode's colour block via **edit-plan**, the way any
 other mechanical finding is fixed.
+
+**`GATES.json` is the one waiver, and it is the operator's.** A `GATES.json`
+beside `<run>/project.json` — found by convention, no flag, read afresh by every
+phase-1 `edl_to_reel` run (this render step included) — moves a check threshold. Each entry is
+`{"value": …, "why": "…"}`; a missing or blank `why` is refused at load, as is an
+unknown name, so a bar never moves without a written reason (and a file that
+cannot be loaded stops the run with its own path — there is no fallback to
+defaults). This phase applies the episode-scope bars (`black_floor`, `black_rel`,
+`entropy_floor`) and freezes the whole set into `EPISODES.json` for phase 2: edit the
+file afterwards and nothing changes for phase 2 until `--from-geometry` runs
+again. **One path reads the live file anyway:** a hand-driven
+`process_episode --project` re-render (the edit-plan skill's grade-convergence
+page). If `montage status` shows `gates.frozen.state: differs`, re-run
+`--from-geometry` first so the new bar is frozen and attested — or that episode is judged
+against a bar the delivery's attestation does not record. The divergence is usually the
+operator's deliberate new waiver: revert the file only if they confirm it. A run that moves a bar says so on stderr, and the reason lands beside the
+verdict it bought (`report.json`'s `checks.<name>.authored`), in the attestation's
+`gates`, and in `montage status`'s `gates` block. **Never write an entry to get a
+red check past.** Write one only when the user has said a bar is wrong for their
+footage, and put the user's reason in `why` — a blocking finding is still routed to
+its stage's skill, exactly as above. On a reel with no tone pair or colour block,
+`entropy_floor` cannot fire at all (the graded and plain renders are the same render,
+so the ratio is exactly 1.0) and `grade_residual_max` read a zero residual on the one
+fixture it was measured on (nothing declared, so nothing predicted to differ), so
+moving either there changes nothing in practice; do not offer it as a fix for an
+ungraded reel.
 
 **Built, not obvious:** the cap-3 **parallel** episode fan-out landed
 2026-07-18 — `edl_to_reel` processes episodes across a bounded thread pool

@@ -23,6 +23,20 @@ in `draft.mp4` and in every check that ran before this point — Checkpoint
 3, right here, is the first place anyone actually sees it (design
 2026-08-13 §11.1).
 
+**Authored bars (`GATES.json`) are shown here, not decided here.** Phase 2 judges
+the reel by the set phase 1b froze into `EPISODES.json` and never re-reads
+`GATES.json`: that set is the record of which bars judged these clips, and
+re-reading it would let a bar move between the judging and the attestation that
+binds it. Every bar an author moved is written into `REEL_v{n}.attest.json`'s
+`gates` — field, value, default, scope, whether the bar can block, and the written
+reason — and `montage verify` shows them. Name each one beside the reel at
+Checkpoint 3: a moved blocking bar is a waiver, and this is where a human reads it.
+The sidecar's `overrides` is a different, narrower list: it lists only the reel-scope bars that differ from their default (a
+diff of the `ReelCheckSpec`, computed once in phase 1, with no reason) and none of
+the episode-scope ones (`entropy_floor`, `black_floor`, `black_rel`); before 0.15.0
+it read `[]` on every run, because nothing could set a reel-scope bar. So an empty
+`overrides` is not evidence that no bar moved — read `gates`.
+
 **`episode-qc-reprocessed` is a stop, not a warning.** Phase 2 refuses to deliver when `build_reel`'s retry loop
 re-rendered an episode AFTER episode-qc judged it (design 2026-08-18 §2):
 the reprocess overwrites the very `ep{i}.mp4` the verdict was stamped

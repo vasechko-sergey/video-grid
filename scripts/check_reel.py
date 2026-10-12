@@ -12,7 +12,8 @@ import imagehash
 from PIL import Image
 
 from scripts import color_measure
-from scripts.lib import color, ffbin, outro as outro_mod, proc, provenance, reel_final, safezones
+from scripts.lib import (color, ffbin, gates as gates_lib, outro as outro_mod, proc, provenance,
+                         reel_final, safezones)
 from scripts.lib.models import (CheckResult, CropPath, MusicSpec, PathMeta, ReelCheckSpec,
                                 ReelFailure, ReelReport, route_from_json)
 
@@ -425,7 +426,15 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
         tone_target: tuple[float, float, float] | None = None,
         tone_dsts: list | None = None,
         brief_len: float | None = None,
-        chroma: list | None = None) -> ReelReport:
+        chroma: list | None = None,
+        gate_reasons: dict[str, str] | None = None) -> ReelReport:
+    """Judge an assembled reel master against `spec` and write the ReelReport to `out_report`.
+
+    `gate_reasons` maps each threshold an author moved in GATES.json to why (Gates.reasons()),
+    and is what lets a check's detail name the bar it judged by: a moved bar that lets a reel
+    through is a waiver, and the report that says PASS must say so (design 2026-09-30 §2.4
+    item 1). It may hold the whole authored set — only the reel-scope bars are named here. None
+    or empty adds nothing, and a run that authored nothing writes the report it always did."""
     t0 = time.monotonic()
     durations = [_probe_dur(e) for e in episodes]
     total = _probe_dur(master)
@@ -585,6 +594,10 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
 
     for name, reason in _UNCHECKED.items():
         checks.setdefault(name, CheckResult(name, None, {"status": "not-checked", "reason": reason}))
+
+    # After every check exists and BEFORE the report is built and written: a row added later
+    # would sit in memory and be absent from the artifact a reader opens (design §2.4 item 1).
+    gates_lib.name_authored(checks, spec, gate_reasons)
 
     rep = ReelReport(checks=checks, fail_reasons=fails, episode_count=len(episodes),
                      wall_s=round(time.monotonic() - t0, 3),

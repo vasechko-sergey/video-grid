@@ -234,8 +234,8 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     producer, which always stamps), a mismatched one means the master was re-made after
     the check or assembled outside the pipeline. `run_provenance` carries what only the
     driver knows (the run's start stamp, the EDL's digest and state, the loosened
-    thresholds, the episode QC state) into the `REEL_v{n}.attest.json` sidecar this
-    writes.
+    thresholds, the authored gates with their reasons, the episode QC state) into the
+    `REEL_v{n}.attest.json` sidecar this writes.
 
     The encode lands on `.REEL_v{n}.part.{container}` and is os.replace()d onto its
     delivered name (design 2026-09-09 §5). Until that rename no file in the deliveries
@@ -362,6 +362,7 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
         engine_at_start=rp.get("engine_at_start") or {},
         engine_at_deliver=provenance.engine_stamp(),
         edl=rp.get("edl") or {}, overrides=rp.get("overrides") or [],
+        gates=rp.get("gates") or [],
         episode_qc=rp.get("episode_qc") or {},
         look_checks=[f.to_dict() for f in look_checks],
         delivered_at=datetime.now().isoformat(timespec="seconds"),

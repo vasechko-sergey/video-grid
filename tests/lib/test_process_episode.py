@@ -71,7 +71,11 @@ def _stub_mechanical_pass(monkeypatch, route):
     Returns a `calls` dict recording the `src` reframe.reframe received and the
     `source` check_episode.run received — a caller asserting `prepared_source`
     threading needs to see both land on the SAME pixels: reframe encodes them
-    and check_episode judges them, two independent readers of the same claim."""
+    and check_episode judges them, two independent readers of the same claim.
+    It also records the `CheckSpec` the check was handed (`calls["check_spec"]`):
+    the bars a run was judged against are the one thing a gates test has to see — and
+    the reasons it was handed beside them (`calls["check_gate_reasons"]`, None when the
+    kwarg was not passed at all: a run that authored nothing keeps its call shape)."""
     calls = {}
 
     def fake_reframe(spec, src, route_path, out, path_out, stabilized=False):
@@ -90,9 +94,12 @@ def _stub_mechanical_pass(monkeypatch, route):
         return out, None
     monkeypatch.setattr(process_episode.storyboard, "build", fake_storyboard_build)
 
-    def fake_run(clip, route_path, path_path, spec, out, source=None, plans=None):
+    def fake_run(clip, route_path, path_path, spec, out, source=None, plans=None,
+                 gate_reasons=None):
         calls["check_source"] = source
         calls["check_plans"] = plans
+        calls["check_spec"] = spec
+        calls["check_gate_reasons"] = gate_reasons
         r = models.Report(checks={}, attempt=spec.attempt)
         r.write(out)
         return r
@@ -281,3 +288,253 @@ def test_plan_ungraded_threads_params_through_to_the_spec(tmp_path, monkeypatch)
     process_episode.plan_ungraded(_episode_manifest(tmp_path), "src.mp4", None,
                                   params={"max_speed": 450.0, "smooth_window_s": 0.5})
     assert (seen["spec"].max_speed, seen["spec"].smooth_window_s) == (450.0, 0.5)
+
+
+# --- 2026-09-30 threshold surface Task 3: authored gates reach the CheckSpec ---
+# (design 2026-09-30 §2.3.) `gates` is a parameter on purpose — a run policy the operator
+# authors in GATES.json — and never a Manifest field, which is something an agent writes
+# into an EDL.
+
+def _frozen_episode(tmp_path: Path,
+                    monkeypatch: pytest.MonkeyPatch) -> tuple[dict, str, dict]:
+    """A manifest, a frozen route for it, and the faked engine: everything a run needs to
+    reach the check loop with no tracker and no ffmpeg. Returns (md, route, calls);
+    `calls["check_spec"]` is the CheckSpec the check was handed."""
+    route_data = [dict(t=i / 30, x=300 + i * 90, y=500, w=140, h=320) for i in range(10)]
+    route = tmp_path / "frozen_route.json"
+    route.write_text(json.dumps(route_data))
+    route.with_suffix(".meta.json").write_text(json.dumps({"ambiguous": False}))
+    calls = _stub_mechanical_pass(monkeypatch, route_data)
+    return _episode_manifest(tmp_path), str(route), calls
+
+
+def _checked_spec(md: dict, attempt: int = 1, **over: float) -> models.CheckSpec:
+    """The CheckSpec the run of `md` builds for `attempt`, with `over` authored on top."""
+    return models.CheckSpec(composition=md["composition"], grid=md["grid"],
+                            target_dur=md["target_dur"], attempt=attempt, **over)
+
+
+def test_an_authored_entropy_floor_reaches_the_check_spec(tmp_path, monkeypatch):
+    """Whole object: the authored bar moved AND every bar the author did not touch is
+    still its default."""
+    md, route, calls = _frozen_episode(tmp_path, monkeypatch)
+    res = process_episode.process_episode(
+        md, tmp_path / "ep0", route_path=route,
+        gates={"entropy_floor": {"value": 0.85, "why": "log profile"}})
+    assert res["status"] == "mechanical_pass"
+    assert calls["check_spec"] == _checked_spec(md, entropy_floor=0.85)
+
+
+@pytest.mark.parametrize("nothing", [None, {}], ids=["None", "empty-set"])
+def test_no_gates_leaves_every_check_spec_field_at_its_default(tmp_path, monkeypatch, nothing):
+    """The control: the plumbing injects nothing when nothing was authored. Both spellings
+    of "nothing" are real — build_reel's reprocess hands over None for an empty episode
+    subset, and ReelManifest.gates is {} when unauthored (leaving the parameter out is the
+    call every pre-existing test makes). What the defaults ARE is pinned by
+    tests/lib/test_models.py, so a recalibrated default fails there and this test fails
+    only if the plumbing itself puts something in."""
+    md, route, calls = _frozen_episode(tmp_path, monkeypatch)
+    res = process_episode.process_episode(md, tmp_path / "ep0", route_path=route,
+                                          gates=nothing)
+    assert res["status"] == "mechanical_pass"
+    assert calls["check_spec"] == _checked_spec(md)
+
+
+def test_a_reel_scope_gate_handed_to_process_episode_is_ignored_not_crashed(
+        tmp_path, monkeypatch):
+    """for_spec partitions, so a caller handing over the WHOLE authored set is the normal
+    case (edl_to_reel and build_reel both do). A reel-scope key must reach no CheckSpec
+    and must not raise."""
+    md, route, calls = _frozen_episode(tmp_path, monkeypatch)
+    res = process_episode.process_episode(
+        md, tmp_path / "ep0", route_path=route,
+        gates={"beat_tol": {"value": 0.08, "why": "no click track"}})
+    assert res["status"] == "mechanical_pass"
+    assert calls["check_spec"] == _checked_spec(md)
+
+
+@pytest.mark.parametrize("stop_after", [None, "geometry"], ids=["full-run", "geometry-run"])
+def test_a_malformed_gate_set_is_refused_before_any_encode(tmp_path, monkeypatch, stop_after):
+    """The set is parsed once at the very top of the run, not where the CheckSpec is built —
+    that sits inside the retry loop, after tracking and an encode. Nothing ran: no reframe,
+    no check, and not even the scratch directory. A geometry run never builds a CheckSpec at
+    all, so only a parse placed before its seam refuses it there. A parse moved below the
+    mkdir, below tracking, below the geometry return or into the loop body is refused too
+    late, and fails here."""
+    md, route, calls = _frozen_episode(tmp_path, monkeypatch)
+    with pytest.raises(ValueError,
+                       match=r"^the gates passed to process_episode entry 'entropy_floor'"):
+        process_episode.process_episode(md, tmp_path / "ep0", route_path=route,
+                                        stop_after=stop_after,
+                                        gates={"entropy_floor": 0.85})      # no reason
+    assert calls == {}
+    assert not (tmp_path / "ep0").exists()
+
+
+def test_the_authored_bar_rides_every_retry_attempt_not_only_the_first(tmp_path, monkeypatch):
+    """Design §2.3 exists because a bar that silently differs between attempts, or between
+    siblings, is the defect. A lone failing jitter on attempt 1 is retried, and the CheckSpec
+    the second attempt is judged against must carry the authored value as well."""
+    md, route, _ = _frozen_episode(tmp_path, monkeypatch)
+    passing_run = process_episode.check_episode.run      # the faked check _frozen_episode installed
+    specs = []
+
+    def fail_once(clip, route_path, path_path, spec, out, source=None, plans=None,
+                  gate_reasons=None):
+        specs.append(spec)
+        if len(specs) > 1:
+            return passing_run(clip, route_path, path_path, spec, out,
+                               source=source, plans=plans, gate_reasons=gate_reasons)
+        report = models.Report(checks={"jitter": models.CheckResult("jitter", False, {})},
+                               attempt=spec.attempt)
+        report.write(out)
+        return report
+    monkeypatch.setattr(process_episode.check_episode, "run", fail_once)
+
+    res = process_episode.process_episode(
+        md, tmp_path / "ep0", route_path=route,
+        gates={"entropy_floor": {"value": 0.85, "why": "log profile"}})
+
+    assert res["status"] == "mechanical_pass" and res["attempt"] == 2
+    assert specs == [_checked_spec(md, attempt=1, entropy_floor=0.85),
+                     _checked_spec(md, attempt=2, entropy_floor=0.85)]
+
+
+def test_the_reasons_reach_the_check_that_names_the_bars_it_judged_by(tmp_path, monkeypatch):
+    """check_episode can only name a moved bar if it is handed the reason, and this is the call
+    that hands it (design 2026-09-30 §2.4 item 1). The WHOLE authored set goes through, both
+    scopes — the same rule as the gates themselves: the callee partitions and no caller does.
+    The control is inside the test, so the instrument has just been shown able to see the
+    kwarg before it is trusted to report its absence: a run that authored nothing is handed
+    none, and keeps the call shape it had before gates existed."""
+    md, route, calls = _frozen_episode(tmp_path, monkeypatch)
+    process_episode.process_episode(
+        md, tmp_path / "ep0", route_path=route,
+        gates={"entropy_floor": {"value": 0.85, "why": "log profile"},
+               "beat_tol": {"value": 0.08, "why": "no click track"}})
+    assert calls["check_gate_reasons"] == {"entropy_floor": "log profile",
+                                           "beat_tol": "no click track"}
+    process_episode.process_episode(md, tmp_path / "ep1", route_path=route)
+    assert calls["check_gate_reasons"] is None
+
+
+def test_a_falsy_wrong_typed_gate_set_is_refused_not_read_as_no_gates(tmp_path, monkeypatch):
+    """Only None means "no gates". `[]`, false, 0, "" and 0.0 are as wrong-typed as `[1]`,
+    and `gates or {}` reads all five as absent — every authored bar silently back at its
+    default, the defect ReelManifest.from_dict's own gates key already refuses. One test,
+    not five: each value takes the same branch, so the loop names which were accepted."""
+    md, route, calls = _frozen_episode(tmp_path, monkeypatch)
+    accepted = []
+    for bad in ([], False, 0, "", 0.0):
+        try:
+            process_episode.process_episode(md, tmp_path / "ep0", route_path=route, gates=bad)
+        except ValueError as e:
+            assert str(e).startswith("the gates passed to process_episode must be an object")
+        else:
+            accepted.append(bad)
+    assert not accepted, f"process_episode read {accepted!r} as no gates"
+
+
+def test_an_episode_manifest_cannot_carry_gates(tmp_path):
+    """A gate is a run policy the operator authors, not a value an agent can write into an
+    EDL, so `gates` is a parameter of process_episode and NOT a Manifest field. That holds
+    today by omission and nothing else says so: adding the field would be a tidy-looking
+    simplification that hands every EDL author the operator's pen."""
+    md = _episode_manifest(tmp_path, gates={"entropy_floor": {"value": 0.85, "why": "x"}})
+    res = process_episode.process_episode(md, tmp_path / "ep0")
+    assert res["status"] == "needs_input"
+    assert "unknown field(s) ['gates']" in res["problems"][0]
+
+
+# --- threshold-surface Task 4, Step 3b: the hand-driven CLI finds GATES.json too ---
+# (design 2026-09-30 §2.3.) skills/process-episode/SKILL.md documents this CLI as the way to
+# drive ONE episode by hand. A re-render that judged against defaults while edl_to_reel
+# judged its siblings against the authored bar would be the silent different-bar defect the
+# build_reel reprocess arm exists to close, reached by the other door.
+
+CLI_GATES_DOC = {"entropy_floor": {"value": 0.85, "why": "log profile"},
+                 "loudness_tol": {"value": 2.0, "why": "live room"}}    # both scopes: the whole
+                                                                        # document goes through
+
+
+def _drive_main(monkeypatch, tmp_path, *argv):
+    """Run process_episode.main() over `argv` with the episode run itself faked, and return the
+    keyword arguments it was handed. What is under test is which gates the CLI found and passed;
+    the run itself needs no files."""
+    seen = {}
+
+    def fake(md, project_dir, **kw):
+        seen.update(kw)
+        return {"status": "mechanical_pass"}
+    monkeypatch.setattr(process_episode, "process_episode", fake)
+    manifest = tmp_path / "episode.json"
+    manifest.write_text("{}")
+    monkeypatch.setattr("sys.argv", ["process_episode", str(manifest),
+                                     "--project-dir", str(tmp_path / "scratch"), *argv])
+    with pytest.raises(SystemExit) as e:
+        process_episode.main()
+    assert e.value.code == 0
+    return seen
+
+
+def test_the_cli_finds_gates_json_beside_the_project_it_was_given(
+        tmp_path, monkeypatch, capsys):
+    """Beside `--project`, found by convention exactly as edl_to_reel finds it. The manifest
+    and the scratch dir sit elsewhere, so a lookup beside either of THEM finds nothing.
+
+    And it SAYS so, as edl_to_reel does (count, which bars, which project.json): `--project`
+    is optional on this CLI, so a GATES.json that was not picked up — no flag, or the wrong
+    one — reads as silence and judges against the defaults. The document goes through whole,
+    both scopes, because process_episode partitions where a spec is built."""
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "GATES.json").write_text(json.dumps(CLI_GATES_DOC))
+    seen = _drive_main(monkeypatch, tmp_path, "--project", str(run / "project.json"))
+    assert seen["gates"] == CLI_GATES_DOC
+    err = capsys.readouterr().err
+    assert "2 authored threshold(s) (entropy_floor, loudness_tol)" in err
+    assert str(run / "project.json") in err
+
+
+def test_the_cli_hands_its_keyframes_file_on(tmp_path, monkeypatch):
+    """`--keyframes` is the manual tracking rung's answer channel (tracking-ladder design), and
+    the call that forwards it is the one this slice added `gates=` to. The Task 7 AST sweep
+    dropped the forward and the whole unit tier stayed green: the flag was parsed and ignored."""
+    kf = tmp_path / "keyframes.json"
+    seen = _drive_main(monkeypatch, tmp_path, "--keyframes", str(kf))
+    assert seen["keyframes_path"] == str(kf)
+
+
+def test_the_cli_hands_no_gates_when_no_file_sits_beside_the_project(
+        tmp_path, monkeypatch, capsys):
+    """The common case — every run that authored no gates — and the one a lookup written
+    without an existence check would break. A guard, and green before the lookup existed,
+    because nothing read a file then either. It says nothing either: an announcement printed
+    for an empty set would be noise on every run."""
+    run = tmp_path / "run"
+    run.mkdir()
+    seen = _drive_main(monkeypatch, tmp_path, "--project", str(run / "project.json"))
+    assert not seen.get("gates")           # None and {} both mean "no gates in force"
+    assert "authored threshold" not in capsys.readouterr().err
+
+
+def test_the_cli_without_a_project_never_goes_looking_for_a_gates_file(
+        tmp_path, monkeypatch, capsys):
+    """No --project means no project.json to look beside, and a guess from the working
+    directory would be a second, silent way to move a bar. A GATES.json in exactly the place a
+    guess would try — the cwd, which is also beside episode.json — changes nothing. A guard,
+    and green before the lookup existed, because nothing looked anywhere then either."""
+    (tmp_path / "GATES.json").write_text(json.dumps(CLI_GATES_DOC))
+    monkeypatch.chdir(tmp_path)
+    assert not _drive_main(monkeypatch, tmp_path).get("gates")
+    assert "authored threshold" not in capsys.readouterr().err
+
+
+def test_the_cli_refuses_a_broken_gates_file_beside_the_project_and_names_it(
+        tmp_path, monkeypatch):
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "GATES.json").write_text(json.dumps({"entropy_floor": 0.85}))     # no reason
+    with pytest.raises(ValueError) as e:
+        _drive_main(monkeypatch, tmp_path, "--project", str(run / "project.json"))
+    assert str(run / "GATES.json") in str(e.value)

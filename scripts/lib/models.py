@@ -28,7 +28,11 @@ def is_bbox_coord(v: object) -> bool:
     __post_init__ and hero.resolve(), which must agree because resolve() coerces with
     float() before handing over and would otherwise launder past HeroPin's guard.
 
-    Three silent landmines, one per term:
+    The predicate is is_finite_number's, which a threshold guard needs for exactly the same
+    reasons. This name says what the two readers here mean by it, and sharing one body is
+    what keeps the two spellings from drifting.
+
+    Three silent landmines, one per term of that body:
       - isinstance(True, int) is True, so a bare int test lets `hero: [true, ...]`
         become coordinate 1.0.
       - json.loads accepts bare Infinity/-Infinity/NaN and float() passes them
@@ -43,8 +47,37 @@ def is_bbox_coord(v: object) -> bool:
     converts its argument to a double first, so it raises the very OverflowError it
     is meant to catch on the 400-digit int (verified — it closes Infinity/NaN and
     nothing else). int-vs-float comparison is exact and cannot overflow, and NaN
-    fails it too, so one term covers both halves. Order matters: the isinstance terms
-    must short-circuit first, or abs() lands on a str.
+    fails it too, so one term covers both halves. Order matters in that body: the
+    isinstance terms must short-circuit first, or abs() lands on a str.
+    """
+    return is_finite_number(v)
+
+
+def is_finite_number(v: object) -> bool:
+    """May `v` be a threshold — a real, finite int or float, and not a bool?
+
+    Total over anything a JSON file can produce and over the standard and numpy numeric
+    types: it answers and does not raise, which the spec guards below rely on. An int or
+    float SUBCLASS with a hostile __abs__ can raise from inside it (a hostile __le__ alone
+    cannot: abs() hands the comparison an exact int or float). None can come from JSON and
+    no caller here builds one, so the claim is scoped to what can arrive rather than the
+    predicate widened to catch it.
+
+    is_bbox_coord delegates here, so there is one spelling and the two cannot drift; its
+    docstring has the derivation of the same three landmines from the hero-pin side. Here
+    they were measured against the spec classes' own guards the day those values became
+    authorable (design 2026-09-30 §2.2a):
+      - isinstance(True, int) is True, so five guards passed `True` as 1.
+      - every comparison with nan is False, so a `... or v <= 0` guard passes nan and the
+        raise it exists for never fires, and inf clears any lower bound. Seven fields let
+        both through (loudness_target had no comparison to fail at all).
+      - math.isfinite(v) raises OverflowError on an int past float range instead of
+        answering, and Gates.from_dict wraps only ValueError, so a 400-digit integer in
+        a GATES.json would leak an exception naming no file. The magnitude comparison is
+        exact for an int of any size.
+    A huge int is REFUSED, not admitted as "finite": build_reel formats
+    length_retime_max with `:.2f`, which overflows on it too, so admitting it would move
+    the crash from load time to the middle of a reel loop.
     """
     return (isinstance(v, (int, float)) and not isinstance(v, bool)
             and abs(v) <= sys.float_info.max)
@@ -1015,6 +1048,17 @@ class CheckSpec:
             raise ValueError(f"CheckSpec.grid {self.grid!r} not in {GRIDS}")
         if not isinstance(self.target_dur, (int, float)) or self.target_dur <= 0:
             raise ValueError(f"CheckSpec.target_dur must be a positive number, got {self.target_dur!r}")
+        # A luma code, so 0-255; a fraction of the clip's own body median, so 0-1. Both were
+        # unguarded until they became authorable (design 2026-09-30 §2.2a): a negative
+        # black_floor switched the whole check off in silence (no luma is below it), and a
+        # string died in a bare TypeError inside check_episode with no file named.
+        if not is_finite_number(self.black_floor) or not 0.0 <= self.black_floor <= 255.0:
+            raise ValueError(f"CheckSpec.black_floor must be a finite luma code in "
+                             f"[0, 255], got {self.black_floor!r}")
+        if not is_finite_number(self.black_rel) or not 0.0 <= self.black_rel <= 1.0:
+            raise ValueError(f"CheckSpec.black_rel must be a finite fraction of the "
+                             f"clip's own body median in [0.0, 1.0], got "
+                             f"{self.black_rel!r}")
         if (isinstance(self.entropy_floor, bool)
                 or not isinstance(self.entropy_floor, (int, float))
                 or not 0 < self.entropy_floor <= 1.0):
@@ -1117,7 +1161,8 @@ class ReelCheckSpec:
     target_dur: float
     variety_min: int = 8               # min phash Hamming distance between adjacent episodes
     beat_tol: float = 0.05             # advisory: max cut-vs-beat deviation (s) that still reads "on beat"
-    loudness_target: float = -14.0     # EBU R128 integrated LUFS target (montage §5.12)
+    loudness_target: float = -14.0     # LUFS the stem is RENDERED to (= mix._TARGET_LUFS): a set-point
+                                       # check_reel confirms, not a bar; GATES.json refuses it (2026-09-30 §0.2a)
     loudness_tol: float = 1.0          # ± band around the target
     clip_tol: float = 0.02             # advisory: frame-edge overshoot fraction tolerated before key_action flags
     bar_symmetry_tol: float = 0.02     # advisory: max left/right (top/bottom) pad-bar mismatch (canvas fraction)
@@ -1149,31 +1194,32 @@ class ReelCheckSpec:
             raise ValueError(f"ReelCheckSpec.target_dur must be a positive number, got {self.target_dur!r}")
         if isinstance(self.variety_min, bool) or not isinstance(self.variety_min, int) or self.variety_min < 0:
             raise ValueError(f"ReelCheckSpec.variety_min must be a non-negative int, got {self.variety_min!r}")
-        if not isinstance(self.beat_tol, (int, float)) or self.beat_tol <= 0:
-            raise ValueError(f"ReelCheckSpec.beat_tol must be a positive number of seconds, got {self.beat_tol!r}")
-        if not isinstance(self.loudness_target, (int, float)):
-            raise ValueError(f"ReelCheckSpec.loudness_target must be a number (LUFS), got {self.loudness_target!r}")
-        if not isinstance(self.loudness_tol, (int, float)) or self.loudness_tol <= 0:
-            raise ValueError(f"ReelCheckSpec.loudness_tol must be a positive number, got {self.loudness_tol!r}")
+        # Every numeric bar below opens with is_finite_number rather than a bare isinstance.
+        # Until the bars became authorable (design 2026-09-30 §2.2a) all seven let nan and
+        # inf through, and five of them (all but grade_residual_max and chroma_spread_max)
+        # also passed True as 1. clip_tol and bar_symmetry_tol are range-checked from both
+        # sides, which refuses all of that already, so they are left as they were.
+        if not is_finite_number(self.beat_tol) or self.beat_tol <= 0:
+            raise ValueError(f"ReelCheckSpec.beat_tol must be a finite positive number of seconds, got {self.beat_tol!r}")
+        if not is_finite_number(self.loudness_target):
+            raise ValueError(f"ReelCheckSpec.loudness_target must be a finite number (LUFS), got {self.loudness_target!r}")
+        if not is_finite_number(self.loudness_tol) or self.loudness_tol <= 0:
+            raise ValueError(f"ReelCheckSpec.loudness_tol must be a finite positive number, got {self.loudness_tol!r}")
         for name in ("clip_tol", "bar_symmetry_tol"):
             v = getattr(self, name)
             if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0.0 <= v < 0.5:
                 raise ValueError(f"ReelCheckSpec.{name} must be a fraction in [0.0, 0.5), got {v!r}")
-        if not isinstance(self.layout_jump_max, (int, float)) or self.layout_jump_max <= 0:
-            raise ValueError(f"ReelCheckSpec.layout_jump_max must be a positive number, got {self.layout_jump_max!r}")
-        if not isinstance(self.length_retime_max, (int, float)) or self.length_retime_max <= 0:
-            raise ValueError(f"ReelCheckSpec.length_retime_max must be a positive number of "
-                             f"seconds, got {self.length_retime_max!r}")
-        if (isinstance(self.grade_residual_max, bool)
-                or not isinstance(self.grade_residual_max, (int, float))
-                or self.grade_residual_max <= 0):
-            raise ValueError(f"ReelCheckSpec.grade_residual_max must be a positive number of "
-                             f"luma units, got {self.grade_residual_max!r}")
-        if (isinstance(self.chroma_spread_max, bool)
-                or not isinstance(self.chroma_spread_max, (int, float))
-                or self.chroma_spread_max <= 0):
-            raise ValueError(f"ReelCheckSpec.chroma_spread_max must be a positive number of "
-                             f"CIEDE2000 chroma units, got {self.chroma_spread_max!r}")
+        if not is_finite_number(self.layout_jump_max) or self.layout_jump_max <= 0:
+            raise ValueError(f"ReelCheckSpec.layout_jump_max must be a finite positive number, got {self.layout_jump_max!r}")
+        if not is_finite_number(self.length_retime_max) or self.length_retime_max <= 0:
+            raise ValueError(f"ReelCheckSpec.length_retime_max must be a finite positive "
+                             f"number of seconds, got {self.length_retime_max!r}")
+        if not is_finite_number(self.grade_residual_max) or self.grade_residual_max <= 0:
+            raise ValueError(f"ReelCheckSpec.grade_residual_max must be a finite positive "
+                             f"number of luma units, got {self.grade_residual_max!r}")
+        if not is_finite_number(self.chroma_spread_max) or self.chroma_spread_max <= 0:
+            raise ValueError(f"ReelCheckSpec.chroma_spread_max must be a finite positive "
+                             f"number of CIEDE2000 chroma units, got {self.chroma_spread_max!r}")
 
 
 @dataclass
@@ -1640,6 +1686,16 @@ class ReelManifest:
                                        # the cut (design 2026-09-07 §4). None = no
                                        # brief; the brief_length row then reads
                                        # not-checked, never "on target".
+    gates: dict = field(default_factory=dict)   # GATES.json as authored: the WHOLE set, both
+                                       # scopes, {field: {"value", "why"}} (design
+                                       # 2026-09-30 §2.3). build_reel's reprocess arm
+                                       # passes it straight through to process_episode
+                                       # after the EPISODES.json round trip, so a
+                                       # re-rendered episode is not judged against a
+                                       # different bar than its siblings. No caller
+                                       # partitions; check_spec applies only what
+                                       # ReelCheckSpec owns. {} = every bar at its
+                                       # default, and to_dict then omits the key.
     provenance: dict = field(default_factory=dict)   # run-level record threaded to deliver (§6)
 
     def __post_init__(self) -> None:
@@ -1710,11 +1766,24 @@ class ReelManifest:
         if not isinstance(self.provenance, dict):
             raise ValueError(f"ReelManifest.provenance must be an object, got "
                              f"{type(self.provenance).__name__}")
-        self.check_spec  # forces ReelCheckSpec validation of target_dur/variety_min
+        self.check_spec  # forces ReelCheckSpec validation of target_dur/variety_min — and,
+                         # because the property builds Gates from self.gates, of the authored
+                         # gate set itself (BOTH scopes, not only the reel subset). A corrupt
+                         # block is refused here rather than trusted: build_reel's plain-list
+                         # inlet and a hand-edited EPISODES.json both reach this constructor
+                         # without passing edl_to_reel's loader (the OutroFit.from_dict idiom).
 
     @property
     def check_spec(self) -> ReelCheckSpec:
-        return ReelCheckSpec(self.target_dur, self.variety_min)
+        # lazy import: gates imports models at module scope, because it derives FIELDS and
+        # BLOCKING from ReelCheckSpec/CheckSpec at import time and so cannot defer its own
+        # import — which leaves this side as the only place a cycle can be broken. This is the
+        # coding-standards 'import cycle whose other side cannot defer' exception, and not the
+        # heavy-optional-dependency one.
+        from scripts.lib import gates as gates_lib
+        authored = gates_lib.Gates.from_dict(self.gates, where="ReelManifest.gates")
+        return ReelCheckSpec(self.target_dur, self.variety_min,
+                             **authored.for_spec(ReelCheckSpec))
 
     @classmethod
     def from_dict(cls, d: dict) -> "ReelManifest":
@@ -1740,6 +1809,11 @@ class ReelManifest:
                            path=e.get("path", ""), meta=e.get("meta", ""),
                            chroma=e.get("chroma"))
                for e in eps_in]
+        # Only a JSON null reads as "absent". An empty or falsy value of any other type is a
+        # wrong-typed block and goes to the constructor to be refused: a hand-edit that wiped
+        # the block to `[]` or `false` must not load as "no gates", with every authored bar
+        # silently back at its default, which is what `d.get("gates") or {}` made of it.
+        g = d.get("gates")
         return cls(episodes=eps, target_dur=d.get("target_dur"),
                    variety_min=d.get("variety_min", 8),
                    cap=d.get("cap", 3), changelog=d.get("changelog", ""),
@@ -1749,6 +1823,7 @@ class ReelManifest:
                    outro=d.get("outro"),
                    tone_target=tuple(d["tone_target"]) if d.get("tone_target") else None,
                    brief_len=d.get("brief_len"),
+                   gates={} if g is None else g,
                    provenance=d.get("provenance") or {})
 
     @classmethod
@@ -1756,16 +1831,22 @@ class ReelManifest:
         return cls.from_dict(json.loads(Path(path).read_text()))
 
     def to_dict(self) -> dict:
-        return {"episodes": [e.to_dict() for e in self.episodes],
-                "target_dur": self.target_dur, "variety_min": self.variety_min,
-                "cap": self.cap,
-                "changelog": self.changelog, "music": self.music,
-                "ambient": self.ambient, "sfx": self.sfx, "platform": self.platform,
-                "look": self.look.to_dict() if self.look is not None else None,
-                "outro": self.outro,
-                "tone_target": list(self.tone_target) if self.tone_target is not None else None,
-                "brief_len": self.brief_len,
-                "provenance": dict(self.provenance)}
+        d = {"episodes": [e.to_dict() for e in self.episodes],
+             "target_dur": self.target_dur, "variety_min": self.variety_min,
+             "cap": self.cap,
+             "changelog": self.changelog, "music": self.music,
+             "ambient": self.ambient, "sfx": self.sfx, "platform": self.platform,
+             "look": self.look.to_dict() if self.look is not None else None,
+             "outro": self.outro,
+             "tone_target": list(self.tone_target) if self.tone_target is not None else None,
+             "brief_len": self.brief_len,
+             "provenance": dict(self.provenance)}
+        if self.gates:
+            # Omitted when empty, unlike the always-emitted keys above: a run that authored no
+            # gates keeps an EPISODES.json byte-identical to one written before this field
+            # existed (design 2026-09-30 §3), and from_dict reads a missing key as {}.
+            d["gates"] = dict(self.gates)
+        return d
 
     def write(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))

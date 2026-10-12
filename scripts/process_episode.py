@@ -9,10 +9,14 @@ run of failures returns a finding, it does not paper over them (§4.1).
 """
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
 
 from scripts import track, reframe, storyboard, check_episode
+from scripts.lib import gates as gates_lib   # aliased: `gates` is a parameter of
+                                             # process_episode below, and a bare module
+                                             # import would be shadowed by it.
 from scripts.lib import hero as hero_lib
 from scripts.lib import layout as layout_lib
 from scripts.lib import manifest as manifest_lib
@@ -199,7 +203,8 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
                     project: ProjectConfig | str | Path | None = None,
                     keyframes_path: str | None = None,
                     stop_after: str | None = None,
-                    prepared_source: str | None = None) -> dict:
+                    prepared_source: str | None = None,
+                    gates: dict | None = None) -> dict:
     """Drive one episode manifest → checked clip (§5.10). Returns a status dict;
     callers MUST branch on result["status"] before reading status-specific keys
     (only mechanical_pass/escalate carry "report"; needs_input/stop_and_report
@@ -215,9 +220,32 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     frozen route in route_path was measured on THIS file", which is the one thing
     the stabilize refusal below cannot know. Not on the CLI: only a driver that
     produced both halves can honestly assert it.
+
+    `gates` is the authored threshold set (GATES.json, design 2026-09-30) as a
+    plain dict, the WHOLE set — for_spec takes the subset CheckSpec owns and
+    ignores the rest, so a caller never partitions. A parameter and not a Manifest
+    field on purpose: a gate is a run policy the operator authors, not a value an
+    agent can write into an EDL. None means every threshold at its default. It is
+    validated here, before any tracking or encode, and a malformed set raises
+    ValueError naming this call: only None means "no gates", so a wrong-typed
+    `[]` or `0` is refused rather than read as defaults.
     """
     if max_attempts < 1:
         raise ValueError(f"max_attempts must be >= 1, got {max_attempts}")
+    # Parsed HERE, once, and not where the CheckSpec it feeds is built: that sits inside
+    # the retry loop, after tracking and a real encode, so a malformed set would be refused
+    # an encode late and re-parsed on every attempt. A hard raise like max_attempts above —
+    # a caller handing over a bad gate set is a caller bug, not a manifest problem a human
+    # answers. Only None is "absent": `gates or {}` would read a wiped `[]` or `0` as
+    # defaults and put every authored bar silently back (ReelManifest.from_dict refuses
+    # the same shape for the same reason).
+    authored = gates_lib.Gates.from_dict({} if gates is None else gates,
+                                         where="the gates passed to process_episode")
+    # The reasons go to the check beside the bars, so its report can name the ones it judged by
+    # (design §2.4 item 1). Passed only when something was authored, the same rule the pool and
+    # build_reel's reprocess follow for `gates` itself: a run that authored nothing keeps the
+    # call shape it had before gates existed.
+    reasons_kw = {"gate_reasons": authored.reasons()} if authored.gates else {}
     if stop_after not in (None, "geometry"):
         return {"status": "needs_input", "attempt": 0, "problems": [
             f"stop_after must be None or 'geometry', got {stop_after!r} — 'geometry' "
@@ -563,10 +591,10 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         plans = (reframe.plan_render(rspec, src, rp),
                  reframe.plan_render(plain_spec, src, rp))
         cspec = CheckSpec(composition=m.composition, grid=m.grid, target_dur=m.target_dur,
-                          attempt=attempt)
+                          attempt=attempt, **authored.for_spec(CheckSpec))
         report = _timed("check", lambda: check_episode.run(
             m.out_path, rp, path_out, cspec, str(Path(project_dir) / "report.json"),
-            source=src, plans=plans))
+            source=src, plans=plans, **reasons_kw))
         if report.overall:
             sheet = str(Path(project_dir) / "storyboard.jpg")
             # hero marker (§6.1a layer 4): draw the followed subject on every
@@ -640,15 +668,36 @@ def build_parser() -> argparse.ArgumentParser:
                     help="sparse keyframes.json ([{t,x,y,w,h}]) — the manual rung when both "
                          "automatic trackers give nothing (design 2026-07-21 §4)")
     ap.add_argument("--project", default=None,
-                    help="path to project.json — the episode inherits its canvas/delivery")
+                    help="path to project.json — the episode inherits its canvas/delivery, "
+                         "and a GATES.json beside it (if any) moves the check thresholds "
+                         "(design 2026-09-30); with no --project no GATES.json is read")
     return ap
 
 
 def main() -> None:
     a = build_parser().parse_args()
     md = json.loads(Path(a.manifest).read_text())
+    # GATES.json beside --project, found by the SAME function edl_to_reel finds it with: a
+    # hand-driven re-render of one episode must be judged against the bar its siblings were
+    # (design 2026-09-30 §2.3). No --project, no lookup: there is no project.json to look
+    # beside, and a guess from the working directory would be a second, silent way to move a
+    # bar. `is not None` so only an OMITTED flag reads as "no project". A wiped `--project ""`
+    # is handed on and process_episode refuses it there — but it IS looked up first:
+    # beside_project("") resolves to ./GATES.json, the working directory, so that one guess is
+    # made. It moves no bar, because the run stops before any episode is judged; its only
+    # visible effect is that a ./GATES.json which fails to load is the error reported, ahead of
+    # the empty-project refusal (final review M6).
+    authored = (gates_lib.beside_project(a.project) if a.project is not None
+                else gates_lib.Gates())
+    if authored.gates:
+        # Said out loud, as edl_to_reel says it: --project is optional here, so a GATES.json
+        # that was not picked up (no flag, or the wrong one) reads as silence and judges
+        # against the defaults. stderr, because stdout is the JSON result.
+        print(f"process_episode: gates: {len(authored.gates)} authored threshold(s) "
+              f"({', '.join(g.field for g in authored.gates)}) from GATES.json beside "
+              f"{a.project}", file=sys.stderr)
     result = process_episode(md, a.project_dir, route_path=a.route, project=a.project,
-                             keyframes_path=a.keyframes)
+                             keyframes_path=a.keyframes, gates=authored.to_dict())
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result["status"] == "mechanical_pass" else 1)
 

@@ -40,7 +40,7 @@ _Last updated: 2026-07-09._
 ## Imports
 
 - **All imports at module top.** No imports inside functions.
-- **Sole exception: a heavy, optional third-party dependency**, lazy-loaded on
+- **First exception: a heavy, optional third-party dependency**, lazy-loaded on
   purpose so the module stays importable (and testable) without it. Today the
   sanctioned cases are `from ultralytics import YOLO` inside `scripts/track.py`
   and `scripts/intake.py` (ultralytics pulls in torch), `import librosa` inside
@@ -49,6 +49,19 @@ _Last updated: 2026-07-09._
   one-line `# lazy import: heavy optional dep (...)` comment. Stdlib (`json`,
   `tempfile`) and already-required deps (Pillow) are never lazy — put them at
   the top.
+- **Second exception: a module-scope import cycle whose other side cannot defer.**
+  When module A must import B at module scope because it derives something from B
+  *at import time* (a vocabulary, a registry, a default table), B cannot import A
+  at module scope in return, and the only place the cycle can be broken is inside B.
+  That is a function-local import in B, and it is correct — it is not the
+  heavy-optional-dependency exception above and must not be marked as one. Mark it
+  with a `# lazy import:` comment that says **which side cannot defer and why**, so
+  a later reader can tell a cycle break from a convenience. The model is
+  `ReelManifest.check_spec` in `scripts/lib/models.py`: `scripts/lib/gates.py`
+  derives `FIELDS` and `BLOCKING` from `ReelCheckSpec`/`CheckSpec` at import time and
+  so cannot defer its own import of `models`, which leaves `models` as the side that
+  imports `gates` inside the function that uses it. If both sides could defer, defer
+  the cheaper one instead; if neither can, the derivation is in the wrong module.
 - Group: stdlib, then third-party, then `scripts.*`. One import per concern.
 
 ## Typing

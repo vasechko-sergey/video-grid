@@ -17,7 +17,8 @@ import sys
 from pathlib import Path
 
 from scripts import check_reel, color_measure, deliver, mix, probe, process_episode
-from scripts.lib import assembly, color, color_fidelity, episode_qc as qc_lib, reel_orchestration
+from scripts.lib import (assembly, color, color_fidelity, episode_qc as qc_lib,
+                         gates as gates_lib, reel_orchestration)
 from scripts.lib.models import ReelManifest, MusicSpec, REEL_H264
 
 
@@ -93,6 +94,12 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
     attempts: dict[int, int] = {}
     reprocessed: set[int] = set()          # design §8: which clips left the gate behind
     spec = rm.check_spec          # mutable across rounds: a length re-time replaces target_dur
+    # The authored set, parsed once from the carrier check_spec was just built from, so what
+    # names a moved bar on the report and in the attestation is what actually judged the reel.
+    # The reasons reach check_reel.run only when something was authored — the rule `gates`
+    # itself follows below — so a reel that authored nothing keeps the call shape it had.
+    authored = gates_lib.Gates.from_dict(rm.gates, where="ReelManifest.gates")
+    reasons_kw = {"gate_reasons": authored.reasons()} if authored.gates else {}
     audio: str | None = None
     geometry = ([(e.route, e.path, e.meta) for e in rm.episodes]
                 # sidecar PATHS — constant across rounds; the FILES those paths
@@ -137,7 +144,7 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                                 platform=rm.platform, outro=rm.outro,
                                 predicted=predicted,
                                 tone_target=rm.tone_target, tone_dsts=tone_dsts,
-                                brief_len=rm.brief_len, chroma=chroma)
+                                brief_len=rm.brief_len, chroma=chroma, **reasons_kw)
         action = reel_orchestration.next_action(report.fail_reasons, attempts, rm.cap,
                                                 spec.length_retime_max, outro_fixed)
         if action.retime is not None:      # absorb a within-band shortfall: the reel IS this long
@@ -191,6 +198,20 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
             qc.setdefault("state", "absent")
             qc["reprocessed_after"] = sorted(reprocessed)
             prov["episode_qc"] = qc
+            # Every gate an author moved, with its scope, whether it can block, and why
+            # (design §2.4 item 2) — `overrides` above answers a different question (what
+            # differs from default, whatever the source) and is left as phase 1 wrote it. Derived
+            # HERE from the set that judged this reel rather than copied through provenance, which
+            # a hand-edited EPISODES.json could leave disagreeing with `gates`. Absent, not [],
+            # when nothing was authored: the attestation of a run that authored nothing is the
+            # one it always was.
+            if authored.gates:
+                prov["gates"] = authored.record()
+            else:
+                # Derived means derived in BOTH directions: a `gates` key a hand-edited
+                # EPISODES.json left in the provenance block would otherwise survive
+                # dict(rm.provenance) above and name a bar no check was judged by.
+                prov.pop("gates", None)
             out = deliver.deliver(master, REEL_H264, out_dir, rm.changelog, report,
                                   scratch_dir=work_dir,   # build/reel — never the deliveries bucket
                                   audio=audio, titles=titles, platform=rm.platform,
@@ -238,7 +259,16 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
             # populated regardless — check_reel reads it, and raises for a tracked
             # (pan=false) episode whose route is None.
             route = None if manifest.get("stabilize") else ep.route
-            res = process_episode.process_episode(manifest, epdir, route_path=route)
+            # The authored gates, read off the carrier the first pass put them on and handed
+            # through WHOLE — both scopes, unfiltered, because process_episode partitions where
+            # a CheckSpec is built and no caller does (design 2026-09-30 §2.3). Without this
+            # the re-rendered episode is judged against the defaults while its siblings were
+            # judged against the authored bar, and nothing says so. Passed only when authored,
+            # the pool's own rule in edl_to_reel._run_pool, so a reel that authored none keeps
+            # the call shape it had before gates existed.
+            gates_kw = {"gates": rm.gates} if rm.gates else {}
+            res = process_episode.process_episode(manifest, epdir, route_path=route,
+                                                  **gates_kw)
             # A REJECTED re-render is already on disk. reframe writes m.out_path before
             # check_episode.run reads it (process_episode.py), so this early return
             # leaves ep{i}.mp4 overwritten by the render that just failed, and skips the

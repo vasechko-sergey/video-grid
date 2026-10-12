@@ -11,7 +11,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from scripts.lib import constraints, matchgrade, provenance, runlayout, toolindex
+from scripts.lib import (constraints, gates as gates_lib, matchgrade, provenance, runlayout,
+                         toolindex)
 
 _KINDS = ("required", "optional", "deferred")
 _CHECKPOINTS = (None, "spec", "edl", "final")
@@ -133,6 +134,103 @@ def _constraints(run: Path) -> dict:
         return {"present": True, "rules": [], "error": str(e)}
     return {"present": True, "rules": [r.to_dict() for r in loaded.rules],
             "error": None}
+
+
+def _gates(run: Path) -> dict:
+    """The threshold set an author moved beside project.json, so a human need not open
+    GATES.json to see which bars were moved and why (design 2026-09-30 §2.4 item 3). Three
+    states, each named — the three _constraints reports: absent, authored, or
+    present-and-unreadable. Each authored row is Gates.record()'s: value, default, scope,
+    whether the bar can block, and the reason.
+
+    The load refusal is CAUGHT here, and that is not a softening of it. This is the inspector
+    the router calls constantly, so letting a typo in a gates file replace the whole status
+    report with a traceback helps nobody — and reporting `gates: []` for an unreadable file
+    would answer "nothing moved the bars" when the truth is "nobody can tell", which is the
+    worse of the two lies (_constraints' own ruling, design 2026-08-17 §3.1, applied
+    unchanged). The enforcement point does not move: edl_to_reel still loads this file through
+    the same refusing constructor and still has no waiver.
+
+    An OSError is caught with the refusal, which _constraints does not do: a GATES.json that
+    exists but cannot be read (a directory, a permission) is the same "nobody can tell", and
+    the other two readers in this module already answer it that way."""
+    p = gates_lib.path_beside(run / "project.json")
+    if not p.exists():
+        return {"present": False, "gates": [], "error": None}
+    try:
+        loaded = gates_lib.Gates.from_json(p)
+    except (OSError, ValueError) as e:
+        return {"present": True, "gates": [], "error": str(e)}
+    return {"present": True, "gates": loaded.record(), "error": None}
+
+
+def _gates_frozen(run: Path, episodes: Path) -> dict | None:
+    """Which bars phase 1 froze into EPISODES.json, against GATES.json as it stands — or None
+    when there is nothing to say (design 2026-09-30 §6, the remedy §2.4 item 3 names).
+
+    Phase 2 (`edl_to_reel --from-episodes`) judges against the set phase 1b wrote into
+    EPISODES.json and never re-reads GATES.json — correctly: that set is the record of which
+    bars judged these clips, and re-reading it would let a bar move between the judging and the
+    attestation that binds it. The cost is a surprise, not a defect: an operator who edits the
+    file between the phases sees no effect. The remedy is visibility, not freshness, so this
+    names where the set was frozen, and says plainly when the file has since drifted and what
+    that means.
+
+    Three states: `same` (the frozen set is non-empty and still what the file says), `differs`
+    (it is not — including a file deleted since, which lifts no bar from a reel that froze it),
+    and `unreadable` (either side cannot be read, which must read as neither of the others).
+    None when no EPISODES.json exists yet, and when both sides are empty: an unauthored run
+    has nothing frozen, and a block on every status report would be noise.
+
+    Both sides are compared in the form Gates.to_dict() gives — the reason stripped, the
+    authored order irrelevant — and EPISODES.json is read as RAW JSON, for the reason
+    _match_grade_state gives: this is the inspector, and a typed load would refuse a file the
+    status has to report."""
+    if not episodes.exists():
+        return None
+    try:
+        doc = json.loads(episodes.read_text()).get("gates")
+        frozen = gates_lib.Gates.from_dict(
+            {} if doc is None else doc, where=f"{episodes.name}'s gates block").to_dict()
+    except (OSError, ValueError, AttributeError) as e:
+        return {"state": "unreadable",
+                "detail": f"{episodes} cannot be read for the gates phase 1 froze ({e}) — "
+                          f"re-run phase 1 (edl_to_reel --from-geometry, or "
+                          f"--stop-after-episodes for a hand-driven run) to rewrite it"}
+    p = gates_lib.path_beside(run / "project.json")
+    try:
+        now = gates_lib.Gates.from_json(p).to_dict() if p.exists() else {}
+    except (OSError, ValueError) as e:
+        return {"state": "unreadable",
+                "detail": f"{p} cannot be read ({e}), so it cannot be compared with the set "
+                          f"{episodes.name} froze"}
+    if frozen == now:
+        if not frozen:
+            return None
+        return {"state": "same",
+                "detail": f"{episodes.name} froze this set when phase 1 rendered these "
+                          f"episodes; phase 2 (edl_to_reel --from-episodes) judges against it "
+                          f"and never re-reads GATES.json"}
+    drift = [f"{label}: {', '.join(names)}" for label, names in (
+        ("authored in the file but not frozen", sorted(now.keys() - frozen.keys())),
+        ("frozen but no longer in the file", sorted(frozen.keys() - now.keys())),
+        ("changed since", sorted(k for k in now.keys() & frozen.keys() if now[k] != frozen[k])))
+        if names]
+    return {"state": "differs",
+            "detail": f"GATES.json no longer matches the set {episodes.name} froze when phase 1 "
+                      f"rendered these episodes ({'; '.join(drift)}). Phase 2 (edl_to_reel "
+                      f"--from-episodes) judges against the FROZEN set and never re-reads the "
+                      f"file, so this edit changes nothing for phase 2 until phase 1 is "
+                      f"re-run (edl_to_reel --from-geometry, or --stop-after-episodes for a "
+                      f"hand-driven run) — and for a reel-scope bar that means re-rendering "
+                      f"every episode to change a number applied at check_reel time. One path "
+                      f"DOES read the LIVE file: a hand `process_episode --project` re-render "
+                      f"judges that episode against it, and the delivery's attestation names "
+                      f"only the frozen set, so the bar would reach delivery unrecorded. "
+                      f"Re-run phase 1 before re-rendering any episode by hand, so the new "
+                      f"bar is frozen and attested; reverting GATES.json instead discards "
+                      f"what is usually the operator's own new waiver, so do that only if "
+                      f"they confirm it"}
 
 
 def _match_grade_state(reel_dir: Path) -> tuple[str, str]:
@@ -280,12 +378,15 @@ def next_action(run_dir: str, reel: str = runlayout.DEFAULT_REEL) -> dict:
     `deliveries` reports each delivered file's attestation state from the sidecar
     alone — cheap, because the router calls status constantly. `verify()` re-hashes.
     `constraints` reports the editorial rules that bind a re-cut (see _constraints).
+    `gates` reports the thresholds an author moved beside project.json and why (see _gates),
+    and — once an EPISODES.json exists — a `frozen` block saying which phase froze the set the
+    reel is being judged against and whether the file has drifted from it (see _gates_frozen).
     `legacy_layout` marks a 0.2.x run whose artifacts sit at the run root: the skill
     asks rather than re-scanning every clip into an apparently empty run (§7).
     Returns {"stages":[{key,artifact,bucket,path,kind,state,stale_reason,checkpoint,
              runner}, ...], "next": <stage key | None>, "delivered": <bool>,
              "deliveries": [...], "interrupted": [...], "constraints": {...},
-             "reel": <str>, "reels": [...],
+             "gates": {...}, "reel": <str>, "reels": [...],
              "layout": {bucket: path}, "legacy_layout": <bool>}."""
     run = Path(run_dir)
     lay = runlayout.RunLayout(run, reel)
@@ -323,9 +424,13 @@ def next_action(run_dir: str, reel: str = runlayout.DEFAULT_REEL) -> dict:
                        "path": str(base / st.artifact), "kind": st.kind,
                        "state": state, "stale_reason": stale_reason,
                        "checkpoint": st.checkpoint, "runner": st.runner})
+    gates = _gates(run)
+    frozen = _gates_frozen(run, lay.episodes / "EPISODES.json")
+    if frozen is not None:
+        gates["frozen"] = frozen
     return {"stages": stages, "next": next_key, "delivered": delivered,
             "deliveries": _deliveries(lay.deliveries), "interrupted": _partials(lay.deliveries),
-            "constraints": _constraints(run),
+            "constraints": _constraints(run), "gates": gates,
             "reel": reel, "reels": runlayout.reel_names(run),
             "layout": lay.to_dict(), "legacy_layout": runlayout.is_legacy_run(run)}
 

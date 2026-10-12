@@ -14,7 +14,12 @@ The `grade_damage` section below (design 2026-08-31 §3) is a different shape �
 it needs a real (graded, plain) RenderPlan pair, which needs a real manifest and
 a real render, so it goes through `golden_ride_segment` + the committed
 `tests/fixtures/golden_route.json` rather than a synthetic numpy frame.
+
+The last section is the CLI's (design 2026-09-30 §2.3): which bars `main` builds from
+`--gates`, with the judge itself faked, so it needs neither ffmpeg nor a fixture.
 """
+import json
+
 import numpy as np
 import pytest
 
@@ -370,7 +375,8 @@ def _fake_plans(golden_ride_segment):
             process_episode.plan_ungraded(md, src, _GOLDEN_ROUTE))
 
 
-def _run_check_episode(tmp_path, monkeypatch, golden_ride_segment, plans):
+def _run_check_episode(tmp_path, monkeypatch, golden_ride_segment, plans, spec=None,
+                       **run_kw):
     """One real episode — golden_ride_segment + golden_route.json, rendered for
     real through reframe.reframe (mirrors
     tests/integration/test_color_fidelity.py's _render_episode) — then checked by
@@ -392,9 +398,9 @@ def _run_check_episode(tmp_path, monkeypatch, golden_ride_segment, plans):
         dict(orch.DEFAULT_PARAMS))
     clip = str(tmp_path / "ep.mp4")
     reframe.reframe(rspec, src, _GOLDEN_ROUTE, clip, str(tmp_path / "path.json"))
-    spec = CheckSpec(composition="center", grid="thirds", target_dur=1.5)
+    spec = spec or CheckSpec(composition="center", grid="thirds", target_dur=1.5)
     return check_episode.run(clip, _GOLDEN_ROUTE, str(tmp_path / "path.json"), spec,
-                             str(tmp_path / "report.json"), source=src, plans=plans)
+                             str(tmp_path / "report.json"), source=src, plans=plans, **run_kw)
 
 
 def test_grade_damage_is_not_checked_without_plans(tmp_path, monkeypatch, golden_ride_segment):
@@ -530,3 +536,139 @@ def test_the_verdict_is_read_from_the_verdict_not_from_the_merge(monkeypatch):
                                                 target_dur=1.5))
     assert res.passed is False          # the entropy verdict, not the advisory's status
     assert res.detail["below"] is True
+
+
+# --- 2026-09-30 threshold surface Task 3: `--gates` on the standalone judge -----
+# (design 2026-09-30 §2.3/§6.) A flag here and a convention in edl_to_reel, because this
+# judge has no project.json to look beside.
+
+def _judge_call(monkeypatch: pytest.MonkeyPatch, *argv: str) -> dict:
+    """Run check_episode.main() over `argv` with the judge itself faked, and return what it
+    was handed: {"spec": ..., "kw": {...}}. The clip, path and report never exist: what is under
+    test is which bars the CLI built and which reasons it passed, and run() is the only thing
+    that needs files."""
+    seen = {}
+
+    def fake_run(clip, route, path, spec, out, **kw):
+        seen.update(spec=spec, kw=kw)
+    monkeypatch.setattr(check_episode, "run", fake_run)
+    monkeypatch.setattr("sys.argv", ["check_episode", "c.mp4", "p.json", "o.json",
+                                     "--target-dur", "3", *argv])
+    check_episode.main()
+    return seen
+
+
+def _judge(monkeypatch: pytest.MonkeyPatch, *argv: str) -> CheckSpec:
+    """The CheckSpec `main` would have judged against (see _judge_call)."""
+    return _judge_call(monkeypatch, *argv)["spec"]
+
+
+def test_the_gates_flag_moves_the_bar_the_standalone_judge_uses(tmp_path, monkeypatch):
+    gates = tmp_path / "GATES.json"
+    gates.write_text(json.dumps(
+        {"black_floor": {"value": 2.0, "why": "night shoot, legitimately dark"}}))
+    assert _judge(monkeypatch, "--gates", str(gates)) == CheckSpec(
+        composition="lead", grid="thirds", target_dur=3.0, black_floor=2.0)
+
+
+def test_the_standalone_judge_hands_its_attempt_to_the_spec(monkeypatch):
+    """`--attempt` predates the gates flag, but the line that passes it sits in the call this
+    slice edited to add `**g.for_spec(CheckSpec)`. The Task 7 AST sweep dropped it and the whole
+    unit tier stayed green: the flag was parsed and silently ignored."""
+    assert _judge(monkeypatch, "--attempt", "2") == CheckSpec(
+        composition="lead", grid="thirds", target_dur=3.0, attempt=2)
+
+
+def test_without_the_gates_flag_every_bar_is_its_default(monkeypatch):
+    """A control, green before `--gates` existed and the first test to drive `main()` at all:
+    it pins that the flag is optional and that an absent flag builds the spec `main` built
+    before this slice."""
+    assert _judge(monkeypatch) == CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
+
+
+def test_an_empty_gates_path_is_refused_not_read_as_no_gates(monkeypatch):
+    """`--gates ""` is what an unset shell variable produces, and reading it as "no gates"
+    would put every authored bar back at its default in silence — the dropped-flag defect
+    design §4 rejects per-threshold flags for."""
+    with pytest.raises(OSError):
+        _judge(monkeypatch, "--gates", "")
+
+
+def test_a_gates_path_that_does_not_exist_is_refused_not_read_as_no_gates(tmp_path, monkeypatch):
+    """"Absent means defaults" is true of the convention file beside project.json and must not
+    leak onto an explicit flag: a typo'd path is the likeliest real silent revert. The empty-path
+    test above cannot see a swallow of FileNotFoundError alone — `Path("")` is a directory."""
+    with pytest.raises(FileNotFoundError):
+        _judge(monkeypatch, "--gates", str(tmp_path / "GATE.json"))
+
+
+def test_the_standalone_judge_never_goes_looking_for_a_gates_file(tmp_path, monkeypatch):
+    """The flag-versus-convention asymmetry is deliberate (design §2.3, §6): this judge has no
+    project.json to look beside, and guessing a file from the working directory would be a second,
+    silent way to move a bar. A GATES.json sitting exactly where a lookup would try — the cwd, which
+    is also beside the clip, path and report the relative argv names — changes nothing without
+    the flag."""
+    (tmp_path / "GATES.json").write_text(json.dumps(
+        {"black_floor": {"value": 2.0, "why": "moves the bar if anything reads this file"}}))
+    monkeypatch.chdir(tmp_path)
+    assert _judge(monkeypatch) == CheckSpec(composition="lead", grid="thirds", target_dur=3.0)
+
+
+def test_a_gates_file_the_loader_refuses_stops_the_judge_and_names_the_file(
+        tmp_path, monkeypatch):
+    gates = tmp_path / "GATES.json"
+    gates.write_text(json.dumps({"black_floor": 2.0}))                 # a bare value: no reason
+    with pytest.raises(ValueError) as e:
+        _judge(monkeypatch, "--gates", str(gates))
+    assert str(gates) in str(e.value)
+
+
+# --- 2026-09-30 threshold surface Task 5: the reason rides the verdict it bought ---------
+# (design §2.4 item 1.) The row has to be in the artifact that says PASS, which is report.json
+# on disk — these read the file, because a row attached after report.write() is in memory only.
+
+_BLACK_ROW = {"field": "black_floor", "value": 2.0, "default": 6.0,
+              "why": "night shoot, legitimately dark"}
+_ENTROPY_ROW = {"field": "entropy_floor", "value": 0.85, "default": 0.9,
+                "why": "log profile; the ungraded render is already flat"}
+_MOVED = {"black_floor": 2.0, "entropy_floor": 0.85}
+_REASONS = {"black_floor": _BLACK_ROW["why"], "entropy_floor": _ENTROPY_ROW["why"]}
+
+
+def _stub_damage_verdict(monkeypatch):
+    """A damage verdict that EVALUATED (it carries the floor it judged by), so the run reaches
+    grade_damage's judged arm without depending on what the golden footage's entropy is."""
+    monkeypatch.setattr(check_episode.gradedamage, "evaluate",
+                        lambda plain, graded, floor: {"ratio": 0.88, "plain_bits": 7.0,
+                                                       "graded_bits": 6.2, "floor": floor,
+                                                       "frames": 3, "below": 0.88 < floor})
+
+
+def test_a_moved_bar_is_named_beside_each_episode_verdict_it_bought(
+        tmp_path, monkeypatch, golden_ride_segment):
+    """Both bars, through the real run, in the file on disk. The stubbed ratio is 0.88 — below
+    the default 0.90 and above the authored 0.85 — so the damage verdict passes because the floor
+    moved, which is the case the row exists for. `black_frames` is assigned before grade_damage
+    and the pass is one call after both, so a call placed between them names one bar and not
+    the other."""
+    _stub_damage_verdict(monkeypatch)
+    spec = CheckSpec(composition="center", grid="thirds", target_dur=1.5, **_MOVED)
+    rep = _run_check_episode(tmp_path, monkeypatch, golden_ride_segment,
+                             plans=_fake_plans(golden_ride_segment), spec=spec,
+                             gate_reasons=_REASONS)
+    assert rep.checks["grade_damage"].passed is True
+    on_disk = json.loads((tmp_path / "report.json").read_text())["checks"]
+    assert on_disk["black_frames"]["authored"] == [_BLACK_ROW]
+    assert on_disk["grade_damage"]["authored"] == [_ENTROPY_ROW]
+
+
+def test_the_standalone_judge_hands_the_reasons_to_the_run(tmp_path, monkeypatch):
+    """check_episode.main is the third site a moved bar's reason has to leave from, and the
+    easiest to miss: it holds a loaded Gates, and without g.reasons() here a `--gates` run
+    writes a verdict with a moved bar and no reason beside it. The control is inside: with no
+    flag the run is handed no reasons, so nothing is named."""
+    gates = tmp_path / "GATES.json"
+    gates.write_text(json.dumps({"black_floor": {"value": 2.0, "why": _BLACK_ROW["why"]}}))
+    assert _judge_call(monkeypatch, "--gates", str(gates))["kw"] == {
+        "gate_reasons": {"black_floor": _BLACK_ROW["why"]}}
+    assert _judge_call(monkeypatch)["kw"] == {"gate_reasons": {}}

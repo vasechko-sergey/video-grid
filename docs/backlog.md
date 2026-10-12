@@ -52,14 +52,17 @@ is still P3.
 
 ## P1 — next
 
+The threshold surface, P1's only row, closed 2026-10-12 by threshold-surface (0.15.0) — [the archive](backlog-closed.md) carries the closure note. Its final whole-branch review then found a hole that slice itself introduced, and P1 holds that one row.
+
 | | Item | Size | Source |
 |---|------|------|--------|
-| ○ | **Every threshold but `variety_min` — twelve of the eighteen fields of `ReelCheckSpec` and `CheckSpec` — is unreachable from any authoring surface, and R2.4 (a threshold widened by hand needs a reason attached) folds into this row.** `ReelManifest.check_spec` is `ReelCheckSpec(self.target_dur, self.variety_min)`: 2 of the class's 11 fields arrive from the manifest. `process_episode` builds `CheckSpec` from 3 of its 7 fields (all from the manifest) plus `attempt`, a retry counter. No CLI sets a threshold — `edl_to_reel`, `check_reel`, `build_reel` and `check_episode` offer none — so **12 of the 18 fields can only ever hold their default**: `beat_tol`, `loudness_target`, `loudness_tol`, `clip_tol`, `bar_symmetry_tol`, `layout_jump_max`, `length_retime_max`, `grade_residual_max` and `chroma_spread_max` on `ReelCheckSpec`; `black_floor`, `black_rel` and `entropy_floor` — the blocking grade-damage bar — on `CheckSpec`. Every one is a first cut on a single shoot. `provenance.spec_overrides`, the diff machine written to catch any loosened gate, is called once, on `ReelManifest.check_spec`, with `target_dur` exempt — so it can only ever report **`variety_min`**, and the mechanism R2.4 was filed against has exactly one reachable knob. The defect for a general tool is therefore the opposite of the one R2.4 named: not "widened silently" but "cannot be set at all". Two halves, one slice: give `ReelCheckSpec` and `CheckSpec` an authoring surface, and make `spec_overrides` meaningful by requiring a reason at the point of authoring — because a loosenable gate without a recorded reason is exactly the cry-wolf mechanism R2.4 was filed against (`color_delta_max`: 12 → 44 → **56** across the first real run, each widening silencing a complaint that was correct; that knob is deleted, colour-convergence-retire 2026-08-29). **R2.4's own row is removed and its correction carried here:** the example it first named, `grade_delta_max`, was itself renamed to `CheckSpec.entropy_floor` in 0.7.0 (grade-sensor-references, 2026-09-02) and fixed in the 2026-09-03 audit. | M | [unenforced-rules](specs/2026-09-29-unenforced-rules-design.md) §0.6, §5; [retro](retro/2026-08-25-first-real-run.md) R2 |
+| ○ | **Phase 2 can deliver a reel whose episodes were judged against a bar the frozen set does not record — a silent bypass the threshold-surface slice introduced.** `references/edit-plan/grade-convergence.md` documents regrading one episode by hand with `process_episode --project <run>/project.json`, and that CLI reads the **live** `GATES.json`; phase 2, `build_reel`'s reprocess arm and `probe --episodes` all read the set frozen into `EPISODES.json`, and the attestation records the frozen one. Reproduced by the final whole-branch review: phase 1b with no file, then a `GATES.json` authoring `entropy_floor` 0.80, then the hand re-render — ep0 passed at ratio 0.884 against the live 0.80 (the default 0.90 refuses it), episode-QC approved the clip, phase 2 delivered, and the attestation carried **no `gates` and `overrides: []`**. Docs and the `montage status` `differs` message now name the path and say to restore the file or re-run phase 1b first, but that is visibility, and the hole wants a refusal. **The fix:** phase 2 (`assemble_reel` → `build_reel`'s deliver arm) compares each episode's `report.json` `authored` rows against the frozen set's episode scope, by **field and value**, in both directions — a bar the report was judged at that the frozen set lacks, a frozen bar the report shows at its default, and a bar present on both sides at different values (the `changed since` drift `montage status` already names, e.g. 0.85 frozen against 0.80 live) — and refuses to deliver on a mismatch, naming the episode. A check whose verdict is `None` emits no `authored` row, so it must be exempt from the comparison rather than read as "judged at default". `montage status` already detects `frozen: differs` (so the inputs for a cheap pre-check exist); the refusal is what moves it from a thing a human may read to a gate. No waiver, as with the episode-QC gate it sits beside. | M | [threshold-surface](specs/2026-09-30-threshold-surface-design.md) §6, §7; final whole-branch review |
 
 ## P2 — soon
 
 | | Item | Size | Source |
 |---|------|------|--------|
+| ○ | **A delivery loudness that moves the mixer and the gate together.** `mix.py:16` bakes `_TARGET_LUFS = -14.0` into the `loudnorm` filter and `mix.mix` takes no target, while `ReelCheckSpec.loudness_target` is what `check_reel` confirms the stem reached: one value, two consumers, and `GATES.json` can reach only the gate. That is why `loudness_target` is **refused by name** there (threshold-surface §0.2a) — authoring `-16` alone moves the ruler and not the thing measured, so every reel with audio fails `loudness`, and the only escape, widening `loudness_tol`, is a waiver wearing the target's name. A `PLATFORM_LOUDNESS` table beside `SAFE_ZONES`, threading one value into both `mix.mix` and `ReelCheckSpec.loudness_target`, is the only shape that can set both at once, so it is **one row and never two**. It was first dismissed as "four identical rows" (all four `SAFE_ZONES` platforms want −14 today, §0.2) and §0.2a corrected the dismissal: the table is inert only until a deliverable this repo does not carry — broadcast −23, Apple Music −16 — needs it, and a general tool that cannot deliver to broadcast loudness has a real limit, not a tidiness one. | M | [threshold-surface](specs/2026-09-30-threshold-surface-design.md) §0.2, §0.2a, §7 |
 | ○ | **Colour matrix / primaries / transfer are not in the segment contract.** All 99 clips of the only real pool are bt709, so there is no evidence to build against and an unmeasured `scale` matrix conversion would be a new landmine. A bt601 or HLG source is misread silently today. | S | [segment-range-contract](specs/2026-08-27-segment-range-contract-design.md) §8 |
 | ○ | **Nothing gates that the authored tone actually reached its target.** After the range fix the miss is ~1.5 codes, but nothing anywhere compares a delivered episode against the target it was given: `grade_damage` measures how far the grade moved the tracked subject from ITS OWN pre-grade source — including exposure, via `delta_l`, since the 2026-08-28 grade-delta slice — never whether the episode reached the `tone_dst` match-grade assigned it, and the reel-level `color_across_cuts` check — which compared episodes to *each other*, never to a target — is retired outright (colour-convergence-retire, 2026-08-29) rather than ever having closed this gap. Its deletion does not touch this row: a check that never verified the authored pair was reached leaves exactly the same hole once it is gone. Adjacent to R2.2 and R2.6 but neither of them — those judge drift and regression, not whether the authored pair was reached. | M | [segment-range-contract](specs/2026-08-27-segment-range-contract-design.md) §7 |
 | ○ | **`tests/fixtures/golden_ride.mp4` is raw full-range footage and four integration files fed it straight into `reframe`.** Found by the new depth/range guard on its first day — 12 failures and 5 errors, every one the same refusal. Worked around with a `golden_ride_segment` session fixture that normalizes it per run; the committed fixture stays raw, which is right for a *footage* fixture but makes the workaround permanent until something else owns the boundary. | S | segment-range-contract, Task 3 |
@@ -226,8 +229,8 @@ re-taking it — nobody has shown 3 is right,
 only that it is stated (grade-delta-sensors §9.5, sensor-provenance §5) ·
 a second calibration shoot for the **retired 5.0 dE00 bar** — the field this row
 opened by naming, `CheckSpec.grade_delta_max`, does not exist anywhere in the tree:
-it was replaced by `CheckSpec.entropy_floor` in 0.7.0 (the P1 row above, which R2.4
-folded into, records the same correction), which measures an entropy ratio and not
+it was replaced by `CheckSpec.entropy_floor` in 0.7.0 (the P1 row R2.4 folded into,
+now closed in [the archive](backlog-closed.md), records the same correction), which measures an entropy ratio and not
 a colour distance, so the dE00 has had no bar of its own since. Every number
 behind the 5.0 dE00 bar comes from one shoot, one grade, and simulated
 damage, and the whole healthy-to-damage gap is **0.75 dE00**. And those
@@ -462,11 +465,11 @@ against the shipped `tone_drift(decisions, pairs)`) — corrected in both
 places; the rest of this row stays open. The natural first instalment of the
 existing open row on `grade_damage`/`grade_faithful` naming the same shape
 of absence in different words (bound-reports, whole-branch review) ·
-this slice's near-miss looked like R2.4 (folded into the P1 row above on
-2026-09-29) but is a different mechanism —
-a RENDERED value (`max_speed`) with no manifest field at all, not a THRESHOLD
-widened by hand with no reason recorded — so R2.4 stays open, unmerged and
-untouched by this row (retry-record §6) ·
+this slice's near-miss looked like R2.4 (folded into the P1 row on
+2026-09-29, and closed with it by threshold-surface on 2026-10-12) but is a different
+mechanism — a RENDERED value (`max_speed`) with no manifest field at all, not a
+THRESHOLD widened by hand with no reason recorded — so R2.4 was not merged into
+this row and this row did not touch it (retry-record §6) ·
 recording the accepted attempt *number* on `ReelEpisode`/`EPISODES.json` —
 not needed once this slice's sidecar record landed: the mechanical
 `report.json` already carries `attempt`, and after the fix the report a
@@ -545,7 +548,9 @@ it. Remedy: `e.add_note(...)` carrying the episode index at the two call sites,
 one. Checked: a note leaves `str(e)` byte-identical, so no pinned message moves, and it
 prints under the traceback; `edl_to_reel.py:238` already does this for a worker's
 exception ("raised while processing episode {i} (segment …)") (unenforced-rules Task 1
-review, M-3; whole-branch review, Minor 5)
+review, M-3; whole-branch review, Minor 5) ·
+per-episode gates — `GATES.json` is reel-wide, so one episode's legitimate grade widens `entropy_floor` for every episode in the reel. Per-episode gating needs an episode identity that survives a re-cut, and the EDL's indices do not: a re-cut renumbers, so a waiver keyed on one would silently migrate to a different shot (threshold-surface §6, §7) ·
+`target_dur` on `ReelCheckSpec`, `CheckSpec` and `EDL.target_dur` accepts `nan`, `inf` and `True`. Not reachable through `GATES.json`, where it is exempt, but reachable three other ways: the `--target-dur` flag of `check_episode` and of `check_reel` (argparse's `type=float` takes `nan`), a hand-edited `EDL.json`, and a hand-edited `EPISODES.json` (`NaN`/`Infinity`/`true` all load). It fails **closed** — `checks.length` and `check_reel`'s length gate both compute `abs(x - target) <= tol`, which is `False` for `nan` — so this is a gap, not a live defect (threshold-surface Task 2 review)
 
 **Titles**
 libass/ASS rendering · per-episode titles · the full pixel-level safe-zone gate for
@@ -668,7 +673,8 @@ of them. It is the other half of the sentence unenforced-rules deleted the check
 clause from, and it is honoured about as rarely as the clause was; that slice deleted
 the one and left this one. Filed, not acted on: whether the instruction or the
 practice is what is wrong is unmeasured (unenforced-rules Task 2 review; denominators
-re-derived in the whole-branch review's fix wave)
+re-derived in the whole-branch review's fix wave) ·
+the **waiver direction** of a `GATES.json` — a bar the default refuses, released by an authored one — is proven end to end for two of the eleven bars, one per scope: `entropy_floor` (`test_a_loosened_entropy_floor_releases_a_grade_the_default_refuses`) and `grade_residual_max` (`test_a_loosened_reel_bar_releases_a_reel_the_default_stops`), plus the phase-2 freeze for a third (`test_phase_2_judges_the_reel_by_the_set_phase_1b_froze`). A clamp at another bar's own comparison site — `black_floor`, `loudness_tol`, `length_retime_max` and the rest — is not reached at the integration tier. A coverage statement, not a defect: the mechanism is shared, and those proofs are what established that a clamp **below the report's echo** is invisible to everything else (a clamp at the call site dies on any test that reads the echoed value off the report). Filed so the next reader knows which bars are actually exercised end to end (threshold-surface Task 6 review)
 
 **CLI / tool index**
 `Stage.runner` names a tool and nothing checks the tool exists — `trend-scan`'s
@@ -851,7 +857,12 @@ by nothing, before or after: the old reading conflated it with the grade rather
 than isolating it. Size S (the render pair and the shipped clip are both already
 produced; the work is one comparison and a name for it). **Worth a row only if a
 run ever shows it mattering** — it votes on nothing today, since the dE00 is
-advisory (sensor-provenance §5, §6 row 3)
+advisory (sensor-provenance §5, §6 row 3) ·
+three untested threshold boundaries, found as the only surviving mutants of a 79-row kill matrix over `models.py`'s guards: nothing constructs `loudness_tol == 0`, `clip_tol == 0` / `bar_symmetry_tol == 0` (their lower edge), or `entropy_floor == 1.0` (its upper edge). Two scoped re-reviews widened the set with everything else that survives the whole unit tier at these guards: `black_floor`'s upper bound (255 → 256), `grade_residual_max` and `chroma_spread_max` drifting `<= 0` to `<= 1`, `loudness_tol` drifting `<= 0` to `<= -1`, `Gates.from_dict`'s `raise … from e` unpinned, and `ReelManifest.to_dict` returning the live `gates` dict rather than a copy (an aliasing class, not a boundary — its output goes straight to `json.dumps`, so nothing reaches it today). All pre-date this slice; the same boundary on the other five `> 0` bars is pinned by existing tests (threshold-surface Task 2 review) ·
+`gates.py`'s `_OWNER` loop resolves a name present on BOTH spec classes by raising (Task 1 fix round 1) — but `Gates` validation still lives only in `from_dict`, so a directly constructed `Gate("bogus", 1, "")` bypasses all six refusals and dies later as a bare `KeyError`. No sanctioned caller constructs one (threshold-surface Task 1 review) ·
+a duplicate key in `GATES.json` silently keeps the last entry and the first entry's reason vanishes (`json.loads` gives no signal) (threshold-surface Task 1 review). The other half of this row, a non-UTF-8 `GATES.json` raising `UnicodeDecodeError` with no path, closed with the 4300-digit row in [the archive](backlog-closed.md) ·
+a dangling-symlink `GATES.json` reads as "no gates": `gates.beside_project` tests `Path.exists()`, which follows the link, so a symlink whose target is gone is `False` and every bar silently falls back to its default — contradicting the docstring's own rule ("a file that exists and cannot be loaded raises") and the no-silent-bypass ruling. `p.is_symlink() or p.exists()` would send it to `Gates.from_json`, which would raise `FileNotFoundError` naming the path; `montage._gates` has the same `p.exists()` and reads it as `present: false`. Needs a symlink to be created by hand; no sanctioned writer makes one (threshold-surface final review, M3) ·
+re-deriving any of the eleven authorable thresholds on a second shoot — `GATES.json` makes them reachable and calibrates none of them: every default is a first cut from one shoot (99 clips, one camera pair), and the rows that re-derive them stay blocked on footage that does not exist yet. Unchanged by threshold-surface (§6, §7)
 
 ## ⊘ Won't do
 

@@ -10,6 +10,67 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.15.0 — 2026-10-12
+
+### Check thresholds are authorable — and a moved bar must say why
+
+Eleven check thresholds had no authoring surface at all: no flag, no manifest field,
+no file. The only way to move a bar was to edit `scripts/lib/models.py`, so a bar
+calibrated on one shoot could be changed only by patching the engine — and the
+mechanism written to catch a loosened gate, `provenance.spec_overrides`, had
+nothing to report.
+
+- **`GATES.json`, beside `project.json`, moves them.** Found by convention and read
+  afresh by every `edl_to_reel` run that renders (and by `process_episode`'s own CLI
+  when it is given `--project`) — never by a flag, because a flag can be dropped on a
+  re-run and a dropped threshold flag reverts the bar in silence. Each entry is
+  `{"value": …, "why": "…"}`. A missing or blank `why` is **refused at load**, as is
+  an unknown name, a name authored somewhere else (each refusal says where), and any
+  value the owning spec class itself rejects — with the file's own path in the
+  message, and no fallback to defaults. With no file present every artifact is
+  byte-identical to 0.14.1, with one named exception: `probe grade --geometry`'s
+  `probe.json` gains `gates: {"status": "not-read", ...}` when the project cannot be
+  resolved, so a prediction made against the default floor says so.
+- **Eleven authorable, not twelve; six of them can stop a delivery.** The row that
+  asked for this said twelve. `loudness_target` is not a bar — it is the value `mix`
+  renders to, and a gate file can reach only the check that confirms it, so authoring
+  `-16` would fail every reel with audio — and it is refused by name, with where it
+  lives. Of the eleven, `black_floor`, `black_rel`, `entropy_floor`,
+  `grade_residual_max`, `loudness_tol` and `length_retime_max` block (the last through
+  `build_reel`'s shortfall absorb) and five are advisory. The partition is derived
+  from the code (`models._ADVISORY_CHECKS` and each check's own threshold), not typed
+  a second time, so a threshold added later joins the file the day it lands.
+- **The reason is carried to the verdict it bought.** A moved bar is named, with its
+  written reason, in the check's own detail (`report.json`'s `checks.<name>.authored`),
+  in `REEL_v{n}.attest.json`'s new `gates` list (scope, whether the bar can block, the
+  reason), in `montage status` (which also says which phase froze the set and whether
+  the file has drifted from it) and `montage verify`. `probe grade` predicts
+  `grade_damage` against the authored floor — the value only, with no `authored` row
+  or reason — where it used to read the dataclass default and would otherwise have
+  predicted a failure the gate would not raise.
+- **New contract surface.** `ReelManifest.gates` (the whole authored set, both scopes,
+  carried across the `EPISODES.json` round trip so a reprocessed episode is judged by
+  the bar its siblings were; omitted when empty), `Attestation.gates`,
+  `process_episode(gates=)`, and one new flag, `check_episode --gates PATH` — the
+  standalone judge has no project to look beside. `check_reel` has no such flag: it was
+  built and then deleted, because every reel threshold is read behind an input its CLI
+  never supplies, so it moved nothing.
+- **The spec classes now validate the thresholds they hold.** `black_floor` and
+  `black_rel` had no guard at all and accepted `True`, `nan`, `inf`, `"6"`, `None` and
+  `-1`; `nan` passed every `> 0` guard on seven further fields. Unreachable until
+  something could author them. No default moved.
+- **Not solved, and said so.** Authoring is not calibration: every default is still a
+  first cut from one shoot. A reason is free text and nothing checks it is true.
+  `GATES.json` is reel-wide, and phase 2 judges by the set phase 1b froze and never
+  re-reads the file — but a hand-driven `process_episode --project` re-render does, so
+  check `montage status`'s `gates.frozen.state` before one (`differs` means restore the
+  file or re-run `--from-geometry`); a phase-2 refusal for that gap is filed P1. On a reel
+  with no declared grade `entropy_floor` cannot fire (the graded and plain renders are the
+  same render, so the ratio is exactly 1.0) and `grade_residual_max` read a zero residual
+  on the one fixture it was measured on, so authoring either there changes nothing in
+  practice. And `GATES.json` is the user's lever, not the agent's: the router's
+  instructions say never to author an entry to get a finding past.
+
 ## 0.14.1 — 2026-09-29
 
 - The `ReelEpisode.chroma` shape now has **one** validator, called both by the
