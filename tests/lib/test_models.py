@@ -2315,6 +2315,16 @@ def _reel_with(**over):
     return m.ReelManifest(**kw)
 
 
+def test_a_reel_manifest_round_trips_its_tone_target_through_to_dict():
+    """from_dict reading the key was pinned; to_dict writing it was not. The gates slice
+    rewrote `to_dict` from a single return into a dict plus a conditional key, and the Task 7
+    AST sweep showed that dropping the tone target from the written dict survived the whole
+    unit tier: a rewrite that lost the key would have shipped silently."""
+    rm = _reel_with(tone_target=(52.0, 103.5, 191.5))
+    assert rm.to_dict()["tone_target"] == [52.0, 103.5, 191.5]
+    assert m.ReelManifest.from_dict(rm.to_dict()).tone_target == (52.0, 103.5, 191.5)
+
+
 def test_a_reel_manifest_applies_its_authored_reel_gates_to_check_spec():
     rm = _reel_with(gates={"loudness_tol": {"value": 2.0, "why": "live room"}})
     # The whole object: the authored field moved and no other did, and target_dur and

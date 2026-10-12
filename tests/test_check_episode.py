@@ -571,6 +571,14 @@ def test_the_gates_flag_moves_the_bar_the_standalone_judge_uses(tmp_path, monkey
         composition="lead", grid="thirds", target_dur=3.0, black_floor=2.0)
 
 
+def test_the_standalone_judge_hands_its_attempt_to_the_spec(monkeypatch):
+    """`--attempt` predates the gates flag, but the line that passes it sits in the call this
+    slice edited to add `**g.for_spec(CheckSpec)`. The Task 7 AST sweep dropped it and the whole
+    unit tier stayed green: the flag was parsed and silently ignored."""
+    assert _judge(monkeypatch, "--attempt", "2") == CheckSpec(
+        composition="lead", grid="thirds", target_dur=3.0, attempt=2)
+
+
 def test_without_the_gates_flag_every_bar_is_its_default(monkeypatch):
     """A control, green before `--gates` existed and the first test to drive `main()` at all:
     it pins that the flag is optional and that an absent flag builds the spec `main` built

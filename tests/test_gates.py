@@ -1,5 +1,6 @@
 """The authored-gate surface (design 2026-09-30)."""
 import ast
+import dataclasses
 import json
 import subprocess
 import sys
@@ -122,6 +123,20 @@ def test_from_json_names_the_path_it_could_not_load(tmp_path):
     with pytest.raises(ValueError, match="delete the file") as e:
         gates.Gates.from_json(p)
     assert str(p) in str(e.value)
+
+
+def test_a_loaded_gate_set_cannot_be_changed_after_it_was_loaded():
+    """Both dataclasses are frozen, and the property is load-bearing rather than tidy: the set
+    is parsed ONCE (build_reel reads rm.gates into `authored` before its retry loop) and then
+    read by the check, the report's `authored` rows and the attestation. A mutable set could
+    be edited between the judging and the record that binds it. Found by the Task 7 AST sweep:
+    dropping `frozen=True` from either class, or flipping it, survived the whole unit tier,
+    because nothing ever assigned to a loaded Gate."""
+    loaded = gates.Gates.from_dict({"entropy_floor": {"value": 0.85, "why": "log profile"}})
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        loaded.gates = ()
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        loaded.gates[0].value = 0.1
 
 
 def test_the_record_carries_value_default_scope_blocking_and_why():

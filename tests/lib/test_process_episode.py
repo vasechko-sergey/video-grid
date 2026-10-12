@@ -496,6 +496,15 @@ def test_the_cli_finds_gates_json_beside_the_project_it_was_given(
     assert str(run / "project.json") in err
 
 
+def test_the_cli_hands_its_keyframes_file_on(tmp_path, monkeypatch):
+    """`--keyframes` is the manual tracking rung's answer channel (tracking-ladder design), and
+    the call that forwards it is the one this slice added `gates=` to. The Task 7 AST sweep
+    dropped the forward and the whole unit tier stayed green: the flag was parsed and ignored."""
+    kf = tmp_path / "keyframes.json"
+    seen = _drive_main(monkeypatch, tmp_path, "--keyframes", str(kf))
+    assert seen["keyframes_path"] == str(kf)
+
+
 def test_the_cli_hands_no_gates_when_no_file_sits_beside_the_project(
         tmp_path, monkeypatch, capsys):
     """The common case — every run that authored no gates — and the one a lookup written
