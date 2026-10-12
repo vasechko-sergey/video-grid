@@ -192,6 +192,43 @@ _Last updated: 2026-10-12._
   exactly as its own docstring prescribes). **Not done by Task 7:** the final
   whole-branch review and the merge itself.
 
+  **Final-review fix round (2026-10-12).** The whole-branch review came back ready after
+  fixes: 0 Critical, three Important.
+  - **I1 — a waiver reached delivery unattested, by a documented path.** The
+    grade-convergence page tells the agent to regrade one episode with
+    `process_episode --project <run>/project.json`, and that reads the **live**
+    `GATES.json`; phase 2, `build_reel`'s reprocess arm and `probe --episodes` all read the
+    set frozen into `EPISODES.json`, and the attestation records the frozen one. Reproduced:
+    phase 1b with no file, then `entropy_floor` 0.80 written, then the hand re-render — ep0
+    passed at ratio 0.884 (the default 0.90 refuses it), QC approved, phase 2 delivered, and
+    the attestation carried no `gates` and `overrides: []`. A hole this slice introduced
+    (before it there was no live file to read). Fixed as far as documentation goes: three
+    pages say to read `montage status`'s `gates.frozen.state` first, `montage`'s `differs`
+    message no longer says the edit "changes nothing for this reel" (it says phase 2, and
+    names the exception; the pinned text was updated, red first), design §6 names it. The
+    **code** fix — phase 2 refusing to deliver when an episode's `report.json` `authored`
+    rows disagree with the frozen set's episode scope, in both directions — is **the P1
+    row**, size M.
+  - **I2** — `probe` uses the authored floor VALUE only, with no `authored` row and no
+    reason; five documents said the reason reaches it.
+  - **I3** — a fifth copy of the false "`Attestation.overrides` is `[]` on every delivery"
+    (`verify_delivery`'s docstring, and unscoped statements in three documents), scoped to
+    before 0.15.0.
+  - **Minors taken:** M1 (a one-fixture measurement of `grade_residual_max` stated as
+    general), M2 (the stale 2026-10-05 ship date), M4 (`Gates.from_json` named no path for a
+    non-UTF-8 file or an integer past 4300 digits: one `except ValueError` arm, one test per
+    case, three mutations of the arm red, and a P3 row closed — the archive now holds **75**
+    closure entries and **77** backlog rows behind them), M5 (a stale `gates` key in a
+    hand-edited provenance block survived into the attestation when nothing was authored:
+    an `else: pop`, red first), M7 (`probe.json`'s `gates: not-read` is the one named
+    exception to byte-identity), M8 (`gates.py`'s docstring said all eleven decide whether
+    something ships). **Filed, not fixed:** M3 (a dangling-symlink `GATES.json` reads as no
+    gates, P4). **M6** was settled by correcting the comment rather than the code: a wiped
+    `--project ""` is looked up at `./GATES.json` before it is refused, which moves no bar
+    because the run stops.
+  Full suite after the round: **4272 passed / 1 skipped / 1 failed** (the same sanctioned
+  `test_real_runtime_is_ready`; one process, 491 s; unit tier 3766).
+
 
 - **Unenforced rules — a convention nothing can check is not a convention
   (2026-09-29, 0.14.1)** — design

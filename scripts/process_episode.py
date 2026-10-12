@@ -681,8 +681,12 @@ def main() -> None:
     # hand-driven re-render of one episode must be judged against the bar its siblings were
     # (design 2026-09-30 §2.3). No --project, no lookup: there is no project.json to look
     # beside, and a guess from the working directory would be a second, silent way to move a
-    # bar. `is not None` so only an OMITTED flag reads as "no project" — a wiped
-    # `--project ""` is handed on, and process_episode refuses it there.
+    # bar. `is not None` so only an OMITTED flag reads as "no project". A wiped `--project ""`
+    # is handed on and process_episode refuses it there — but it IS looked up first:
+    # beside_project("") resolves to ./GATES.json, the working directory, so that one guess is
+    # made. It moves no bar, because the run stops before any episode is judged; its only
+    # visible effect is that a ./GATES.json which fails to load is the error reported, ahead of
+    # the empty-project refusal (final review M6).
     authored = (gates_lib.beside_project(a.project) if a.project is not None
                 else gates_lib.Gates())
     if authored.gates:
