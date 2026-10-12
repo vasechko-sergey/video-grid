@@ -132,9 +132,12 @@ blocks is routed back to its stage's skill (here: `stop_and_report` /
 exactly one place, and it is not this skill's: a `GATES.json` beside
 `project.json` — the operator's file, every entry carrying a written reason and
 refused at load without one — which `--project` makes this invocation read (above)
-so that a hand-driven re-render is judged against the bar its siblings were. That is
-a lookup and not a lever you hold: never write or edit one to make a failing episode
-pass. Any bar it moved is named beside the verdict and in the delivery's attestation.
+so that a hand-driven re-render is judged against the bar its siblings were —
+provided the file still matches what phase 1b froze (check `montage status`'s
+`gates.frozen.state` first; on `differs`, re-run phase 1b rather than editing the file).
+That is a lookup and not a lever you hold: never write or edit one to make a failing
+episode pass. Any bar it moved is named beside the verdict, and in the delivery's
+attestation only when phase 1b froze it.
 A reel-level check's threshold belongs to `edl_to_reel`, which reads the same file;
 no CLI flag exposes one (the last, `--color-delta-max`, was retired with the check it
 bounded, 2026-08-29). A per-episode worker never reaches for either to make a failing

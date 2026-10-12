@@ -137,6 +137,7 @@ def test_a_gates_file_that_is_not_utf8_is_refused_naming_the_path(tmp_path):
         gates.Gates.from_json(p)
     assert str(p) in str(e.value)
     assert "utf-8" in str(e.value).lower()
+    assert "not valid JSON" not in str(e.value)   # a Latin-1 file is valid JSON in the wrong encoding
 
 
 def test_an_integer_past_the_digit_limit_is_refused_naming_the_path(tmp_path):
@@ -150,6 +151,7 @@ def test_an_integer_past_the_digit_limit_is_refused_naming_the_path(tmp_path):
         gates.Gates.from_json(p)
     assert str(p) in str(e.value)
     assert "4300" in str(e.value)
+    assert "not valid JSON" not in str(e.value)   # the syntax is fine; the integer is too long
 
 
 def test_a_loaded_gate_set_cannot_be_changed_after_it_was_loaded():

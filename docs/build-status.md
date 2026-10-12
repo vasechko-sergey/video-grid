@@ -22,7 +22,8 @@ _Last updated: 2026-10-12._
   to catch a loosened gate (`provenance.spec_overrides`) had nothing to report.
   MINOR: new contract fields (`ReelManifest.gates`, `Attestation.gates`), one new
   flag (`check_episode --gates`), no default moved, and with no `GATES.json` every
-  artifact is byte-identical. **The row's own counts were wrong twice over** and
+  conveyor artifact is byte-identical (one designed exception: `probe.json` gains
+  `gates: {"status": "not-read"}` when the project cannot be resolved). **The row's own counts were wrong twice over** and
   the design is the as-built record of both: it said twelve, and `loudness_target`
   is not a bar at all (Task 5 — it is the value `mix` renders to, so a gate file
   moves the ruler and not the thing measured), leaving **eleven**; and it treated

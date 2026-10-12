@@ -227,8 +227,10 @@ def _gates_frozen(run: Path, episodes: Path) -> dict | None:
                       f"DOES read the LIVE file: a hand `process_episode --project` re-render "
                       f"judges that episode against it, and the delivery's attestation names "
                       f"only the frozen set, so the bar would reach delivery unrecorded. "
-                      f"Restore the file to what phase 1 froze, or re-run phase 1, before "
-                      f"re-rendering any episode by hand"}
+                      f"Re-run phase 1 before re-rendering any episode by hand, so the new "
+                      f"bar is frozen and attested; reverting GATES.json instead discards "
+                      f"what is usually the operator's own new waiver, so do that only if "
+                      f"they confirm it"}
 
 
 def _match_grade_state(reel_dir: Path) -> tuple[str, str]:

@@ -191,14 +191,28 @@ beside `project.json`, and without it the episode is judged at the DEFAULT thres
 its siblings were judged at the ones the operator authored — silently. The episode's own
 manifest already carries its canvas and delivery, so the flag changes nothing else.
 
-**Before a hand re-render, read `montage status`'s `gates.frozen.state`.** This command
-reads the LIVE `GATES.json`, while everything else downstream — phase 2, `build_reel`'s
-reprocess arm, `probe --episodes` — uses the set phase 1b froze into `EPISODES.json`, and
-the delivery's attestation records the frozen one. If the state is `differs`, the re-render
-would be judged against a bar the attestation does not name: a waiver that reaches
-delivery unrecorded, with QC approving the clip it produced. Restore the file to what
-phase 1b froze, or re-run phase 1b (`edl_to_reel --from-geometry`) so the two agree,
-and only then re-render by hand. `same`, or no `frozen` block at all, is safe.
+**Before a hand re-render, check that the live `GATES.json` still matches what phase 1b
+froze** — for the reel you are re-rendering:
+
+    "$VG" scripts.montage status --run-dir <run> --reel <reel>
+
+and read `gates.frozen.state`. The re-render above reads the LIVE file, while everything
+downstream — phase 2, `build_reel`'s reprocess arm, `probe --episodes` — uses the set
+phase 1b froze into `EPISODES.json`, and the delivery's attestation records the frozen one.
+
+- **`same`** — safe to re-render.
+- **No `frozen` block** — safe only if it is absent because both sides are empty. It is
+  also absent when this reel has no `EPISODES.json` yet, so confirm `--reel` names the
+  reel whose episodes you are touching before reading the silence as agreement.
+- **`differs`** — the re-render would be judged against a bar the attestation does not
+  name: a waiver reaching delivery unrecorded, with QC approving the clip it produced.
+  A divergence after phase 1b is usually the operator's own deliberate new waiver, and
+  `GATES.json` is their file, not yours. So the default remedy is to **re-run phase 1b**
+  (`edl_to_reel --from-geometry`), which freezes the new bar and puts it in the
+  attestation. Reverting the file instead discards their waiver: do it only if the
+  user confirms that is what they want.
+- **`unreadable`** — stop and show the user the detail; neither side can be trusted to
+  say which bar would judge the clip.
 
 Omit `--route` entirely when `stabilize` or `pan` printed truthy — for
 `stabilize` this pays for one re-track on the re-stabilized segment (still far
