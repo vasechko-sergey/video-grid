@@ -4,13 +4,190 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — add/adjust the relevant bullet here in the same
 commit.
 
-_Last updated: 2026-09-29._
+_Last updated: 2026-10-12._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Threshold surface — an authoring surface must carry its threshold's blast
+  radius (2026-10-05, 0.15.0)** — design
+  [2026-09-30-threshold-surface-design.md](specs/2026-09-30-threshold-surface-design.md),
+  plan [2026-09-30-threshold-surface.md](plans/2026-09-30-threshold-surface.md),
+  **Tasks 1–7** (branch `feat/threshold-surface`). The P1 row: eleven check
+  thresholds had no authoring surface — no flag, no manifest field, no file — so
+  the only way to move a bar was to patch `models.py`, and the instrument written
+  to catch a loosened gate (`provenance.spec_overrides`) had nothing to report.
+  MINOR: new contract fields (`ReelManifest.gates`, `Attestation.gates`), one new
+  flag (`check_episode --gates`), no default moved, and with no `GATES.json` every
+  artifact is byte-identical. **The row's own counts were wrong twice over** and
+  the design is the as-built record of both: it said twelve, and `loudness_target`
+  is not a bar at all (Task 5 — it is the value `mix` renders to, so a gate file
+  moves the ruler and not the thing measured), leaving **eleven**; and it treated
+  them as one population, where **six block and five are advisory**, derived from
+  `models._ADVISORY_CHECKS` rather than typed. The rule: the reason is
+  structurally required (a missing or blank `why` is refused at load), not
+  conventionally expected, and is carried to the verdict it bought.
+
+  **Task 1 — `lib/gates.py`** (`629f11c`, `1ed3833`, `4237964`). The derived
+  vocabulary (`FIELDS`, `BLOCKING`, `OF_CHECK`, `fields_judged_by`), the six
+  load-time refusals, `for_spec` as the only partitioner. The implementer's concern
+  became the slice's §2.2a: refusal 6 ("the owning dataclass rejects it") was
+  **vacuous** — `black_floor`/`black_rel` accepted `True`, `nan`, `inf`, `"6"`,
+  `None` and `-1`, and `nan <= 0` is `False`, so `nan` passed every `> 0` guard on
+  seven further fields. The fix goes where the other sixteen range checks live, not
+  in `gates.py`.
+
+  **Task 2 — `ReelManifest.gates` + the guard widening** (`e67f1f9`, `4d72e60`,
+  `69b8ce1`, `25d607d`). One dict carrying the whole authored set, both scopes, so
+  there is one carrier; `is_finite_number` (shared with `is_bbox_coord`, one
+  spelling); the function-local import in `check_spec` that `coding-standards.md`
+  now names as the *import cycle whose other side cannot defer* exception. The
+  reviews found a hole a single-site mutation matrix cannot reach (deleting one
+  function removed the only gates-independent assertion that the dataclass guards
+  refuse bad values; it needs two simultaneous defects to show) and closed it by
+  pinning the narrowness of the `except`, not by restoring 120 cases.
+
+  **Task 3 — `process_episode(gates=)`, `check_episode --gates`** (`c3ba4fa`,
+  `9d60732`). The gates parse hoisted above the retry loop; only `None` means "no
+  gates" (`gates or {}` would read `[]` or an unset shell variable's `--gates ""` as
+  a silent revert to defaults).
+
+  **Task 4 — the finder, at three arms** (`ae59098`, `ddb28f0`). The brief's most
+  expensive defect: there are THREE pool-driving arms, not two, and the third
+  (`render_from_geometry`, `--from-geometry`) is the one the router renders through
+  and does not go through `_phase_one_setup` — wiring the two the design named would
+  have shipped the slice inert on the real path. `check_reel --gates` was built, then
+  **measured inert** (every reel threshold is read behind an input its CLI never
+  supplies; byte-identical report and exit code with all nine at extremes) and
+  deleted.
+
+  **Task 5 — the reason reaches the verdict, the attestation and the inspector**
+  (`9c36c7f`, `58c40a5`, `b47bea5`). `checks[name]["authored"]`, `Attestation.gates`,
+  `montage status`/`verify`, `probe grade` (which had been predicting `grade_damage`
+  against the dataclass default). F1: `loudness_target` leaves the vocabulary, 17−5
+  becoming 17−6. F2: `spec_overrides` cannot see even `variety_min` — it runs once in
+  phase 1 — so `Attestation.overrides` has been `[]` on every delivery, by
+  construction. The task's own first battery reported 59/59 RED; honestly re-measured
+  against a pristine tree it was **60 of 66**, because one row mutated a shared
+  helper's body and masked an independently deletable guard — hence Task 7's rule of
+  mutating call sites as well as callees.
+
+  **Task 6 — end-to-end proofs** (`be54f6c`, `5c6a95f`). Seven real-ffmpeg proofs:
+  both scopes, the six refusals, the control that must not move, the waiver
+  direction at both scopes, and phase 2 through the real `assemble_reel`. The review's
+  sharpest finding was about the proofs, not the code: **no proof exercised the waiver
+  direction**, the slice's entire purpose, so a clamp of an authored bar back to the
+  default survived the whole unit tier and 72 neighbouring integration tests. The fix
+  round's correction of the controller is the transferable half: a clamp at the CALL
+  SITE dies on any test that reads the echoed value off the report; only a clamp
+  **downstream of the echo** survives, and only the waiver proofs kill it.
+
+  **Task 7 — the sweep, the archive, the battery** (`a4903d1`, `b1fb2a6`, and the
+  commits that carry this entry). The documentation sweep (three pages that said
+  `grade_damage` has "no waiver anywhere" now say there is exactly one waiver and it
+  requires a written reason), the import-cycle standard, 0.15.0, the P1 row's
+  closure entry in `backlog-closed.md` with the measured counts, and every Step 4b
+  row and §7 deferral confirmed present in `backlog.md`. Archive hand re-count:
+  **74 closure entries** (24 P1 + 44 P2 table rows + 6 P3 entries; 76 backlog rows,
+  because the luma-tone-transfer entry and this one each close two).
+
+  **The battery — 27 rows plus two, one process at a time** (Rule Zero: this laptop
+  thermal-throttles, so no xdist, no concurrent runs, and no parallel mutation
+  rows; speed came from selecting less, one named test per row). Run on a scratch
+  copy of the integrated tree, a **green baseline required before any row** (a damaged
+  copy reads as a kill — Task 5 met this when an overnight scratchpad purge made an
+  unrelated test fail with no mutation applied), every row restored from a held copy
+  of the original and the copy's `git diff --stat` empty after each.
+
+  | # | File | Mutation | Result |
+  |---|---|---|---|
+  | 1 | `gates.py` | `FIELDS` hardcoded to the eleven names | RED — the subprocess test that widens BOTH spec classes before importing `gates` (an equality assertion cannot fail a correct literal; Task 1 added the test that can) |
+  | 2 | `gates.py` | `BLOCKING`: `not in _ADVISORY_CHECKS` → `in` | RED — `test_the_blocking_set_is_derived_from_the_advisory_registry` |
+  | 3 | `gates.py` | `OF_CHECK["length_retime_max"]` → `"brief_length"` | RED — the same test, sole killer: design §0.1's whole correction is pinned |
+  | 4 | `gates.py` | the `AUTHORED_ELSEWHERE` check moved below the `_OWNER` check | RED — `test_a_field_authored_elsewhere_is_refused_and_the_message_says_where` |
+  | 5 | `gates.py` | `why.strip()` → `why` | RED — the `[   ]` case of `test_a_value_without_a_written_reason_is_refused` |
+  | 6 | `gates.py` | the probe-construction `try` neutralised (`except ValueError` → `except KeyError`) | RED — `test_a_value_the_owning_dataclass_rejects_is_refused_by_that_dataclass` |
+  | 7 | `gates.py` | `set(entry) != {"value","why"}` → `"value" not in entry` | RED — the `[extra-key]` case |
+  | 8 | `gates.py` | `for_spec` ignores `_OWNER` | RED — `test_an_authored_value_reaches_the_class_that_owns_it` |
+  | 9 | `gates.py` | `record()`'s `default` read off the authored value | RED — `test_the_record_carries_value_default_scope_blocking_and_why` |
+  | 10 | `models.py` | `ReelManifest.__post_init__` stops forcing `check_spec` (and with it `Gates.from_dict`) | RED — `test_a_corrupt_gates_block_in_episodes_json_is_refused_not_trusted` |
+  | 11 | `models.py` | `check_spec` drops the `**for_spec(...)` splat | RED — `test_a_reel_manifest_applies_its_authored_reel_gates_to_check_spec` |
+  | 12 | `models.py` | `to_dict` omits `"gates"` | RED — `test_gates_round_trip_through_to_dict_and_from_dict` |
+  | 13 | `process_episode.py` | `**authored.for_spec(CheckSpec)` dropped | RED — `test_an_authored_entropy_floor_reaches_the_check_spec` |
+  | 14 | `gates.py` | `path_beside` reads `Path(project_path) / …`, not `.parent` | RED — `test_gates_json_beside_project_json_is_found_with_no_flag` |
+  | 15 | `edl_to_reel.py` | the pool's `kw["gates"]` assignment deleted | RED — all three arms of `test_the_pool_hands_the_authored_gates_to_every_episode` |
+  | 16 | `edl_to_reel.py` | `extra["gates"]` assignment deleted | RED — `test_an_authored_reel_bar_survives_the_episodes_json_round_trip` (integration) |
+  | 17 | `build_reel.py` | the reprocess arm drops `gates=` | RED — `test_a_reprocess_is_judged_against_the_same_authored_bar_as_its_siblings` |
+  | 18 | `gates.py` | `authored_rows` drops its `!= default` clause | **RED — and the brief's predicted uncertainty resolves the other way**: the guard is reachable, because an author may legally write a reason for a bar sitting at its default (`test_a_check_whose_bars_were_not_authored_carries_no_authored_key` builds exactly that) |
+  | 19 | `provenance.py` | `Attestation.to_dict` omits `"gates"` | RED — `test_the_attestation_records_every_authored_gate_with_its_reason_and_scope` |
+  | 20 | `montage.py` | `_gates`' unreadable arm returns `present: False` | RED — `test_status_names_the_three_gates_states` |
+  | 21 | `models.py` | `CheckSpec.black_rel`'s guard deleted | RED — 6 cases; and under the mutation `Gates.from_dict` LOADS a string `black_rel`, which is what makes the row about refusal 6 rather than about a dataclass |
+  | 22 | `models.py` | `loudness_tol`'s guard drops finiteness only | RED — `[inf-loudness_tol]` |
+  | 23 | `models.py` | `beat_tol`'s guard drops the bool exclusion only | RED — `test_no_reel_threshold_accepts_a_bool[beat_tol]` |
+  | 24 | `gradedamage.py` | the episode floor clamped at `max(floor, 0.90)` INSIDE `evaluate`, downstream of the report's echo | RED — `test_a_loosened_entropy_floor_releases_a_grade_the_default_refuses`, which Task 6's fix round added for exactly this |
+  | 25 | `check_reel.py` | the reel max clamped at `min(max, 4.0)` at the comparison, downstream of the echo | RED — `test_a_loosened_reel_bar_releases_a_reel_the_default_stops` |
+  | 26 | `edl_to_reel.py` | `rm.gates = {}` immediately before `build_reel` in `assemble_reel` | RED — `test_phase_2_judges_the_reel_by_the_set_phase_1b_froze` |
+  | 27 | `edl_to_reel.py` | `rm.gates = {}` inside `_episodes_ready` | RED — the same proof |
+  | 28 | `check_episode.py` | the floor clamped at the CALL SITE, upstream of the echo (`floor=max(spec.entropy_floor, 0.90)`) | RED — exactly one unit test (`test_a_moved_bar_is_named_beside_each_episode_verdict_it_bought`), which reads the moved value back out of the report's `authored` row |
+  | 29 | `models.py` | `ReelCheckSpec.grade_residual_max` clamped to 4.0 in `__post_init__`, upstream of both the echo and the comparison | RED — exactly one unit test (`test_every_reel_bar_is_named_on_the_check_that_reads_it`), which reads the moved value back out of the `authored` rows |
+
+  **Roll-call: 27 of 27 RED outright on the first run**, plus the two extra rows,
+  which exist to measure rows 24–25's claim rather than trust it: a clamp upstream of
+  the report's echo dies on the one existing test that reads the echoed value, and only
+  a clamp BELOW the echo survives the unit tier — which is why Task 6's waiver proofs
+  exist. None came back GREEN, none was a documented non-discrimination, and no named
+  test turned out not to see its own mutation, so the plan's battery table needed no
+  pointer corrected. Rows 22–23 were written as hand-spelled variants of the guard
+  rather than as a mutation of `is_finite_number` itself, for Task 5's reason: mutating
+  the one shared predicate would kill every per-field guard at once and mask which of
+  them is independently deletable.
+
+  **The generic AST sweep, because a battery of hand-picked rows has the blind spots of
+  whoever picked them.** Every production line the slice added or changed
+  (`git diff -U0 main...HEAD` over 12 files) was mutated by text splice at its AST
+  position — negate each `if`, swap `and`/`or`, flip each comparison and each
+  `True`/`False`, `return None`, replace a call/assignment/raise with `pass`, drop each
+  member of an `except` tuple, drop each argument. **481 mutants** (`gates.py` 162,
+  `models.py` 84, `montage.py` 56, `edl_to_reel.py` 56, `process_episode.py` 26,
+  `provenance.py` 26, `probe.py` 24, `check_episode.py` 22, `build_reel.py` 17,
+  `check_reel.py` 4, `deliver.py` 3, `mix.py` 1). Each ran first against the test files
+  that can see its module, then — if it survived — against the whole unit tier. **470 were
+  killed; 11 survived the unit tier.** Triage of the eleven:
+
+  - **Closed with a new test, each watched red under its mutation (7 mutants, 4 tests):**
+    `frozen=True` dropped or flipped on `Gate` and on `Gates` (4) — nothing ever assigned
+    to a loaded set, and the set is parsed once and read by the check, the report and the
+    attestation; `check_episode`'s `--attempt` forward and `process_episode`'s
+    `--keyframes` forward (2) — both flags were parsed and silently ignored, on call lines
+    this slice edited; and `ReelManifest.to_dict` writing `list()` for
+    `list(self.tone_target)` (1) — `from_dict` was pinned and `to_dict` was not, on a method
+    this slice rewrote from one `return` into a dict plus a conditional key, so a lost
+    key would have shipped.
+  - **Equivalent (4), no reachable input distinguishes them:** `default=None` dropped from
+    two `argparse` options (an option's default already IS `None`), and `where="ReelManifest.gates"`
+    dropped from `probe.py` and `build_reel.py` (the label appears only in a raised message, and
+    both sites hold a constructed `ReelManifest` whose `__post_init__` already validated the set,
+    so the call cannot raise — Task 5's sweep ruled the same pair equivalent).
+  - **Open: none.**
+
+  What the sweep does not do, as Task 5 recorded: it mutates only the production lines
+  the slice touched, not strings, so the three-line changes in `check_reel` / `deliver` /
+  `mix` give it one to four mutants each and stay covered mainly by the hand rows; and
+  the 4 survivors it left as equivalent are a judgment, not a proof.
+  Nine closing and call-site mutants (the two extra battery rows and the seven above)
+  were run through the same harness, one process at a time, with a green baseline
+  required before each pass.
+
+  **State at the end of Task 7.** Full suite **4269 passed / 1 skipped / 1 failed** (one process, 556 s; 4265 before the four closing tests) — the one failure is
+  `tests/integration/test_verify_runtime.py::test_real_runtime_is_ready`, red for a
+  sanctioned reason (the installed plugin is 0.2.1 against a 0.15.0 clone, so the
+  plugin-staleness check correctly refuses; it clears when the user runs the remedy,
+  exactly as its own docstring prescribes). **Not done by Task 7:** the final
+  whole-branch review and the merge itself.
+
 
 - **Unenforced rules — a convention nothing can check is not a convention
   (2026-09-29, 0.14.1)** — design
@@ -6851,6 +7028,13 @@ _Last updated: 2026-09-29._
     see an argv reordering — landmine-lint design §5).
 
 ## Next action
+
+> **P1 is EMPTY again as of 2026-10-05 ("Threshold surface", 0.15.0)** — see the
+> Done entry above. The twelve-thresholds row that the blockquote below describes as
+> populating P1 is closed in `docs/backlog-closed.md`, with the counts the slice
+> measured (eleven authorable, six blocking, `spec_overrides` unable to report even
+> `variety_min`). Nothing has been promoted since: read `docs/backlog.md`, not this
+> narrative, for what is actually next.
 
 > **The P1 table is populated again as of 2026-09-29 ("Unenforced rules",
 > 0.14.1)** — see the Done entry above. R2.4 was promoted and merged into a
