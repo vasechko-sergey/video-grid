@@ -529,12 +529,31 @@ authored value with a recorded reason, which is what makes it reviewable.
   a bar change between the judging and the attestation that binds it, which is the
   drift the attested-run design (2026-08-04) exists to prevent. The real cost is a
   surprise, not a defect: an operator who edits `GATES.json` between phases sees no
-  effect until phase 1b is re-run, and for a reel-scope bar that means re-rendering
-  every episode to change a number applied at `check_reel` time. The remedy is
-  **visibility, not freshness** — `montage status` shows the authored set and says
-  which phase froze it (§2.4 item 3).
-- **Two of the six blocking bars cannot fire at all on an ungraded reel, so
-  authoring them there does nothing.** Measured by Task 6 while building the
+  effect on phase 2 until phase 1b is re-run, and for a reel-scope bar that means
+  re-rendering every episode to change a number applied at `check_reel` time. The
+  remedy is **visibility, not freshness** — `montage status` shows the authored set
+  and says which phase froze it (§2.4 item 3).
+
+  **One exception, found by the final whole-branch review, and it is a defect.** The
+  claim above is about phase 2. A hand-driven `process_episode --project` re-render —
+  the path `references/edit-plan/grade-convergence.md` documents for regrading one
+  episode — reads the LIVE file (§2.3), while phase 2, `build_reel`'s reprocess arm and
+  `probe --episodes` read the frozen one. Reproduced end to end: phase 1b with no file,
+  then a `GATES.json` authoring `entropy_floor` 0.80, then the hand re-render — ep0
+  passed at ratio 0.884 against the live 0.80 (the default 0.90 refuses it), QC
+  approved the clip, phase 2 delivered, and the attestation carried **no `gates` and
+  `overrides: []`**. A waiver reached delivery unattested, by a documented path, and no
+  check noticed. This slice introduced it: before `GATES.json` there was no live file
+  to read. The docs now say to check `montage status`'s `gates.frozen.state` before
+  re-rendering by hand and the `differs` message names the path, but that is
+  visibility again, for a hole whose fix is a refusal: phase 2 should compare each
+  episode's `report.json` `authored` rows against the frozen set's episode scope, in
+  both directions (a bar the report was judged at that the frozen set lacks; a frozen
+  bar the report shows at default), and refuse to deliver on a mismatch, naming the
+  episode. Filed as a P1 backlog row (§7).
+- **On an ungraded reel, `entropy_floor` cannot fire (arithmetic) and
+  `grade_residual_max` did not (one fixture), so authoring either there does
+  nothing in practice.** Measured by Task 6 while building the
   proofs, on the suite's own `golden_ride_segment`: `grade_damage` divides the
   graded render's luma entropy by the plain one's, and with no grade declared the
   two renders are the *same* render, so the ratio is exactly **1.0** and no floor
@@ -596,6 +615,13 @@ authored value with a recorded reason, which is what makes it reviewable.
   a broadcast −23 or Apple Music −16 deliverable needs both to move at once, which
   is why this is one row and not two. **P2** — a general tool that cannot deliver to
   broadcast loudness is a real limit, not a tidiness one.
+- **Phase 2 refuses to deliver when an episode was judged against a different bar than the
+  frozen set records** (§6, the exception to the phase-2-freeze bullet). Compare each
+  episode's `report.json` `authored` rows with the frozen set's episode scope, in both
+  directions, and stop naming the episode. Closes a silent bypass this slice introduced:
+  a hand `process_episode --project` re-render reads the live file. `montage status`
+  already detects `frozen: differs`; the refusal moves that from visibility to a gate.
+  **P1**, M.
 - Per-episode gates, once an episode identity survives a re-cut (§6). P3.
 - Re-deriving any of the eleven on a second shoot — the existing blocked
   calibration rows, unchanged by this slice. P4.

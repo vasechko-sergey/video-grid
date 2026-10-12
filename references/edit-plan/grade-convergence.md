@@ -191,6 +191,15 @@ beside `project.json`, and without it the episode is judged at the DEFAULT thres
 its siblings were judged at the ones the operator authored — silently. The episode's own
 manifest already carries its canvas and delivery, so the flag changes nothing else.
 
+**Before a hand re-render, read `montage status`'s `gates.frozen.state`.** This command
+reads the LIVE `GATES.json`, while everything else downstream — phase 2, `build_reel`'s
+reprocess arm, `probe --episodes` — uses the set phase 1b froze into `EPISODES.json`, and
+the delivery's attestation records the frozen one. If the state is `differs`, the re-render
+would be judged against a bar the attestation does not name: a waiver that reaches
+delivery unrecorded, with QC approving the clip it produced. Restore the file to what
+phase 1b froze, or re-run phase 1b (`edl_to_reel --from-geometry`) so the two agree,
+and only then re-render by hand. `same`, or no `frozen` block at all, is safe.
+
 Omit `--route` entirely when `stabilize` or `pan` printed truthy — for
 `stabilize` this pays for one re-track on the re-stabilized segment (still far
 cheaper than a reel re-render); for `pan` there is nothing to track either way,

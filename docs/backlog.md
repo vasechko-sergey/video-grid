@@ -52,7 +52,11 @@ is still P3.
 
 ## P1 — next
 
-**P1 is empty.** The threshold surface was the only row; it closed 2026-10-12 by threshold-surface (0.15.0) — [the archive](backlog-closed.md) carries the closure note. Unlike an empty P0, an empty P1 is not the resting state (P1 is supposed to hold *next*) — it means nothing has been promoted since the last row closed. Read P2 below for what the queue actually continues with.
+The threshold surface, P1's only row, closed 2026-10-12 by threshold-surface (0.15.0) — [the archive](backlog-closed.md) carries the closure note. Its final whole-branch review then found a hole that slice itself introduced, and P1 holds that one row.
+
+| | Item | Size | Source |
+|---|------|------|--------|
+| ○ | **Phase 2 can deliver a reel whose episodes were judged against a bar the frozen set does not record — a silent bypass the threshold-surface slice introduced.** `references/edit-plan/grade-convergence.md` documents regrading one episode by hand with `process_episode --project <run>/project.json`, and that CLI reads the **live** `GATES.json`; phase 2, `build_reel`'s reprocess arm and `probe --episodes` all read the set frozen into `EPISODES.json`, and the attestation records the frozen one. Reproduced by the final whole-branch review: phase 1b with no file, then a `GATES.json` authoring `entropy_floor` 0.80, then the hand re-render — ep0 passed at ratio 0.884 against the live 0.80 (the default 0.90 refuses it), episode-QC approved the clip, phase 2 delivered, and the attestation carried **no `gates` and `overrides: []`**. Docs and the `montage status` `differs` message now name the path and say to restore the file or re-run phase 1b first, but that is visibility, and the hole wants a refusal. **The fix:** phase 2 (`assemble_reel` → `build_reel`'s deliver arm) compares each episode's `report.json` `authored` rows against the frozen set's episode scope, in both directions — a bar the report was judged at that the frozen set lacks, and a frozen bar the report shows at its default — and refuses to deliver on a mismatch, naming the episode. `montage status` already detects `frozen: differs` (so the inputs for a cheap pre-check exist); the refusal is what moves it from a thing a human may read to a gate. No waiver, as with the episode-QC gate it sits beside. | M | [threshold-surface](specs/2026-09-30-threshold-surface-design.md) §6, §7; final whole-branch review |
 
 ## P2 — soon
 

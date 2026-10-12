@@ -13,7 +13,7 @@ _Last updated: 2026-10-12._
 ## Done
 
 - **Threshold surface — an authoring surface must carry its threshold's blast
-  radius (2026-10-05, 0.15.0)** — design
+  radius (2026-10-12, 0.15.0)** — design
   [2026-09-30-threshold-surface-design.md](specs/2026-09-30-threshold-surface-design.md),
   plan [2026-09-30-threshold-surface.md](plans/2026-09-30-threshold-surface.md),
   **Tasks 1–7** (branch `feat/threshold-surface`). The P1 row: eleven check
@@ -7030,12 +7030,15 @@ _Last updated: 2026-10-12._
 
 ## Next action
 
-> **P1 is EMPTY again as of 2026-10-05 ("Threshold surface", 0.15.0)** — see the
-> Done entry above. The twelve-thresholds row that the blockquote below describes as
+> **P1 holds one row as of 2026-10-12 ("Threshold surface", 0.15.0)** — see the Done
+> entry above. The twelve-thresholds row that the blockquote below describes as
 > populating P1 is closed in `docs/backlog-closed.md`, with the counts the slice
 > measured (eleven authorable, six blocking, `spec_overrides` unable to report even
-> `variety_min`). Nothing has been promoted since: read `docs/backlog.md`, not this
-> narrative, for what is actually next.
+> `variety_min`). The slice's final whole-branch review then found a hole the slice
+> itself introduced — phase 2 can deliver a reel whose episodes a hand
+> `process_episode --project` re-render judged against the LIVE `GATES.json`, with
+> the attestation recording the frozen set instead — and that is the one P1 row now:
+> read `docs/backlog.md`, not this narrative, for what is actually next.
 
 > **The P1 table is populated again as of 2026-09-29 ("Unenforced rules",
 > 0.14.1)** — see the Done entry above. R2.4 was promoted and merged into a

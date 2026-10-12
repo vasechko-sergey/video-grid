@@ -220,10 +220,15 @@ def _gates_frozen(run: Path, episodes: Path) -> dict | None:
             "detail": f"GATES.json no longer matches the set {episodes.name} froze when phase 1 "
                       f"rendered these episodes ({'; '.join(drift)}). Phase 2 (edl_to_reel "
                       f"--from-episodes) judges against the FROZEN set and never re-reads the "
-                      f"file, so this edit changes nothing for this reel until phase 1 is "
+                      f"file, so this edit changes nothing for phase 2 until phase 1 is "
                       f"re-run (edl_to_reel --from-geometry, or --stop-after-episodes for a "
                       f"hand-driven run) — and for a reel-scope bar that means re-rendering "
-                      f"every episode to change a number applied at check_reel time"}
+                      f"every episode to change a number applied at check_reel time. One path "
+                      f"DOES read the LIVE file: a hand `process_episode --project` re-render "
+                      f"judges that episode against it, and the delivery's attestation names "
+                      f"only the frozen set, so the bar would reach delivery unrecorded. "
+                      f"Restore the file to what phase 1 froze, or re-run phase 1, before "
+                      f"re-rendering any episode by hand"}
 
 
 def _match_grade_state(reel_dir: Path) -> tuple[str, str]:

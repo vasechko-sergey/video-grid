@@ -71,7 +71,7 @@ Run the orchestrator (never re-implement its loop in prose):
 "$VG" scripts.process_episode <manifest.json> --project-dir <scratch> [--project <project.json>]
 ```
 
-Pass `--project <project.json>` (written by project-init) so an episode manifest that omits `canvas`/`delivery` inherits them from the project. It also reads a `GATES.json` beside that file (if any) and judges the episode against the thresholds it moved, saying so on stderr — the same lookup `edl_to_reel` makes, so a hand-driven re-render is judged against the bar its siblings were. With no `--project`, no gates are read and the episode is judged at the defaults, silently.
+Pass `--project <project.json>` (written by project-init) so an episode manifest that omits `canvas`/`delivery` inherits them from the project. It also reads a `GATES.json` beside that file (if any) and judges the episode against the thresholds it moved, saying so on stderr — the same lookup `edl_to_reel` makes, so a hand-driven re-render is judged against the bar its siblings were — provided the file still matches what phase 1b froze: phase 2 and the delivery's attestation use the frozen set, not the live file, so check `montage status`'s `gates.frozen.state` first (`differs` means restore the file or re-run `--from-geometry`). With no `--project`, no gates are read and the episode is judged at the defaults, silently.
 
 ## Ask-before-start (§4.1)
 

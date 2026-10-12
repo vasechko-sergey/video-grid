@@ -722,8 +722,12 @@ def test_status_says_plainly_when_the_file_no_longer_matches_what_phase_1_froze(
     assert "authored in the file but not frozen: entropy_floor" in d
     assert "frozen but no longer in the file: loudness_tol" in d
     assert "changed since: beat_tol" in d
-    assert "FROZEN set" in d and "changes nothing for this reel" in d
+    assert "FROZEN set" in d and "changes nothing for phase 2" in d
     assert "edl_to_reel --from-geometry" in d and "re-rendering every episode" in d
+    # The exception to "changes nothing" (final review I1): a hand re-render reads the LIVE
+    # file, so it would judge one episode against a bar the attestation does not record.
+    assert "process_episode --project" in d and "LIVE file" in d
+    assert "attestation" in d
 
 
 def test_deleting_the_gates_file_does_not_lift_a_bar_from_a_reel_that_froze_it(tmp_path):
