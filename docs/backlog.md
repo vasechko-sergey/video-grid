@@ -225,8 +225,8 @@ re-taking it — nobody has shown 3 is right,
 only that it is stated (grade-delta-sensors §9.5, sensor-provenance §5) ·
 a second calibration shoot for the **retired 5.0 dE00 bar** — the field this row
 opened by naming, `CheckSpec.grade_delta_max`, does not exist anywhere in the tree:
-it was replaced by `CheckSpec.entropy_floor` in 0.7.0 (the P1 row above, which R2.4
-folded into, records the same correction), which measures an entropy ratio and not
+it was replaced by `CheckSpec.entropy_floor` in 0.7.0 (the P1 row R2.4 folded into,
+now closed in [the archive](backlog-closed.md), records the same correction), which measures an entropy ratio and not
 a colour distance, so the dE00 has had no bar of its own since. Every number
 behind the 5.0 dE00 bar comes from one shoot, one grade, and simulated
 damage, and the whole healthy-to-damage gap is **0.75 dE00**. And those
@@ -461,11 +461,11 @@ against the shipped `tone_drift(decisions, pairs)`) — corrected in both
 places; the rest of this row stays open. The natural first instalment of the
 existing open row on `grade_damage`/`grade_faithful` naming the same shape
 of absence in different words (bound-reports, whole-branch review) ·
-this slice's near-miss looked like R2.4 (folded into the P1 row above on
-2026-09-29) but is a different mechanism —
-a RENDERED value (`max_speed`) with no manifest field at all, not a THRESHOLD
-widened by hand with no reason recorded — so R2.4 stays open, unmerged and
-untouched by this row (retry-record §6) ·
+this slice's near-miss looked like R2.4 (folded into the P1 row on
+2026-09-29, and closed with it by threshold-surface on 2026-10-05) but is a different
+mechanism — a RENDERED value (`max_speed`) with no manifest field at all, not a
+THRESHOLD widened by hand with no reason recorded — so R2.4 was not merged into
+this row and this row did not touch it (retry-record §6) ·
 recording the accepted attempt *number* on `ReelEpisode`/`EPISODES.json` —
 not needed once this slice's sidecar record landed: the mechanical
 `report.json` already carries `attempt`, and after the fix the report a
