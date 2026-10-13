@@ -414,7 +414,7 @@ the actual teeth live.
 
 ## 10. Deferred → backlog rows
 
-Per [the deferral rule](../development-workflow.md#closing-a-slice--the-deferral-rule),
+Per [the deferral rule](../development-workflow.md#closing-a-slice--what-enters-the-backlog),
 every item in §8 and §9 that is not already queued gets a row:
 
 - **A migration for `EDL.json` files without `base_dur`** (§9) — today they keep the

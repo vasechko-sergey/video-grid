@@ -4,13 +4,27 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — add/adjust the relevant bullet here in the same
 commit.
 
-_Last updated: 2026-10-12._
+_Last updated: 2026-10-13._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
 > changelog; that one is the stage-by-stage map + phase roadmap.
 
 ## Done
+
+- **Pre-run-2 triage (2026-10-13, 0.15.1)** — branch `chore/pre-run-2`, no design
+  or plan (a small fix, per the new small-fix path in
+  [development-workflow.md](development-workflow.md#execution-protocol)). The
+  backlog had grown from the first real run's 29 rows to ~230 entries because every
+  design deferral and many review findings became rows; of ~140 P3 entries only 7
+  mentioned the real run. The rule changed: a row enters only when a real run
+  showed it or the user asked for it. P3/P4 moved verbatim to
+  [backlog-parked.md](backlog-parked.md); P1 and nine P2 rows closed `⊘` with
+  reasons, five closed `✅` (four fixed here, one found stale), and what is left is
+  three short lists — what run 2 must measure, what to watch the agent do, and the
+  picture work after it. Fixed: `check_reel`'s pre-mix loudness reason (R10.11),
+  the router's read-the-whole-output and keep-awake rules (R10.3, R11.1), and two
+  intake tests that fetched YOLO weights in the unit tier, now `integration`.
 
 - **Threshold surface — an authoring surface must carry its threshold's blast
   radius (2026-10-12, 0.15.0)** — design
@@ -7070,6 +7084,14 @@ _Last updated: 2026-10-12._
     see an argv reordering — landmine-lint design §5).
 
 ## Next action
+
+> **2026-10-13: the next action is the second real run, not a slice.** The user
+> updates the installed plugin (`claude plugin update video-grid@video-grid` and a
+> restart — it is 0.2.1 against this clone's 0.15.1, which is also why
+> `test_real_runtime_is_ready` is red) and runs a montage on new footage. Then a
+> retro reads that run's artifacts against [backlog.md](backlog.md)'s two run-2
+> lists, and simplification is decided from what the run used, not guessed before
+> it. Every blockquote below this one is history.
 
 > **P1 holds one row as of 2026-10-12 ("Threshold surface", 0.15.0)** — see the Done
 > entry above. The twelve-thresholds row that the blockquote below describes as

@@ -1013,6 +1013,7 @@ def test_carve_windows_honours_a_wider_band():
     assert max(d for _, d in wide) > 4.0
 
 
+@pytest.mark.integration   # real intake(): YOLO weights, fetched if absent
 def test_intake_records_the_band_it_carved_with(sample_clip, tmp_path):
     out = tmp_path / "run"
     f = intake.intake(str(sample_clip.parent), str(out), band=(1.0, 3.0))
@@ -1020,6 +1021,7 @@ def test_intake_records_the_band_it_carved_with(sample_clip, tmp_path):
     assert json.loads((out / "FOOTAGE.json").read_text())["band"] == [1.0, 3.0]
 
 
+@pytest.mark.integration   # real intake(): YOLO weights, fetched if absent
 def test_intake_records_the_default_band_when_none_is_given(sample_clip, tmp_path):
     f = intake.intake(str(sample_clip.parent), str(tmp_path / "run"))
     assert f.band == carve.DEFAULT_BAND

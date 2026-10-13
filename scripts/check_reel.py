@@ -22,7 +22,13 @@ from scripts.lib.models import (CheckResult, CropPath, MusicSpec, PathMeta, Reel
 # per-episode geometry for safe_zones/key_action/pad_bars/transitions). Nothing is genuinely
 # "not-implemented" anymore.
 _UNCHECKED = {"beat": "not checked — no MUSIC.json supplied (silent reel)",
-              "loudness": "not checked — no audio stem supplied (silent reel)",
+              # Not "(silent reel)": build_reel's first round checks the picture BEFORE it
+              # mixes, so a reel WITH music reads this too — and a real run's agent took
+              # that wording to mean the music had been lost (retro R10.11).
+              "loudness": "not checked — no audio stem passed to this check (a reel with "
+                          "music is mixed after the picture passes and checked again then; "
+                          "a reel with no MUSIC.json has no stem at all; the check_reel "
+                          "CLI cannot pass one)",
               "safe_zones": "not checked — no per-episode geometry supplied",
               "key_action": "not checked — no per-episode geometry supplied",
               "pad_bars": "not checked — no per-episode geometry supplied",
