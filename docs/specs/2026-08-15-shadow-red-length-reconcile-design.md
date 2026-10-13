@@ -287,7 +287,7 @@ figure that *was* found.
 
 ## 7. Deferred → backlog rows
 
-Per [the deferral rule](../development-workflow.md#closing-a-slice--the-deferral-rule), every
+Per [the deferral rule](../development-workflow.md#closing-a-slice--what-enters-the-backlog), every
 item in §5 and §6 that is not already queued gets a row:
 
 - Record the music file's digest on `Spine` so a stale spine is caught by identity rather
