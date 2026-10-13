@@ -410,6 +410,15 @@ aspect (project-init's own "ask, don't guess").
   provenance digest no longer matches its own contents — never hand-edit a
   tool-generated `EDL.json`, even to fix a small thing; revise `selection.json` and
   re-run the build instead.
+- **Read a stage's whole output.** Never pipe a conveyor command through
+  `tail`/`head`/`grep` — its stdout is the result. The first real run did that on
+  95% of its calls and lost the answer twice, once paying a 173 s re-render to
+  re-read output already printed. If it is long, redirect it to a file under the
+  reel's `build/` and read the file.
+- **Keep the machine awake for a long run** (`caffeinate -i` in the user's own
+  terminal, or the host's keep-awake setting) and tell every subagent you dispatch
+  to write its output file incrementally: on the first real run the Mac sleeping
+  killed 11 of 98 subagents.
 - **You may not disable, lower, or downgrade any quality gate.** A gate that
   blocks is routed back to its stage's skill, never loosened to pass. No flag on
   any stage this router drives loosens a check threshold — the last one,

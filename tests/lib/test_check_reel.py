@@ -78,6 +78,18 @@ def test_beat_loudness_safe_zones_not_checked_when_silent(tmp_path, monkeypatch)
     assert rep.wall_s >= 0.0 and rep.episode_count == 2
 
 
+def test_the_loudness_reason_does_not_call_a_pre_mix_reel_silent(tmp_path, monkeypatch):
+    """build_reel checks the picture BEFORE it mixes, so a reel WITH music reads this
+    reason on its first round. "(silent reel)" there made a real run's agent conclude
+    the music had been lost (retro R10.11)."""
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"))
+    reason = rep.checks["loudness"].detail["reason"]
+    assert "silent reel" not in reason
+    assert "mixed after the picture passes" in reason
+
+
 def test_no_across_cut_colour_check_is_reported(tmp_path, monkeypatch):
     """The across-cut colour check is retired (design 2026-08-29 §2). It compared two
     frames straddling a cut — two different SHOTS — so six of the only real reel's
