@@ -27,7 +27,8 @@ _UNCHECKED = {"beat": "not checked — no MUSIC.json supplied (silent reel)",
               # that wording to mean the music had been lost (retro R10.11).
               "loudness": "not checked — no audio stem passed to this check (a reel with "
                           "music is mixed after the picture passes and checked again then; "
-                          "a reel with no MUSIC.json has no stem at all)",
+                          "a reel with no MUSIC.json has no stem at all; the check_reel "
+                          "CLI cannot pass one)",
               "safe_zones": "not checked — no per-episode geometry supplied",
               "key_action": "not checked — no per-episode geometry supplied",
               "pad_bars": "not checked — no per-episode geometry supplied",

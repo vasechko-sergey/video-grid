@@ -413,8 +413,9 @@ aspect (project-init's own "ask, don't guess").
 - **Read a stage's whole output.** Never pipe a conveyor command through
   `tail`/`head`/`grep` — its stdout is the result. The first real run did that on
   95% of its calls and lost the answer twice, once paying a 173 s re-render to
-  re-read output already printed. If it is long, redirect it to a file under the
-  reel's `build/` and read the file.
+  re-read output already printed. If it is long, redirect it to a file in
+  `<run>/reels/<reel>/logs/` (create it first) and read the file — never under
+  `build/`, which phase 1 wipes at its start, deleting its own log.
 - **Keep the machine awake for a long run** (`caffeinate -i` in the user's own
   terminal, or the host's keep-awake setting) and tell every subagent you dispatch
   to write its output file incrementally: on the first real run the Mac sleeping

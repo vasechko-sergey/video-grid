@@ -10,6 +10,16 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.15.1 — 2026-10-13
+
+- `check_reel`'s pre-mix loudness reason no longer reads "(silent reel)" on a reel
+  that has music — the first real run's agent took that to mean the music was lost.
+- The router tells the agent to read a stage's whole output (not `tail`/`grep` it),
+  to keep the machine awake for a long run, and to have subagents write
+  incrementally.
+- The backlog now holds only what a real run showed or the user asked for; the old
+  P3/P4 entries are parked in `docs/backlog-parked.md`.
+
 ## 0.15.0 — 2026-10-12
 
 ### Check thresholds are authorable — and a moved bar must say why

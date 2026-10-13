@@ -91,6 +91,14 @@ New work follows the superpowers pipeline — one subsystem per cycle:
    pass. Continuous — no check-ins between tasks. A whole-slice review closes the
    cycle.
 
+**A small fix skips the pipeline.** A change of a task or two — a message, a
+guard, a doc line, a mismarked test — is written test-first on its own branch
+and gets one review; no design, no plan, no mutation battery. The full cycle is
+for a change that adds or moves a contract. (Written 2026-10-13: between the
+first real run and that date, slices that closed one row routinely ran a design
+with a measurement section, a seven-task plan and a battery of twenty to eighty
+mutants, which is how a one-line problem came to cost a day.)
+
 ### Spec and plan
 
 Until the slice ships — the version-bump commit ([Versioning](#versioning)) —
@@ -109,23 +117,24 @@ landed were fully ticked, across five date bands from 2026-07-05 to 2026-09-25; 
 end state reads 61 of 91 because one commit (`878a713`, 2026-08-06) ticked 27 of the
 older ones retroactively. Measured 2026-09-29.)
 
-### Closing a slice — the deferral rule
+### Closing a slice — what enters the backlog
 
-**A slice is not finished until every item in its design's `§Deferred` has a row
-in [backlog.md](./backlog.md).** The slice's own docs-sync task carries this;
-write the rows there, with a priority, a status and a size.
+**The backlog holds only what a real run showed or what the user asked for.** A
+design's `§Deferred` and honest-limits sections, and a reviewer's Minor findings,
+stay where they were written — they do not become rows. A deferral that ships a
+wrong result *today* is the exception: it is a live defect and enters at once, as
+P0.
 
-This exists because on 2026-08-12 an audit of all 28 design deferral sections
-found four items that had left every list, three of them shipping as live
-defects. Every document recorded them — designs, build-status, the fixes backlog,
-the pipeline map — and none of them was a *queue*, so an item escaped a design's
-deferred list only when a human happened to re-read that design. One deferral
-(`smooth_window_s`) was written down twice and rediscovered by accident three
-weeks later.
-
-Nothing machine-checks this rule; a lint that matched prose deferrals to rows
-would be guessing at both ends. It is a convention that survives only by being on
-this checklist.
+The rule was the opposite until 2026-10-13: every item in a design's
+`§Deferred` had to get a row, after a 2026-08-12 audit found four deferrals that
+had left every list (three were live defects — which the P0 exception still
+catches). Followed for two months it inverted the queue: each slice closed one
+row and filed three to five, the backlog grew from the first real run's 29 rows
+to about 230 entries, and of roughly 140 P3 entries only 7 so much as mentioned
+the real run — about 96 were design deferrals and 46 review or test findings
+(counted 2026-10-13 by splitting P3 on its separators; the split is approximate). Everything filed under
+the old rule was parked on 2026-10-13 in
+[backlog-parked.md](./backlog-parked.md) — not deleted, not a queue.
 
 **And the same task closes rows out of the file.** A row that a slice finishes
 moves to [backlog-closed.md](./backlog-closed.md) carrying the closure note it
