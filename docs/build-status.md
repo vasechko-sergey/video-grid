@@ -7095,7 +7095,7 @@ _Last updated: 2026-10-19._
 
 ## Next action
 
-> **2026-10-19: every P0 and P1 row of the second run is fixed (0.15.2–0.21.0); P2 remains (S14–S17).** The user re-runs `bash setup.sh` (it now installs `font-noto-emoji`) and updates the plugin before the next run. [backlog.md](backlog.md) P1, in order (S8 landed in 0.20.0, S7 in 0.19.0, S5 in 0.18.0, S9 in 0.17.0): the music ending and search (S7, S8). Every blockquote below this one is history.
+> **2026-10-19: the second run's rows S1–S13 and S18 are fixed (0.15.2–0.21.0).** Open: S19 (P1, found by the S13 review — three named title fonts cannot resolve, and a variable font renders Thin) and P2 S14–S17. The user re-runs `bash setup.sh` (it now installs `font-noto-emoji`), updates the plugin and pushes before the next run. Every blockquote below this one is history.
 
 > **2026-10-13: the next action is the second real run, not a slice.** The user
 > updates the installed plugin (`claude plugin update video-grid@video-grid` and a

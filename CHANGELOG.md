@@ -16,7 +16,9 @@ file is the short "what changed for someone who installs it" list.
   from the monochrome Noto Emoji font, merged into a copy of the title font at render;
   a character no font draws is refused by name instead of rendering an empty box.
   `titles check` reports both. **Run `bash setup.sh` once** — it now installs
-  `font-noto-emoji`. The second real run's agent built this font by hand.
+  `font-noto-emoji`; `verify_runtime` warns when it is missing. Invisible selectors and
+  joiners (the U+FE0F after 🗓) need no glyph. The second real run's agent built this
+  font by hand.
 
 ## 0.20.2 — 2026-10-19
 

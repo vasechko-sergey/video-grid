@@ -227,7 +227,10 @@ fontfile, no extra layer. A character neither font draws is refused BY NAME, at
 `titles check` and again at render: drawtext would otherwise draw an empty box and
 nothing would notice. `titles check` lists the characters it will take from the icon
 font (`icons_from_icon_font`). Colour emoji are drawn in the title's own colour — the
-icon font is monochrome. The second real run's agent built this font by hand.
+icon font is monochrome — and a multi-part emoji (a ZWJ sequence, a flag, a skin tone)
+renders as its separate pieces, since the icon font's ligature rules are not carried
+over; use single-codepoint icons. Invisible selectors (the U+FE0F an emoji picker adds
+after 🗓) need no glyph. The second real run's agent built this font by hand.
 
 ## Landmines (design §12)
 
