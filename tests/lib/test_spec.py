@@ -166,6 +166,7 @@ def test_to_markdown_full_render_whole_string():
         "- **Style-lean:** trend\n"
         "- **Platform:** tiktok\n"
         "- **Cast:** Anna, Ben\n"
+        "- **Cast share:** –\n"
         "- **Text:** captions\n"
         "- **Ending:** freeze frame\n"
         "- **Notes:** keep it tight"
@@ -229,3 +230,28 @@ def test_spec_round_trips_tone_bias_through_json_shape():
 def test_spec_round_trips_an_absent_tone_bias():
     s = Spec(**GOOD)
     assert Spec.from_dict(s.to_dict()) == s
+
+
+# --- retro 2026-10-16 S9: the brief's hero balance is a field, not a note ------------
+# The second run's brief answered "both heroes equally" and stored it as free text in
+# SPEC.notes, which nothing reads; REEL_v3 shipped 55/45 and needed a re-cut.
+
+def test_cast_share_round_trips_and_names_must_be_cast():
+    s = Spec(**GOOD, cast=("Sergei", "Lena"), cast_share={"Sergei": 1, "Lena": 1})
+    assert s.cast_share == {"Sergei": 1.0, "Lena": 1.0}
+    assert Spec.from_dict(s.to_dict()) == s
+    assert Spec(**GOOD).cast_share is None and Spec(**GOOD).to_dict()["cast_share"] is None
+    with pytest.raises(ValueError, match="not in Spec.cast"):
+        Spec(**GOOD, cast=("Sergei",), cast_share={"Lena": 1})
+
+
+@pytest.mark.parametrize("bad", [{}, {"": 1}, {"Lena": 0}, {"Lena": -1}, {"Lena": True},
+                                 {"Lena": "1"}, {"Lena": float("inf")}, ["Lena"]])
+def test_cast_share_refuses_a_shape_it_cannot_divide(bad):
+    with pytest.raises(ValueError, match="cast_share"):
+        Spec(**GOOD, cast_share=bad)
+
+
+def test_spec_md_prints_the_share_as_percentages():
+    md = Spec(**GOOD, cast=("Sergei", "Lena"), cast_share={"Sergei": 1, "Lena": 3}).to_markdown()
+    assert "- **Cast share:** Sergei 25% · Lena 75%" in md

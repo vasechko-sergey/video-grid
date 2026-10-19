@@ -16,7 +16,7 @@ def build_spec(project_path: str, *, length_s: float, mood: str, hook: str,
                reel_count: int = 1, music: str = "auto", music_mode: str = "free",
                style_lean: str = "balanced", platform: str = "", text: str = "",
                ending: str = "", cast: tuple = (), notes: str = "",
-               tone_bias: tuple | None = None) -> Spec:
+               tone_bias: tuple | None = None, cast_share: dict | None = None) -> Spec:
     """Read canvas from project.json (fail-loud if absent — reel-brief FOLLOWS
     project-init), then construct+validate a Spec. The project is the single source
     of aspect; build_spec never sources canvas itself."""
@@ -24,7 +24,29 @@ def build_spec(project_path: str, *, length_s: float, mood: str, hook: str,
     return Spec(canvas=cfg.canvas, length_s=length_s, mood=mood, hook=hook,
                 reel_count=reel_count, music=music, music_mode=music_mode,
                 style_lean=style_lean, platform=platform, text=text,
-                ending=ending, cast=tuple(cast), notes=notes, tone_bias=tone_bias)
+                ending=ending, cast=tuple(cast), notes=notes, tone_bias=tone_bias,
+                cast_share=cast_share)
+
+
+def parse_cast_share(values: list[str] | None, cast: tuple) -> dict | None:
+    """--cast-share NAME=WEIGHT (repeatable), or the one word `equal` for every --cast
+    name at weight 1. None when the flag was not given — "not asked", not "equal"."""
+    if not values:
+        return None
+    if values == ["equal"]:
+        if not cast:
+            raise ValueError("--cast-share equal needs the heroes named with --cast")
+        return {name: 1.0 for name in cast}
+    share = {}
+    for v in values:
+        name, sep, weight = v.partition("=")
+        if not sep or not name.strip():
+            raise ValueError(f"--cast-share takes NAME=WEIGHT (or 'equal'), got {v!r}")
+        try:
+            share[name.strip()] = float(weight)
+        except ValueError as e:
+            raise ValueError(f"--cast-share {v!r}: the weight must be a number") from e
+    return share
 
 
 def write_reel_brief(spec: Spec, out_dir: str) -> dict:
@@ -57,6 +79,10 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--text", default="", help="the literal words the reel shows on screen (a real newline makes two lines); empty = no text. Never a description of them — titles draft exactly this")
     b.add_argument("--ending", default="", help="the closing shot — a note for the editor, never shown on screen")
     b.add_argument("--cast", action="append", default=None, help="a cast name (repeatable)")
+    b.add_argument("--cast-share", action="append", default=None,
+                   help="screen-time weight per hero, NAME=WEIGHT (repeatable), or "
+                        "'equal' for every --cast name — edit_plan reports the cut's "
+                        "screen time against it at CP2. Omit when the brief did not ask")
     b.add_argument("--notes", default="", help="free text recorded in SPEC.json")
     b.add_argument("--tone-bias", default=None,
                    help="colour displacement as p5,p50,p95 luma units (e.g. 20,0,-18) — "
@@ -78,7 +104,8 @@ def main() -> None:
                       reel_count=a.reel_count, music=a.music, music_mode=a.music_mode,
                       style_lean=a.style_lean, platform=a.platform, text=a.text,
                       ending=a.ending, cast=tuple(a.cast or ()), notes=a.notes,
-                      tone_bias=tone_bias)
+                      tone_bias=tone_bias,
+                      cast_share=parse_cast_share(a.cast_share, tuple(a.cast or ())))
     result = write_reel_brief(spec, a.out_dir)
     print(json.dumps(result, indent=2))
     raise SystemExit(0)

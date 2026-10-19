@@ -17,7 +17,7 @@ import json
 import sys
 from pathlib import Path
 
-from scripts.lib import gridfit, moodpreset, outro, ramp as ramp_mod, safezones
+from scripts.lib import edl as edl_lib, gridfit, moodpreset, outro, ramp as ramp_mod, safezones
 from scripts.lib.constraints import Constraints, Placed, evaluate as check_constraints
 from scripts.lib.edl import EDL, EDLEpisode, preflight, write_edl
 from scripts.lib.footage import Footage, FootageClip, FootageWindow, SHOT_TYPES, delivered_shot
@@ -26,7 +26,7 @@ from scripts.lib.models import HERO_RULES, MusicSpec, RampSpec
 from scripts.lib.moodpreset import MoodPreset
 from scripts.lib.pacing import Spine, music_identity
 from scripts.lib.project import ProjectConfig
-from scripts.lib.spec import Spec
+from scripts.lib.spec import Spec, share_line
 
 
 def _log(msg: str) -> None:
@@ -424,7 +424,7 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
               preset: MoodPreset | None = None,
               rules: Constraints | None = None, platform: str = "",
               look: LookSpec | None = None, music: MusicSpec | None = None,
-              brief_len: float | None = None) -> EDL:
+              brief_len: float | None = None, cast_share: dict | None = None) -> EDL:
     """Assemble an EDL from a selection dict; when a pacing Spine is supplied, bind each
     episode to its slot (beat_slot + the FITTED dur, which is the episode's own length plus
     at most a half-beat snap — binding applies a fit, it does not re-time). Each selection
@@ -621,7 +621,21 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     return EDL(episodes=tuple(episodes), music=selection.get("music"), cast=cast,
                cap=cap if cap is not None else 3, platform=platform, look=resolved_look,
                target_dur=target, variety=variety, constraints=cons, outro=fit,
-               brief_len=brief_len)
+               brief_len=brief_len, cast_share=cast_share)
+
+
+def _log_screen_time(edl: EDL) -> None:
+    """One line at CP2: who is on screen for how long, beside the brief's share when it
+    asked. The second real run's brief said "both equally" and REEL_v3 shipped 55/45,
+    computed only when the operator asked (retro 2026-10-16 S9)."""
+    rows = [(n, s) for n, s in edl_lib.screen_time(edl.episodes) if n is not None]
+    if not rows:
+        return
+    total = sum(e.play_dur() for e in edl.episodes)
+    have = " · ".join(f"{n} {s:.1f}s ({100 * s / total:.0f}%)" for n, s in rows)
+    brief = (f" — brief: {share_line(edl.cast_share)}" if edl.cast_share
+             else " — the brief set no share")
+    _log(f"screen time: {have}{brief}")
 
 
 def write_edit_plan(footage_path: str, selection_path: str, project_path: str, out_dir: str,
@@ -734,7 +748,9 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     edl = build_edl(footage, selection, pacing=pacing, cast=cast,
                     aspect=tuple(cfg.canvas), preset=preset, rules=rules,
                     platform=plat, look=fallback_look,
-                    music=ms, brief_len=sp.length_s if sp else None)
+                    music=ms, brief_len=sp.length_s if sp else None,
+                    cast_share=sp.cast_share if sp else None)
+    _log_screen_time(edl)
     c = edl.constraints
     if c is not None and not c.ok:
         # The user's own stated rule outranks the preset's inference, so its finding is

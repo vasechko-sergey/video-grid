@@ -2,6 +2,7 @@ import dataclasses
 import json
 
 import pytest
+from scripts.lib import edl as edl_mod
 from scripts.lib.edl import EDL, EDLEpisode, preflight, to_manifest_dict, write_edl
 from scripts.lib.constraints import ConstraintReport, Violation
 from scripts.lib import manifest as manifest_lib
@@ -1274,3 +1275,44 @@ def test_a_non_positive_brief_length_is_refused(bad):
     """gap_frac divides by this two stages later; it fails where it is accepted."""
     with pytest.raises(ValueError, match="EDL.brief_len must be a positive number"):
         _edl(brief_len=bad)
+
+
+# --- retro 2026-10-16 S9: screen time per hero, against the brief's share ------------
+
+def test_screen_time_sums_played_seconds_per_named_hero_in_reel_order():
+    eps = (_ep(dur=3.0, hero="Lena"), _ep(dur=1.0, hero="Sergei"), _ep(dur=2.0, hero="Lena"),
+           _ep(dur=0.5, hero=3), _ep(dur=0.5))
+    assert edl_mod.screen_time(eps) == [("Lena", 5.0), ("Sergei", 1.0), (None, 1.0)]
+
+
+def test_edl_md_shows_screen_time_beside_the_brief_share():
+    md = EDL(episodes=(_ep(dur=3.0, hero="Lena"), _ep(dur=1.0, hero="Sergei")),
+             cast_share={"Sergei": 1, "Lena": 1}).to_markdown()
+    assert "## Screen time" in md
+    assert "| Lena | 3.0s | 75% | 50% |" in md
+    assert "| Sergei | 1.0s | 25% | 50% |" in md
+
+
+def test_a_briefed_hero_who_never_appears_still_gets_a_row():
+    md = EDL(episodes=(_ep(dur=2.0, hero="Lena"),),
+             cast_share={"Lena": 1, "Sergei": 1}).to_markdown()
+    assert "| Sergei | 0.0s | 0% | 50% |" in md
+
+
+def test_no_named_hero_no_screen_time_section():
+    assert "Screen time" not in EDL(episodes=(_ep(),)).to_markdown()
+
+
+def test_cast_share_rides_the_edl_and_is_absent_when_unasked():
+    e = EDL(episodes=(_ep(hero="Lena"),), cast_share={"Lena": 2})
+    assert e.cast_share == {"Lena": 2.0}
+    assert EDL.from_dict(e.to_dict()) == e
+    assert "cast_share" not in EDL(episodes=(_ep(),)).to_dict()
+    with pytest.raises(ValueError, match="cast_share"):
+        EDL(episodes=(_ep(),), cast_share={"Lena": 0})
+
+
+def test_screen_time_counts_a_ramp_at_the_length_it_plays():
+    slow = _ep(dur=4.0, hero="Lena", ramp={"at": 1.0, "factor": 0.5, "ease": 0.2, "hold": 0.5})
+    assert slow.play_dur() > slow.dur
+    assert edl_mod.screen_time((slow,)) == [("Lena", round(slow.play_dur(), 3))]

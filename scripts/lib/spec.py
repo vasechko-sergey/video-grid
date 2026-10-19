@@ -5,6 +5,7 @@ ProjectConfig / edl.py's EDL. canvas comes from project.json (reel-brief FOLLOWS
 project-init); this module never sources aspect itself. No ffmpeg — a text stage.
 """
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,6 +29,11 @@ class Spec:
     cast: tuple = ()
     notes: str = ""
     tone_bias: tuple | None = None   # (p5, p50, p95) luma displacement, or None
+    # Screen-time weights per cast name ({"Lena": 1, "Sergei": 1} = equal), or None = not
+    # asked. The second real run's brief answered "both equally" and kept it only in
+    # `notes`, which nothing reads; REEL_v3 shipped 55/45 (retro 2026-10-16 S9). edit_plan
+    # carries it onto the EDL and reports screen time against it — a report, not a gate.
+    cast_share: dict | None = None
 
     def __post_init__(self) -> None:
         if not (isinstance(self.canvas, (tuple, list)) and len(self.canvas) == 2
@@ -74,6 +80,13 @@ class Spec:
                     f"take the mood preset's own. Got {self.tone_bias!r}. Write [0, 0, 0] "
                     f"to keep the mood and leave the colour alone")
             self.tone_bias = tuple(float(v) for v in self.tone_bias)
+        if self.cast_share is not None:
+            self.cast_share = validate_cast_share(self.cast_share, "Spec.cast_share")
+            stray = [n for n in self.cast_share if self.cast and n not in self.cast]
+            if stray:
+                raise ValueError(
+                    f"Spec.cast_share names {stray} not in Spec.cast {list(self.cast)} — a "
+                    f"share is screen time for a named hero, so name them with --cast too")
 
     @classmethod
     def from_dict(cls, d: dict) -> "Spec":
@@ -96,7 +109,8 @@ class Spec:
             reel_count=opt("reel_count", 1), music=opt("music", "auto"),
             music_mode=opt("music_mode", "free"), style_lean=opt("style_lean", "balanced"),
             platform=opt("platform", ""), text=opt("text", ""),
-            ending=opt("ending", ""), cast=opt("cast", ()), notes=opt("notes", ""), tone_bias=d.get("tone_bias"))
+            ending=opt("ending", ""), cast=opt("cast", ()), notes=opt("notes", ""),
+            tone_bias=d.get("tone_bias"), cast_share=d.get("cast_share"))
 
     def to_dict(self) -> dict:
         return {"canvas": list(self.canvas), "length_s": self.length_s,
@@ -105,7 +119,8 @@ class Spec:
                 "style_lean": self.style_lean, "platform": self.platform,
                 "text": self.text, "ending": self.ending, "cast": list(self.cast),
                 "notes": self.notes,
-                "tone_bias": None if self.tone_bias is None else list(self.tone_bias)}
+                "tone_bias": None if self.tone_bias is None else list(self.tone_bias),
+                "cast_share": None if self.cast_share is None else dict(self.cast_share)}
 
     @classmethod
     def from_json(cls, path: str | Path) -> "Spec":
@@ -143,8 +158,34 @@ class Spec:
             f"- **Style-lean:** {self.style_lean}",
             f"- **Platform:** {self.platform or '–'}",
             f"- **Cast:** {cast}",
+            f"- **Cast share:** {share_line(self.cast_share) if self.cast_share else '–'}",
             f"- **Text:** {self.text or '–'}",
             f"- **Ending:** {self.ending or '–'}",
             f"- **Notes:** {self.notes or '–'}",
         ]
         return "\n".join(lines)
+
+
+def validate_cast_share(share: object, where: str) -> dict:
+    """{name: positive weight} → the same dict with float weights, or ValueError.
+
+    One validator for the two carriers (Spec, EDL), so the brief and the cut cannot
+    disagree about what a legal share is."""
+    if not (isinstance(share, dict) and share):
+        raise ValueError(f"{where} must be a non-empty {{name: weight}} object, got {share!r}")
+    out = {}
+    for name, w in share.items():
+        if not (isinstance(name, str) and name.strip()):
+            raise ValueError(f"{where} names must be non-empty strings, got {name!r}")
+        if (isinstance(w, bool) or not isinstance(w, (int, float)) or not math.isfinite(w)
+                or w <= 0):
+            raise ValueError(f"{where}[{name!r}] must be a positive number (a weight), "
+                             f"got {w!r}")
+        out[name] = float(w)
+    return out
+
+
+def share_line(share: dict) -> str:
+    """'Lena 50% · Sergei 50%' — weights as percentages, in the brief's own order."""
+    total = sum(share.values())
+    return " · ".join(f"{n} {100 * w / total:.0f}%" for n, w in share.items())
