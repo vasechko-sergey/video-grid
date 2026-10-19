@@ -20,45 +20,67 @@ a queue. Reopen a parked entry only when a run shows it.
 | **Status** | `○` open · `◐` partial · `✅` done · `⊘` won't do |
 | **Size** | `S` a task or two · `M` a slice · `L` several slices |
 
-**P0 is empty.** A P0 row means something ships wrong today and interrupts
-everything below.
+A P0 row means something ships wrong today and interrupts everything below.
+Rows S1–S17 come from the second real run — evidence and measurements in
+[retro 2](retro/2026-10-16-second-real-run.md).
 
 ---
 
-## Run 2 — what the next real run must measure
-
-Each of these needs a second real run's artifacts — new footage, ideally other
-people in frame, another genre or camera. They are not work to schedule — they
-are what that run's retro reads its artifacts for.
+## P0 — ships wrong today
 
 | | Item | Size | Source |
 |---|------|------|--------|
-| ○ | **Calibrate the look** — `LOOK_VIGNETTE_MAX` (0.6), the 0.55/0.45 plateau/falloff split, and every row of `MoodPreset.look` are hand-picked on synthetic test patterns; no real footage has graded against them yet. | S | cinematic-look §11.3/§12 |
-| ○ | **Calibrate the first-cut identity thresholds** — `CAST_MATCH` / `CLUSTER_COS` / `MAX_CAST` are declared guesses; the distance distribution needed to derive them is already on disk in any real cache. | S | hero-reid §11, cast-hero-pin §11 |
-| ○ | **Re-derive `SAT_DELTA_MAX`/`CONTRAST_DROP_MAX` on a run whose baseline is not the complaint.** Both bars are set to zero false positives against the shipped reel — the very "washed out" run the operator complained about — so they are, if anything, too loose. **Unblocked 2026-09-03**: R1.1 shipped, so a mood no longer orders a grade silently and a reel graded without one is now authorable (`--tone-bias 0,0,0` keeps the mood and leaves colour alone). What is still needed is the reel itself. | S | [grade-delta-sensors](specs/2026-08-28-grade-delta-sensors-design.md) §9.4 |
-| ○ | **Re-derive `entropy_floor` on a run whose negative class is real footage, not synthesized knob extremes.** `CheckSpec.entropy_floor = 0.90` is measured against two real classes — eight shipped episodes and eight synthesized conductor pairs — but its NEGATIVE class (six deliberate damages at legal knob extremes) is entirely synthetic, so the floor's 1.2% margin (design §0.4) has never been tested against a grade an author actually pushed too far, only against ones pushed there on purpose for the measurement. Blocked on a run graded after R1.1 (mood no longer silently ordering a grade), so the run's own damaged episodes, if any, are a real negative class rather than noise from an unrelated defect. | S | [grade-sensor-references design](specs/2026-08-31-grade-sensor-references-design.md) §10 row 1, §9.1 |
-| ○ | **Measure the length band against real footage and genre — R1.2's second half.** `carve.DEFAULT_BAND = (1.2, 4.0)` is the same first-cut pair the old `WIN_MIN`/`WIN_MAX` module constants held; mood-contract (0.8.0) made the band selectable and impossible to change silently, not *right* — no number in it was measured against taste. The right floor/ceiling are unknown and genre-dependent and must be measured, not typed. | S | [mood-contract](specs/2026-09-03-mood-contract-design.md) §7, R1.2 |
-| ○ | **Explain the operator's "pull toward two seconds" against the run's own drafts.** mood-contract (0.8.0) ruled out both mechanisms the retro's R1.2 named, without explaining the impression itself: the delivered reel's median shot was 4.10s — *above* `nostalgic`'s own declared 2.0–4.0s `asl` ceiling — and the carve floor was already 1.2s before this slice touched anything, so neither the preset band nor `WIN_MAX` produced it. Whatever did is still unexplained. | S | [mood-contract](specs/2026-09-03-mood-contract-design.md) §0.4/§8 |
-| ○ | **Re-derive `W_PRESENT`/`W_MOTION`/`W_STABLE` against a pool where presence varies.** The three weights are first cuts calibrated on one drone shoot, and the largest of them (`W_PRESENT`, 0.44) separated **3 windows of 1508** on the only real pool — which shows the term is currently harmless, not that it is well-weighted. Re-weighting needs a pool with real presence variance, which does not exist yet. | S | [unmeasured-named design](specs/2026-09-10-unmeasured-named-design.md) §7 |
+| ○ | **S1 · A 9:16 reel from 1080p footage ships at 1080×1922.** `Delivery.dims` derives the height from the integer crop (607 = 607.5 rounded): `1080 × 1080 / 607` evens to 1922. All five deliveries of run 2 are 1080×1922; its one `fit` episode was 1080×1920. Run 1's 4K source divided exactly, which is why it never showed. | S | [retro 2](retro/2026-10-16-second-real-run.md) S1 |
+| ○ | **S2 · `titles build` puts the brief's prose on screen** — `SPEC.hook`/`.text`/`.ending` copied into title text verbatim, source file names and window numbers included. | S | [retro 2](retro/2026-10-16-second-real-run.md) S2 |
+| ○ | **S3 · Music sourcing fails TLS out of the box** — every Deezer request `CERTIFICATE_VERIFY_FAILED`; the agent prefixed every music command with `SSL_CERT_FILE=<certifi>`. | S | [retro 2](retro/2026-10-16-second-real-run.md) S3 |
+| ○ | **S4 · The Reels safe zone lets a top title sit under the app header** — `reels` top margin 8%, a `pos: top` title at y 151–357 of 1922; all four reviews flagged it, citing Meta's ~14%. First step: check the table against Meta's published guidance. | S | [retro 2](retro/2026-10-16-second-real-run.md) S4 |
 
-## Run 2 — what to watch the agent do
-
-Lessons from the first run whose fix depends on how the agent behaves with
-today's tree. Several may already be answered by slices that landed since;
-guessing which, without a run, is how this queue grew.
+## P1 — what the operator complained about
 
 | | Item | Size | Source |
 |---|------|------|--------|
-| ○ | **R10.8 · A judge's "clean pass" means "nothing I was told to look for".** Coverage tracked the prompt, not the episode: an episode passed clean, one sentence was added to the brief, and the next judge found something. | M | [retro](retro/2026-08-25-first-real-run.md) R10 |
-| ○ | **R8.2 · The pool was never widened after day 1.** The delivered reel uses 8 windows out of 1508, and the required contact-sheet "look at the pixels" stage ran **once**, for 177 seconds, on day 1, and was never re-run against a revised cut. | S | [retro](retro/2026-08-25-first-real-run.md) R8 |
-| ○ | **R10.12 · Eight of 22 `AskUserQuestion` turns were the human arbitrating a per-episode sensor failure** — the clearest measure of where a person's attention was actually spent. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
-| ○ | **R8.1 · The score bought no part of the delivered reel.** Of 1508 windows the selection reaches rank **1338**; **zero** of the top-8 are used; 8 of 30 chosen windows are `best=False`. `cull` only marks `best`, so nothing was unreachable — but the CV time spent ranking contributed nothing. Either it earns its cost or it stops being presented as authority. **Measured and named, 2026-09-10**: `Footage.scoring` (design [unmeasured-named](specs/2026-09-10-unmeasured-named-design.md) §0.1/§4) is the number this row was missing — the largest weight, `W_PRESENT` at 0.44, separated **3 of 1508** windows on the only real pool: not that the score was ignored, but that 44% of it had nothing to say. | M | [retro](retro/2026-08-25-first-real-run.md) R8 |
-| ○ | **R10.5 · QC has no "judge only what changed" and no memory between rounds** — ~14 rounds, **97 judges, 160 MB, 8 episodes**, two blocking verdicts, one of them a false alarm from a stale evidence packet. | M | [retro](retro/2026-08-25-first-real-run.md) R10 |
+| ○ | **S5 · The plan cuts long rides into 2–4 s pieces** — "rides of 2 seconds again", CP2 rejected. First EDL: 13 episodes, ASL 3.33 s. "Calm" resolved to `nostalgic` (`asl` 2.0–4.0 s, reported not enforced, yet the agent sized every span to it), while the chosen style "Classic: long takes" reaches no length at all. For longboard the operator wants whole rides of 6–10 s; the carve band 1.2–4.0 s makes every episode a span of 4–10 windows. Folds the run-2 rows "length band" and "pull toward two seconds". | M | [retro 2](retro/2026-10-16-second-real-run.md) S5 |
+| ○ | **S6 · One fade value serves three ends** — `LookSpec.fade` fades the picture in, out, and is the audio bookend: the hook's first frame is black (all four reviews), and a music ending gets only 0.8 s. | S | [retro 2](retro/2026-10-16-second-real-run.md) S6 |
+| ○ | **S7 · Without a bar grid the music ends mid-phrase** — the outro fit stays `unchanged`; by the agent's count 6 of 32 calm candidates had a bar grid. Needs a fallback ending, not a track swap (the swap cost 64 min). | S | [retro 2](retro/2026-10-16-second-real-run.md) S7 |
+| ○ | **S8 · The music search finds niche tracks, not known ones — "again".** Mood-string queries, mood-only ranking; Deezer `rank` and YouTube views unused; the brief never asks "known/trending or atmospheric" ("any" became only the licence lane). Also: no preview of the exact window that will play, and the agent re-raised rights the brief had settled. | M | [retro 2](retro/2026-10-16-second-real-run.md) S8 |
+| ○ | **S9 · "Both heroes equally" is never checked** — free text in `SPEC.notes`; `EDL.md` shows no screen time per hero though `hero` × played length is exact. `REEL_v3` shipped 55/45 and was re-cut after the operator asked. | S | [retro 2](retro/2026-10-16-second-real-run.md) S9 |
+| ○ | **S10 · `project.json` written into the footage folder** — the `project-init` skill says `--project-dir <dir>` without `<footage>/montage`, and `project_init` lacks the refusal `intake`/`draft`/`edl_to_reel` carry. | S | [retro 2](retro/2026-10-16-second-real-run.md) S10 |
+| ○ | **S11 · `VERSIONS.md` cannot tell versions apart** — all five lines `delivered from EDL.json`; `edl_to_reel --changelog` exists and no skill mentions it. | S | [retro 2](retro/2026-10-16-second-real-run.md) S11 |
+| ○ | **S12 · Cast naming costs 16 questions for 2 people** — 15 candidates (one hero in 2 clusters, the other in 3, 10 background figures of 43–88 px), a sheet too small to recognise anyone; the agent wrote its own card renderer. Ties to the identity-threshold row below. | M | [retro 2](retro/2026-10-16-second-real-run.md) S12 |
+| ○ | **S13 · Titles cannot carry an icon** — the agent downloaded Noto Emoji and merged it into Montserrat with its own fontTools script. | S | [retro 2](retro/2026-10-16-second-real-run.md) S13 |
+
+## P2 — friction
+
+| | Item | Size | Source |
+|---|------|------|--------|
+| ○ | **S14 · Judge and reviewer prompts are filled by hand** — `episode_qc pack`/`reel-review` leave placeholders; the agent wrote two fill scripts. | S | [retro 2](retro/2026-10-16-second-real-run.md) S14 |
+| ○ | **S15 · `reel_brief` accepts any platform string** — "Instagram Reels" stored, `edit_plan` judged against the generic zone. | S | [retro 2](retro/2026-10-16-second-real-run.md) S15 |
+| ○ | **S16 · Two small refusals** — `crop_aspect "1:1"` refused (only `[1, 1]`); `music_find --out-dir` does not create its directory. | S | [retro 2](retro/2026-10-16-second-real-run.md) S16 |
+| ○ | **S17 · The conductor lifts an intentional silhouette** — the backlit hook measured p5 38, authored toward the reel's 60; caught only because the agent ran `probe grade`, then froze it with an identity pair. | S | [retro 2](retro/2026-10-16-second-real-run.md) S17 |
+
+## Still waiting on a run
+
+Run 2 answered what it could ([retro 2](retro/2026-10-16-second-real-run.md) §4); these need data it did not have.
+
+| | Item | Size | Source |
+|---|------|------|--------|
+| ○ | **Calibrate the look** — `LOOK_VIGNETTE_MAX` (0.6), the 0.55/0.45 plateau/falloff split, and every row of `MoodPreset.look` are hand-picked on synthetic test patterns; no real footage has graded against them yet. **Run 2 (2026-10-16):** the vignette (0.25) drew no remark; the fade drew one in all four reviews — now row S6. | S | cinematic-look §11.3/§12 |
+| ○ | **Calibrate the first-cut identity thresholds** — `CAST_MATCH` / `CLUSTER_COS` / `MAX_CAST` are declared guesses; the distance distribution needed to derive them is already on disk in any real cache. **Run 2 (2026-10-16):** a second data point — 15 candidates for 2 people (S12); the distances are on disk, not yet computed. | S | hero-reid §11, cast-hero-pin §11 |
+| ○ | **Re-derive `SAT_DELTA_MAX`/`CONTRAST_DROP_MAX` on a run whose baseline is not the complaint.** Both bars are set to zero false positives against the shipped reel — the very "washed out" run the operator complained about — so they are, if anything, too loose. **Unblocked 2026-09-03**: R1.1 shipped, so a mood no longer orders a grade silently and a reel graded without one is now authorable (`--tone-bias 0,0,0` keeps the mood and leaves colour alone). What is still needed is the reel itself. **Run 2 (2026-10-16):** this IS the reel the row waited for (graded with `tone_bias (0,0,0)`, colour approved) — not yet measured. | S | [grade-delta-sensors](specs/2026-08-28-grade-delta-sensors-design.md) §9.4 |
+| ○ | **Re-derive `entropy_floor` on a run whose negative class is real footage, not synthesized knob extremes.** `CheckSpec.entropy_floor = 0.90` is measured against two real classes — eight shipped episodes and eight synthesized conductor pairs — but its NEGATIVE class (six deliberate damages at legal knob extremes) is entirely synthetic, so the floor's 1.2% margin (design §0.4) has never been tested against a grade an author actually pushed too far, only against ones pushed there on purpose for the measurement. Blocked on a run graded after R1.1 (mood no longer silently ordering a grade), so the run's own damaged episodes, if any, are a real negative class rather than noise from an unrelated defect. **Run 2 (2026-10-16):** still no real negative class — no episode damaged its grade. | S | [grade-sensor-references design](specs/2026-08-31-grade-sensor-references-design.md) §10 row 1, §9.1 |
+| ○ | **Re-derive `W_PRESENT`/`W_MOTION`/`W_STABLE` against a pool where presence varies.** The three weights are first cuts calibrated on one drone shoot, and the largest of them (`W_PRESENT`, 0.44) separated **3 windows of 1508** on the only real pool — which shows the term is currently harmless, not that it is well-weighted. Re-weighting needs a pool with real presence variance, which does not exist yet. **Run 2 (2026-10-16):** still unmeasurable — people in every window again, `present` separated 0 of 416. | S | [unmeasured-named design](specs/2026-09-10-unmeasured-named-design.md) §7 |
+
+## Decide from run 2 — simplification
+
+| | Item | Size | Source |
+|---|------|------|--------|
+| ○ | **R10.8 · A judge's "clean pass" means "nothing I was told to look for".** Coverage tracked the prompt, not the episode: an episode passed clean, one sentence was added to the brief, and the next judge found something. **Run 2 (2026-10-16):** 24 of 25 judges passed clean; the run's one real error (a stranger in the ending) was outside every judge's brief and `reel-review` caught it — {R} §3. | M | [retro](retro/2026-08-25-first-real-run.md) R10 |
+| ○ | **R10.5 · QC has no "judge only what changed" and no memory between rounds** — ~14 rounds, **97 judges, 160 MB, 8 episodes**, two blocking verdicts, one of them a false alarm from a stale evidence packet. **Run 2 (2026-10-16):** each re-cut moved every cut, so re-judging all was correct: 25 judges, ~10 min. Open question is whether per-episode judging earns its place beside `reel-review` (4 runs, ~24 min, every important finding). | M | [retro](retro/2026-08-25-first-real-run.md) R10 |
 
 ## After run 2 — the picture
 
 The only rows that make a reel look better rather than make the tool more sure
-of itself. After the run, so it first shows whether the base holds.
+of itself.
 
 | | Item | Size | Source |
 |---|------|------|--------|
@@ -97,4 +119,4 @@ turned up after the three it set out to fix.
 
 ---
 
-_Last updated: 2026-10-13._
+_Last updated: 2026-10-19._
