@@ -10,6 +10,18 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.15.2 — 2026-10-19
+
+The second real run's four P0 rows (retro 2026-10-16):
+
+- A 9:16 reel from 1080p footage is delivered at **1080×1920**, not 1080×1922 —
+  a sized delivery takes the canvas aspect, not the rounded crop.
+- `titles build` drafts only the brief's on-screen text; it no longer puts the
+  hook/ending notes (file names included) on screen.
+- Music sourcing verifies HTTPS against certifi, so a python.org interpreter no
+  longer fails every Deezer request.
+- Reels titles keep the top 14% clear of the app header (was 8%).
+
 ## 0.15.1 — 2026-10-13
 
 - `check_reel`'s pre-mix loudness reason no longer reads "(silent reel)" on a reel

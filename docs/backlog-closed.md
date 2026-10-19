@@ -16,6 +16,15 @@ is where its neighbours were.
 
 ---
 
+## Closed from P0 — the second real run's fixes (2026-10-19)
+
+| | Item | Size | Source |
+|---|------|------|--------|
+| ✅ | **S1 · A 9:16 reel from 1080p footage ships at 1080×1922.** `Delivery.dims` derives the height from the integer crop (607 = 607.5 rounded): `1080 × 1080 / 607` evens to 1922. All five deliveries of run 2 are 1080×1922; its one `fit` episode was 1080×1920. Run 1's 4K source divided exactly, which is why it never showed. **Fixed 2026-10-19 (0.15.2):** `layout.resolve` sizes a `short_edge`/`long_edge` delivery of a fill crop from the declared aspect; native keeps the crop. Fill and fit of one canvas now resolve to one size. | S | [retro 2](retro/2026-10-16-second-real-run.md) S1 |
+| ✅ | **S2 · `titles build` puts the brief's prose on screen** — `SPEC.hook`/`.text`/`.ending` copied into title text verbatim, source file names and window numbers included. **Fixed 2026-10-19 (0.15.2):** `build_titles` drafts only `SPEC.text`, one title at the top for the first 3 s, nothing when empty; `reel_brief --help` and three skill texts say hook/ending are shots and `--text` the literal words. | S | [retro 2](retro/2026-10-16-second-real-run.md) S2 |
+| ✅ | **S3 · Music sourcing fails TLS out of the box** — every Deezer request `CERTIFICATE_VERIFY_FAILED`; the agent prefixed every music command with `SSL_CERT_FILE=<certifi>`. **Fixed 2026-10-19 (0.15.2):** both urllib transports in `catalog` pass an SSL context built on certifi; checked live against Deezer with `SSL_CERT_FILE` unset. | S | [retro 2](retro/2026-10-16-second-real-run.md) S3 |
+| ✅ | **S4 · The Reels safe zone lets a top title sit under the app header** — `reels` top margin 8%, a `pos: top` title at y 151–357 of 1922; all four reviews flagged it, citing Meta's ~14%. First step: check the table against Meta's published guidance. **Fixed 2026-10-19 (0.15.2):** `reels` top margin 0.14 (published guidance 14%, 13% measured off ad previews). The bottom stays 0.16 — the sources disagree (23–35%) and no run has shown a bottom title in the chrome. | S | [retro 2](retro/2026-10-16-second-real-run.md) S4 |
+
 ## Closed by the second real run (2026-10-16)
 
 Answered by [retro 2](retro/2026-10-16-second-real-run.md) §4 — the run-2 rows whose question the run answered.

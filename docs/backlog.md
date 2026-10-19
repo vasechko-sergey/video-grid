@@ -28,12 +28,7 @@ Rows S1–S17 come from the second real run — evidence and measurements in
 
 ## P0 — ships wrong today
 
-| | Item | Size | Source |
-|---|------|------|--------|
-| ○ | **S1 · A 9:16 reel from 1080p footage ships at 1080×1922.** `Delivery.dims` derives the height from the integer crop (607 = 607.5 rounded): `1080 × 1080 / 607` evens to 1922. All five deliveries of run 2 are 1080×1922; its one `fit` episode was 1080×1920. Run 1's 4K source divided exactly, which is why it never showed. | S | [retro 2](retro/2026-10-16-second-real-run.md) S1 |
-| ○ | **S2 · `titles build` puts the brief's prose on screen** — `SPEC.hook`/`.text`/`.ending` copied into title text verbatim, source file names and window numbers included. | S | [retro 2](retro/2026-10-16-second-real-run.md) S2 |
-| ○ | **S3 · Music sourcing fails TLS out of the box** — every Deezer request `CERTIFICATE_VERIFY_FAILED`; the agent prefixed every music command with `SSL_CERT_FILE=<certifi>`. | S | [retro 2](retro/2026-10-16-second-real-run.md) S3 |
-| ○ | **S4 · The Reels safe zone lets a top title sit under the app header** — `reels` top margin 8%, a `pos: top` title at y 151–357 of 1922; all four reviews flagged it, citing Meta's ~14%. First step: check the table against Meta's published guidance. | S | [retro 2](retro/2026-10-16-second-real-run.md) S4 |
+**P0 is empty** — S1–S4 closed 2026-10-19 (0.15.2), see the archive.
 
 ## P1 — the reel: what the operator asked for, or every review flagged
 
