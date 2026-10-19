@@ -6,8 +6,8 @@ longboard surfers. Delivered as `REEL_v5.mp4` (45.66 s), approved by the operato
 as final.
 **Engine:** `216f535` (0.15.1), clean, the installed plugin up to date
 (`verify_runtime` all OK).
-**Corpus:** the session transcript (2356 records, 715 assistant turns, 29
-subagents), the run directory `Downloads/1/montage/`, and the operator's own
+**Corpus:** the session transcript (2356 records, 715 of them assistant
+records, 29 subagents), the run directory `Downloads/1/montage/`, and the operator's own
 remarks after reading the run.
 
 ---
@@ -33,9 +33,9 @@ operator away. Everything after was three re-cuts the operator asked for.
 |---|---:|---|
 | project-init | 3 min | written into the footage folder first (§S10) |
 | footage-intake | 14 min | 20/20 clips, 416 windows, 0 failed |
-| cast naming | 15 min | 16 questions for 2 people (§S12) |
+| cast naming | 15 min | 15 questions for 2 people (§S12) |
 | contact sheet | 2 min | all 14 sheets read |
-| reel-brief | 6 min | 14 questions, no complaint |
+| reel-brief | 6 min | 13 questions incl. the CP1 approval, no complaint |
 | edit-plan | 8 min | CP2 rejected: "rides of 2 seconds again" (§S5) |
 | music + pacing | 11 min | track with no bar grid (§S7) |
 | geometry, match-grade, probe, draft | 7 min | one legal gate stop (`lead` on a static subject) |
@@ -97,7 +97,7 @@ titles, fonts, the beat tracker — each a question the docs did not answer.
 | Identity thresholds | Not yet computed. The data is on disk and the run gave a second data point: 15 candidates for 2 people, one hero split in two clusters and the other in three (§S12). |
 | `SAT_DELTA_MAX` / `CONTRAST_DROP_MAX` | The run is the reel the row was waiting for — graded with `tone_bias (0,0,0)`, colour approved. Not yet measured. |
 | `entropy_floor` | Still no real negative class: no episode damaged its grade. |
-| Length band | Answered by genre: for longboard the operator wants whole rides of 6–10 s; the carved windows are 1.2–4.0 s, so every chosen episode is a span of 4–10 windows (§S5). |
+| Length band | Answered by genre: for longboard the operator wants whole rides — "up to 10 seconds"; the carved windows are 1.2–4.0 s, so every chosen episode is a span of 4–10 windows (§S5). |
 | "Pull toward two seconds" | **Explained** (§S5). |
 | `W_PRESENT` weights | Still unmeasurable: people in every window again, `present` separated 0 of 416. |
 
@@ -139,7 +139,7 @@ y 151–357 of 1922. All four reviews flagged it, citing Meta's guidance of abou
 14% at the top; with only `top`/`center`/`bottom` the agent could not move it.
 First step: check the table against Meta's published Reels guidance.
 
-### P1 — what the operator complained about
+### P1 — the reel: what the operator asked for, or every review flagged
 
 **S5 · The plan cuts long rides into 2–4 s pieces — "rides of 2 seconds again".**
 The first EDL had 13 episodes at an ASL of 3.33 s; the operator rejected it at
@@ -159,12 +159,13 @@ bar grid the music's own ending gets only 0.8 s. Nothing can set them apart.
 
 **S7 · Without a bar grid the music ends mid-phrase.** The chosen track had no
 bar grid (the downbeat gate refused it), so the outro fit stayed `unchanged` and
-the reel cut the song mid-phrase; three reviews in a row called it important. In
+the reel cut the song mid-phrase; the first review called it minor, the next two important. In
 the follow-up search, by the agent's count, 6 of 32 candidates had a bar grid —
 on calm music the gate refuses most tracks, so a fallback ending is needed, not a
 track swap. The swap cost 64 minutes.
 
-**S8 · The music search finds niche tracks, not known ones — "again".**
+**S8 · The music search finds niche tracks, not known ones — "again", the
+operator said after the run.**
 `music_find` queries the catalogs with a mood string, so they return mood-tagged
 tracks, and it ranks by mood fit alone; Deezer's `rank` and YouTube's view count
 are available and unused (`music-source` defers trend presence to trend-scan).
@@ -190,7 +191,7 @@ lacks the refusal `intake`, `draft` and `edl_to_reel` already carry.
 path with a constant default; `edl_to_reel --changelog` exists, and no skill
 mentions it.
 
-**S12 · Cast naming costs 16 questions for 2 people.** 15 candidates: the man
+**S12 · Cast naming costs 15 questions for 2 people.** 15 candidates: the man
 split into 2 clusters, the woman into 3, and 10 background figures of 43–88 px.
 The candidate sheet was too small to recognise anyone (*"the pictures are tiny"*)
 and the agent wrote its own card renderer. Ties to the identity-threshold row.
@@ -222,5 +223,5 @@ the agent noticing.
 ## Rows this produced
 
 17 rows, filed in [../backlog.md](../backlog.md): 4 at P0, 9 at P1, 4 at P2.
-Five run-2 rows closed and two folded into new rows; the rest stay open with
-this run's answer recorded.
+Five run-2 rows closed into the archive, two of them folded into S5; the other
+seven stay open with this run's answer recorded.
