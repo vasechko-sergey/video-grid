@@ -57,6 +57,9 @@ Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
    hero, ask how screen time should split and record it with `--cast-share`
    (`equal`, or `NAME=WEIGHT` per hero) — not in `--notes`, which nothing reads:
    `edit_plan` reports the cut's screen time against it at CP2.
+   Ask separately whether the music should be a **known** track (a hit, a trend) or
+   anything that fits the mood: `--music-known` — `--music-mode` is the licence lane
+   only, and the second real run read "any" as rights and searched niche artists.
    Prefer the user's free text ("without music" → `--music none`; "any source" →
    `--music-mode any`).
 3. **HARD-GATE.** Do not write until **mood + canvas + length + hook** are locked.
@@ -68,7 +71,8 @@ Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
          --length 30 --mood "…" --hook "…" \
          [--reel-count 1] [--music …] [--music-mode free] [--style-lean balanced] \
          [--platform …] [--text …] [--ending …] [--cast NAME]... \
-         [--cast-share equal | --cast-share NAME=WEIGHT ...] [--asl LO,HI] [--notes …] \
+         [--cast-share equal | --cast-share NAME=WEIGHT ...] [--asl LO,HI] \
+         [--music-known] [--notes …] \
          --out-dir <run>/reels/<reel>
 
    It validates the fields and writes `SPEC.json` + `SPEC.md`. A `ValueError` names
