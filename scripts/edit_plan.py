@@ -323,10 +323,13 @@ def _apply_outro(episodes: list[EDLEpisode], footage: Footage, music: MusicSpec,
     A ramped closing episode is skipped: `play_dur()` is a non-linear function of `dur`
     once a ramp is present, so growing it would need the ramp arithmetic. Skipped and
     logged, never guessed."""
-    if not episodes or not music.bars:
+    # No bar grid falls back to the BEAT grid (retro 2026-10-16 S7): the second run's
+    # track had none, the fit stayed unchanged, and the reel cut the song mid-phrase.
+    grid, lines = ("bar", music.bars) if music.bars else ("beat", music.beats)
+    if not episodes or not lines:
         # Two unrelated absences shared this guard. They are named apart: an empty cut
-        # has no closing shot to move at all, while a bar-grid-less window means the
-        # ladder never runs (design 2026-09-07 §3).
+        # has no closing shot to move at all, while a window with neither bars nor beats
+        # means the ladder never runs (design 2026-09-07 §3).
         return episodes, outro.OutroFit(
             reel_dur=sum(e.play_dur() for e in episodes),
             line=None, fade=fade, tail=0.0, rung="unchanged", moved=0.0,
@@ -350,19 +353,22 @@ def _apply_outro(episodes: list[EDLEpisode], footage: Footage, music: MusicSpec,
                                         cause="closer-not-in-footage")
     grow_max = max(0.0, clip.room_after(last.start) - last.dur)
     shrink_max = max(0.0, last.play_dur() - outro.MIN_LAST)
-    fit = outro.fit_outro(music.bars, music.vocal_spans, realized,
+    fit = outro.fit_outro(lines, music.vocal_spans, realized,
                           outro.bar_seconds(music.tempo), fade,
                           music_dur=music.duration, grow_max=grow_max,
-                          shrink_max=shrink_max, brief_len=brief_len)
+                          shrink_max=shrink_max, brief_len=brief_len, grid=grid)
     if fit.rung == "unchanged":
-        _log(f"outro: no bar line within one bar of {realized:.2f}s that the closing shot "
+        _log(f"outro: no {fit.grid} line within one bar of {realized:.2f}s that the closing shot "
              f"can reach (grow {grow_max:.2f}s / shrink {shrink_max:.2f}s) — the reel "
              f"keeps its footage-derived length and the music will end mid-phrase")
         return episodes, fit
     out = list(episodes)
     out[-1] = dataclasses.replace(last, dur=last.dur + fit.moved)
     brief = "" if brief_len is None else f", {fit.reel_dur - brief_len:+.2f}s vs the brief's {brief_len:.1f}s"
-    _log(f"outro: rung {fit.rung} — the music resolves on the bar line at {fit.line:.2f}s "
+    where = ("the bar line" if fit.grid == "bar"
+             else "a beat (the track has no bar grid, so the fit used the beat grid "
+                  "under the longer fade)")
+    _log(f"outro: rung {fit.rung} — the music resolves on {where} at {fit.line:.2f}s "
          f"with {fit.tail:.2f}s of vocal-free space after it; the reel moves "
          f"{fit.moved:+.2f}s to {fit.reel_dur:.2f}s (fade {fit.fade:.2f}s){brief}")
     return out, fit
@@ -756,8 +762,8 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
         _log(f"outro: {music} has no bar grid — beats found fewer than 8 beats, or no "
              f"phase led the others by the confidence margin (this track's kick does "
              f"not mark its bars — measured on 4 of 5 real tracks, design 2026-08-17 "
-             f"§3), or the file predates the 2026-08-14 fields; the reel keeps its "
-             f"footage-derived length")
+             f"§3), or the file predates the 2026-08-14 fields; the outro fit falls back "
+             f"to the beat grid under a {outro.NO_GAP_FADE:.1f}s fade")
     edl = build_edl(footage, selection, pacing=pacing, cast=cast,
                     aspect=tuple(cfg.canvas), preset=preset, rules=rules,
                     platform=plat, look=fallback_look,
@@ -863,7 +869,8 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--spec", help="SPEC.json — its mood picks the shot-mix preset "
                                   "(optional; without it the 'balanced' preset applies)")
     b.add_argument("--music", help="MUSIC.json — fit the reel's end to a bar line "
-                                   "with a vocal-free tail (optional, §5.5/backlog #2)")
+                                   "(or a beat, when the window has no bar grid) with a "
+                                   "vocal-free tail (optional, §5.5/backlog #2)")
     return ap
 
 

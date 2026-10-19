@@ -10,6 +10,14 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.19.0 — 2026-10-19
+
+- **Music with no bar grid still ends on its own grid.** When the analysed window
+  carries no bar grid — most calm tracks — the outro fit now falls back to the beat
+  grid under a 1.5 s fade instead of leaving the music to stop mid-phrase. `EDL.md`
+  and the log say when the fit used beats. The second real run's first track had no
+  bar grid, and the reel cut it off; the operator swapped the track.
+
 ## 0.18.0 — 2026-10-19
 
 - **The brief sets the shot length.** `reel_brief --asl LO,HI` records the reel's

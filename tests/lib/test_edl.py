@@ -1345,3 +1345,21 @@ def test_edl_md_names_the_briefs_band_when_the_brief_set_one():
                       asl_band=(6.0, 10.0), asl_from="brief")
     md = EDL(episodes=(_ep(),), variety=v).to_markdown()
     assert "ASL 3.33s against the brief's 6.0–10.0s band" in md
+
+
+def test_edl_md_says_when_the_music_ends_on_a_beat_not_a_bar():
+    from scripts.lib.outro import OutroFit
+    fit = OutroFit(reel_dur=6.0, line=4.5, fade=1.5, tail=2.0, rung="gap", moved=0.3,
+                   grid="beat")
+    md = EDL(episodes=(_ep(),), outro=fit).to_markdown()
+    assert "on a beat at 4.50s" in md and "no bar grid" in md
+
+
+
+def test_edl_md_says_a_beat_no_gap_fit_kept_the_same_fade():
+    from scripts.lib.outro import OutroFit
+    fit = OutroFit(reel_dur=6.0, line=4.5, fade=1.5, tail=0.0, rung="no-gap", moved=0.3,
+                   need=1.55, grid="beat")
+    md = EDL(episodes=(_ep(),), outro=fit).to_markdown()
+    assert "no beat line in range" in md and "under the same 1.5s fade" in md
+    assert "no bar grid" in md

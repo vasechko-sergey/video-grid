@@ -158,7 +158,7 @@ def _pacing_json(tmp_path):
     return str(p)
 
 
-def _music_json(tmp_path, track, *, bars):
+def _music_json(tmp_path, track, *, bars, beats=None):
     """bars=(LINE,) places the ONE qualifying bar line the reel's realized 10.0s is
     0.2s short of, with a vocal-free tail well past `fade + TAIL_MARGIN`. bars=() (the
     control, Step 2) is the SAME track/window with no detected grid at all —
@@ -166,14 +166,15 @@ def _music_json(tmp_path, track, *, bars):
     'gap' fixture."""
     vocal_spans = ((LINE, LINE + 1.8),) if bars else ()
     ms = MusicSpec(track=str(track), start_offset=0.0, duration=MUSIC_DUR, tempo=TEMPO,
-                   beats=tuple(i * 0.5 for i in range(int(MUSIC_DUR / 0.5))),
+                   beats=(beats if beats is not None
+                          else tuple(i * 0.5 for i in range(int(MUSIC_DUR / 0.5)))),
                    energy=(0.3,) * 10, energy_hz=2.0, bars=bars, vocal_spans=vocal_spans)
     p = tmp_path / "MUSIC.json"
     p.write_text(json.dumps(ms.to_dict()))
     return str(p)
 
 
-def _build(tmp_path, clip, track, *, bars, monkeypatch, fake_render):
+def _build(tmp_path, clip, track, *, bars, monkeypatch, fake_render, beats=None):
     """The real chain: FOOTAGE + selection + project + pacing + music -> edit_plan
     build --pacing --music -> edl_to_reel -> a delivered reel. Returns (out_reel,
     the written EDL)."""
@@ -182,7 +183,7 @@ def _build(tmp_path, clip, track, *, bars, monkeypatch, fake_render):
     sj = _selection_json(tmp_path, clip.name)
     pj = fake.project(tmp_path)
     pacing = _pacing_json(tmp_path)
-    mj = _music_json(tmp_path, track, bars=bars)
+    mj = _music_json(tmp_path, track, bars=bars, beats=beats)
     plan_out = tmp_path / "plan"
 
     res = edit_plan.write_edit_plan(fj, sj, pj, str(plan_out), pacing_path=pacing, music=mj)
@@ -231,15 +232,34 @@ def test_delivered_reel_ends_at_line_plus_fade(
 
 def test_unfitted_reel_keeps_its_footage_derived_length(
         outro_clip, tone, tmp_path, monkeypatch, fake_render):
-    """Step 2 — the control that must NOT move. The SAME fixture with bars=() in
-    MUSIC.json must deliver at the un-fitted realized length (6.0+4.0=10.0s), not at
-    line + fade. Without this, the first test would pass for any implementation
-    that always extends the reel regardless of what MUSIC.json says."""
+    """Step 2 — the control that must NOT move. The SAME fixture with no bar line AND
+    no beat within one bar of the cut must deliver at the un-fitted realized length
+    (6.0+4.0=10.0s), not at line + fade. Without this, the first test would pass for
+    any implementation that always extends the reel regardless of what MUSIC.json
+    says. (Since 2026-10-19 a bar-less window falls back to its beats — retro
+    2026-10-16 S7 — so the control keeps its beats out of reach: 0.5-5.0s.)"""
     realized = 6.0 + 4.0
     out_reel, edl = _build(tmp_path, outro_clip, tone, bars=(), monkeypatch=monkeypatch,
-                           fake_render=fake_render)
+                           fake_render=fake_render,
+                           beats=tuple(i * 0.5 for i in range(1, 11)))
     assert edl.outro is not None and edl.outro.rung == "unchanged" and edl.outro.line is None
     assert edl.target_dur == pytest.approx(realized)
 
     dur = _probe_dur(out_reel)
     assert dur == pytest.approx(realized, abs=0.10)
+
+
+def test_a_bar_less_window_delivers_on_a_beat_under_the_longer_fade(
+        outro_clip, tone, tmp_path, monkeypatch, fake_render):
+    """retro 2026-10-16 S7: with no bar grid the fit uses the beats. Beats on a 0.25s
+    offset put no beat at realized - 1.5, so the reel must MOVE to land on one: the two
+    nearest are 8.25 (-> 9.75s) and 8.75 (-> 10.25s); the tie resolves to the earlier,
+    so the delivered reel is 9.75s long and its fade starts on the beat at 8.25s."""
+    beats = tuple(0.25 + 0.5 * k for k in range(int(MUSIC_DUR / 0.5) - 1))
+    out_reel, edl = _build(tmp_path, outro_clip, tone, bars=(), monkeypatch=monkeypatch,
+                           fake_render=fake_render, beats=beats)
+    # this fixture records no vocal-free span for a bar-less window, so the fit takes
+    # the "no-gap" rung — the same line, under the same longer fade
+    assert edl.outro.grid == "beat" and edl.outro.rung == "no-gap"
+    assert edl.outro.fade == outro.NO_GAP_FADE and edl.outro.line == pytest.approx(8.25)
+    assert _probe_dur(out_reel) == pytest.approx(8.25 + outro.NO_GAP_FADE, abs=0.10)

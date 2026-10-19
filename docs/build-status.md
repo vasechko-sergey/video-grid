@@ -12,6 +12,7 @@ _Last updated: 2026-10-19._
 
 ## Done
 
+- **Beat outro (2026-10-19, 0.19.0)** — branch `fix/beat-outro`, no design. S7: `outro.fit_outro(grid="beat")` takes `NO_GAP_FADE` on both rungs; `_apply_outro` passes the beats when `music.bars` is empty; `OutroFit.grid` (omitted for bar fits); EDL.md/log wording; the integration control now keeps its beats out of reach, and a new real proof lands a bar-less reel on a beat (9.75 s, fade from 8.25 s).
 - **Shot length (2026-10-19, 0.18.0)** — branch `fix/shot-length`, no design. S5: `Spec.asl` + `reel_brief --asl`, swapped into the preset once in `write_edit_plan` (`dataclasses.replace`) so the variety report and `reconcile_band` read the brief's band; `VarietyReport.asl_from` (serialized only when `brief`); the build logs the band and an out-of-band ASL before CP2; reel-brief and edit-plan skills ask for and plan to it.
 - **Hero balance (2026-10-19, 0.17.0)** — branch `fix/hero-balance`, no design. S9: `Spec.cast_share` + `spec.validate_cast_share` (one validator for both carriers), `reel_brief --cast-share`, `EDL.cast_share` (omitted from EDL.json when unasked), `edl.screen_time`/`screen_time_md` (played seconds, a briefed hero who never appears gets a 0.0s row), `edit_plan._log_screen_time`; the reel-brief and router skills ask for and show it.
 - **Fades (2026-10-19, 0.16.0)** — branch `fix/fades`, no design (an amendment note on cinematic-look). S6: `LookSpec.fade_in` (absent = `fade`), presets open on picture, `mix(fade_in=)` with a 20 ms anti-click floor, `lookcheck.evaluate(fade_in=)` / `deliver._title_times` judge and clamp each end apart, `--fade-in` on deliver and probe. S18 (found here, measured on REEL_v5): `build_reel` hands `mix` the outro fit's fade when the fit chose the length. A real-ffmpeg proof that `fade_in=0` keeps the first frame and still closes to black, mutation-checked.
@@ -7090,7 +7091,7 @@ _Last updated: 2026-10-19._
 
 ## Next action
 
-> **2026-10-19: the run-2 P0 rows (0.15.2) and the fades (S6/S18, 0.16.0) are fixed; the next action is the rest of P1.** [backlog.md](backlog.md) P1, in order (shot length S5 landed in 0.18.0, hero balance S9 in 0.17.0): the music ending and search (S7, S8). Every blockquote below this one is history.
+> **2026-10-19: the run-2 P0 rows (0.15.2) and the fades (S6/S18, 0.16.0) are fixed; the next action is the rest of P1.** [backlog.md](backlog.md) P1, in order (S7 landed in 0.19.0, S5 in 0.18.0, S9 in 0.17.0): the music ending and search (S7, S8). Every blockquote below this one is history.
 
 > **2026-10-13: the next action is the second real run, not a slice.** The user
 > updates the installed plugin (`claude plugin update video-grid@video-grid` and a

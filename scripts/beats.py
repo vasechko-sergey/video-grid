@@ -58,8 +58,8 @@ def _downbeat_phase(y: np.ndarray, sr: int, beat_times: Sequence[float]) -> int 
     Peak STFT energy below _LOW_HZ in a +/-_BAR_WIN window around each beat, averaged
     per phase. The winner is returned only when it leads the runner-up by
     _PHASE_MARGIN; otherwise the four phases are too close to tell apart and None is
-    the honest answer, which analyze() turns into an empty bar grid and the outro fit
-    reads as its 'unchanged' rung.
+    the honest answer, which analyze() turns into an empty bar grid — and the outro
+    fit then falls back to the beat grid under a longer fade (retro 2026-10-16 S7).
 
     THE GATE IS THE POINT (design 2026-08-17 §5). Measured across five real tracks,
     this detector finds a downbeat on ONE: the other four score 38-50% against a 25%

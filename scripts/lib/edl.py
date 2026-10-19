@@ -505,17 +505,23 @@ class EDL:
         # transient stderr line carried it (design §7; final review I-3).
         if self.outro is not None:
             o = self.outro
+            beat_note = ("" if o.grid == "bar" else
+                         " (the window has no bar grid, so the fit used its beats under "
+                         "the longer fade)")
             if o.rung == "gap":
-                why = (f"the music resolves on a bar line at {o.line:.2f}s with "
-                       f"{o.tail:.2f}s of vocal-free space after it")
+                why = (f"the music resolves on a {o.grid if o.grid == 'beat' else 'bar line'} "
+                       f"at {o.line:.2f}s with {o.tail:.2f}s of vocal-free space after it"
+                       f"{beat_note}")
             elif o.rung == "no-gap":
                 # o.need, not a module constant: the requirement is fade-dependent
                 # (fade + TAIL_MARGIN) and by this rung `o.fade` is already
                 # NO_GAP_FADE, so neither the constant nor the field can stand in for
                 # what the gap rung actually asked (design 2026-08-18 §1.6).
-                why = (f"no bar line in range left {o.need:.2f}s of "
+                why = (f"no {o.grid} line in range left {o.need:.2f}s of "
                        f"vocal-free space, so the reel ends on the nearest line at "
-                       f"{o.line:.2f}s under a longer fade")
+                       f"{o.line:.2f}s under "
+                       f"{'a longer fade' if o.grid == 'bar' else 'the same 1.5s fade'}"
+                       f"{beat_note}")
             else:
                 # One wording table, shared with check_reel's outro reason. This used to
                 # be a disjunction — "none that the closing shot has room for, or no bar

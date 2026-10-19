@@ -1338,7 +1338,7 @@ def test_an_unchanged_outro_fit_does_not_unclamp_an_unrelated_pacing_overflow():
     never opens."""
     music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
                       beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
-                      bars=(), vocal_spans=())                 # no bar grid at all
+                      bars=(), vocal_spans=())                 # no bar grid; beats out of reach
     edl = edit_plan.build_edl(_footage(), _sel3(), pacing=_spine2(), music=music)
     assert edl.outro.rung == "unchanged"
     assert edl.outro.reel_dur == pytest.approx(7.65)           # unbound tail included, UNCLAMPED
@@ -1464,7 +1464,7 @@ def test_an_unfittable_reel_still_carries_the_briefs_length(capsys):
     eps = [_edl_ep(source="a.mp4", start=0.0, dur=10.0)]
     music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
                       beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
-                      bars=(), vocal_spans=())                     # no bar grid at all
+                      bars=(), vocal_spans=())                     # no bar grid; beats out of reach
     _out, fit = edit_plan._apply_outro(eps, footage, music, fade=0.5, brief_len=12.0)
     assert fit.rung == "unchanged" and fit.brief_len == 12.0
 
@@ -1518,12 +1518,15 @@ def _outro_music(**kw):
     return MusicSpec(**d)
 
 
-def test_apply_outro_names_the_absence_when_the_music_has_no_bar_grid():
-    """All four MUSIC*.json of the only real run carried `bars: []`; the whole
-    outro-fit feature reported "n/a" and did nothing (retro R7.1)."""
+def test_apply_outro_runs_on_the_beats_when_the_music_has_no_bar_grid():
+    """All four MUSIC*.json of the first real run carried `bars: []` and the fit
+    reported "n/a" (retro R7.1); the second run's track had none either (retro
+    2026-10-16 S7). A bar-less window is no longer an absence: the fit runs on its
+    beats, and "no-bars" is left for artifacts written before that — MusicSpec refuses
+    an empty beat list, so no window today has neither."""
     eps, fit = edit_plan._apply_outro(_two_episodes(), _footage(),
                                       _outro_music(bars=()), fade=0.3, brief_len=45.0)
-    assert (fit.rung, fit.cause) == ("unchanged", "no-bars")
+    assert fit.grid == "beat" and fit.cause != "no-bars"
     assert fit.brief_len == 45.0
 
 
@@ -1922,3 +1925,19 @@ def test_a_preset_band_is_information_not_an_order(tmp_path, capsys, monkeypatch
                               spec=_write_spec(tmp_path, mood="brooding"))
     err = capsys.readouterr().err
     assert "re-plan" not in err and "is under the slow preset's 20.0–30.0s band" in err
+
+
+def test_a_track_with_no_bar_grid_still_ends_on_a_beat(capsys):
+    """retro 2026-10-16 S7: with bars=() the fit used to stay `unchanged` and the music
+    was cut mid-phrase. It now falls back to the beat grid under the longer fade."""
+    footage = _footage_with(source="a.mp4", dur=30.0, scene_cuts=())
+    eps = [_edl_ep(source="a.mp4", start=0.0, dur=10.0),
+           _edl_ep(source="a.mp4", start=12.0, dur=4.0)]
+    beats = tuple(round(0.5 * k, 3) for k in range(0, 80))
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
+                      beats=beats, energy=(0.1,), energy_hz=2.0,
+                      bars=(), vocal_spans=())
+    out, fit = edit_plan._apply_outro(eps, footage, music, fade=0.8, brief_len=None)
+    assert fit.grid == "beat" and fit.rung in ("gap", "no-gap") and fit.line in beats
+    assert sum(e.play_dur() for e in out) == pytest.approx(fit.reel_dur)
+    assert "beat grid" in capsys.readouterr().err
