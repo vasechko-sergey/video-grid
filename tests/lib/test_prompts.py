@@ -21,7 +21,8 @@ def test_body_refuses_a_template_without_exactly_one_block(text):
 
 
 def test_fill_substitutes_every_token_once_and_never_rescans_a_value():
-    out = prompts.fill("a {A} b {B} {A}", {"A": "x", "B": "{A} stays"})
+    # The injecting value comes FIRST, so a sequential replace loop would re-read it.
+    out = prompts.fill("a {A} b {B} {A}", {"B": "{A} stays", "A": "x"})
     assert out == "a x b {A} stays x"
 
 

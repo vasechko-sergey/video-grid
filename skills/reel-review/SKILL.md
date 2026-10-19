@@ -86,7 +86,8 @@ Announce on entry: **"Using reel-review to judge the reel against the brief."**
 
        "$VG" scripts.reel_review pack \
          --reel <run>/reels/<reel>/deliveries/REEL_v{n}.mp4 \
-         --reel-dir <run>/reels/<reel>
+         --reel-dir <run>/reels/<reel> \
+         [--intent "<the user's own words for the reel>"]
 
    Use the `REEL_v{n}.mp4` `montage status` names as latest. `pack` grabs the
    hook, the ending and one mid-frame per episode from the delivered file into
@@ -100,11 +101,16 @@ Announce on entry: **"Using reel-review to judge the reel against the brief."**
    the moment the reel is re-rendered, and `build/` is the one bucket the next
    render clears.
 
+   With no `SPEC.json` (the autonomous path), pass `--intent` with what the user
+   said they wanted, in their words — otherwise the reviewer has only the EDL to
+   judge against, and the prompt says so.
+
    The report defaults to `build/reel/reel_report.json`, and `pack` refuses it
    when the reel's attestation names a different one — `build/` keeps only the
-   LAST render's report, and a later render that stopped rewrites it. Pass
-   `--report` with the one this reel shipped with, or review the reel the report
-   passed.
+   LAST render's report, and a later render that stopped rewrites it. Review the
+   reel the report passed, or re-deliver this one. `report_bound: false` in the
+   result means the reel has no attestation at all: say so at CP3 — an
+   unattested reel was not delivered by `deliver`.
 
 2. **Dispatch the reviewer subagent** (Task tool, `general-purpose`) with the
    contents of `build/_review/reviewer_prompt.md`, verbatim. Never fill or edit

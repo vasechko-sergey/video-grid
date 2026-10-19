@@ -101,7 +101,8 @@ def still_times(clip_durs: list[float], reel_dur: float,
     lo, hi = max(_HOOK_MIN, head + _CLEAR), reel_dur - max(_END_MIN, tail + _CLEAR)
     if hi < lo:
         raise ValueError(f"a {reel_dur:g}s reel leaves no frame outside its {head:g}s/"
-                         f"{tail:g}s bookend fades to grab a still from")
+                         f"{tail:g}s bookend fades to grab a still from — shorten the "
+                         f"fade in EDL.look, or review a longer cut")
     starts = [0.0, *accumulate(clip_durs)][:-1]
     mids = {f"mid{i}": min(max(s + d / 2, lo), hi)
             for i, (s, d) in enumerate(zip(starts, clip_durs))}
@@ -122,42 +123,62 @@ def _report_bound(reel: str, report: dict, at: Path) -> bool:
             f"attestation names report {named[:12]}, this one is "
             f"{provenance.digest_obj(report)[:12]}. build/ keeps only the last render's "
             f"report: review the reel that report passed (`montage status` names the "
-            f"newest delivery), or pass --report with the one this reel shipped with")
+            f"newest delivery), or re-deliver this one (`edl_to_reel --from-episodes`) "
+            f"to get its report back")
     return True
 
 
-def _spec_block(reel_dir: Path) -> str:
+def _spec_block(reel_dir: Path, intent: str) -> str:
+    """The brief, or — on the autonomous path, which has none — the intent the user
+    stated in their own words, which the agent passes with --intent."""
     sj, sm = reel_dir / "SPEC.json", reel_dir / "SPEC.md"
+    said = f"\n\nStated intent, in the user's words: {intent.strip()}" if intent.strip() else ""
     if not sj.is_file():
-        return ("no SPEC — there is no brief. Judge against the EDL and the reel's "
+        if said:
+            return ("no SPEC — judge against the EDL and the intent below, and say in "
+                    "your summary that you did." + said)
+        return ("no SPEC and no stated intent — judge against the EDL and the reel's "
                 "evident intent, and say in your summary that you did.")
     md = sm.read_text() if sm.is_file() else "(no SPEC.md beside SPEC.json)"
     spec = json.dumps(json.loads(sj.read_text()), indent=1, ensure_ascii=False)
-    return f"{md.rstrip()}\n\nSPEC.json:\n{spec}"
+    return f"{md.rstrip()}\n\nSPEC.json:\n{spec}{said}"
 
 
-def _music_block(reel_dir: Path) -> str:
-    mj = reel_dir / "MUSIC.json"
-    if not mj.is_file():
-        return "silent reel — no MUSIC.json beside the EDL."
-    m = MusicSpec.from_json(mj)
-    # music_fetch writes the track's identity beside the file it downloaded.
-    meta = Path(m.track).with_suffix(".json")
-    if meta.is_file():
-        t = json.loads(meta.read_text())
-        name = f"{t['artist']} — {t['title']} ({t['source']}, licence: {t['license']})"
-    else:
-        name = Path(m.track).name
+def _track_name(track: str) -> str:
+    """The track's identity from music_fetch's record beside the file it downloaded,
+    else the file's own name — which is still true, just less said."""
+    meta = Path(track).with_suffix(".json")
+    try:
+        t = json.loads(meta.read_text()) if meta.is_file() else None
+    except json.JSONDecodeError:
+        t = None
+    if isinstance(t, dict) and t.get("artist") and t.get("title"):
+        return (f"{t['artist']} — {t['title']} ({t.get('source', '?')}, licence: "
+                f"{t.get('license', '?')})")
+    return f"{Path(track).name} (no music_fetch record beside it)"
+
+
+def _music_block(music: str | None, reel_dir: Path) -> str:
+    """The music the reel was BUILT with — EPISODES.json's own `music`, never whichever
+    MUSIC*.json happens to sit in the reel dir: a run that compared several windows
+    leaves MUSIC_2.json beside MUSIC.json, and a silent reel can sit beside either."""
+    if music is None:
+        return "silent reel — EPISODES.json names no music."
+    if not Path(music).is_file():
+        raise ValueError(f"EPISODES.json names music {music}, which is not on disk — the "
+                         f"reel's own record of its music is gone; restore that file, or "
+                         f"re-deliver the reel from a run that still has it")
+    m = MusicSpec.from_json(music)
     pacing = reel_dir / "PACING.md"
     return "\n\n".join([
-        f"Track: {name}, from {m.start_offset:g}s for {m.duration:g}s at "
-        f"{m.tempo:.1f} BPM; {len(m.beats)} beats, {len(m.bars)} bars, "
-        f"{len(m.vocal_spans)} vocal spans.",
+        f"Track: {_track_name(m.track)}, from {m.start_offset:g}s for {m.duration:g}s at "
+        f"{m.tempo:.1f} BPM ({Path(music).name}); {len(m.beats)} beats, {len(m.bars)} "
+        f"bars, {len(m.vocal_spans)} vocal-free spans.",
         pacing.read_text().rstrip() if pacing.is_file()
         else "No PACING.md — the cut was not fitted to the music."])
 
 
-def pack(reel: str, reel_dir: str, *, report: str | None = None) -> dict:
+def pack(reel: str, reel_dir: str, *, report: str | None = None, intent: str = "") -> dict:
     """Grab the reviewer's stills from the delivered reel and write its prompt, filled
     (retro 2026-10-16 S14: the second real run's agent grabbed the stills with an
     inline script and wrote a second one to fill the template). Returns a status dict."""
@@ -173,13 +194,22 @@ def pack(reel: str, reel_dir: str, *, report: str | None = None) -> dict:
     if not rep.is_file():
         raise ValueError(f"no check_reel report at {rep} — the delivering run writes it "
                          f"there; pass --report if it lives elsewhere")
-    report_obj = json.loads(rep.read_text())
+    try:
+        report_obj = json.loads(rep.read_text())
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{rep} is not valid JSON ({e}) — re-deliver the reel "
+                         f"(`edl_to_reel --from-episodes`) to write its report again") from e
     bound = _report_bound(reel, report_obj, rep)
     edl_md = lay.reel_dir / "EDL.md"
     if not edl_md.is_file():
         raise ValueError(f"no EDL.md in {lay.reel_dir} — the reviewer judges the reel "
                          f"against its plan; run `edit_plan build` there")
-    rm = ReelManifest.from_json(lay.episodes / "EPISODES.json")
+    episodes = lay.episodes / "EPISODES.json"
+    if not episodes.is_file():
+        raise ValueError(f"no EPISODES.json at {episodes} — pack reads each episode's "
+                         f"clip from it; pass the --reel-dir of the run that delivered "
+                         f"this reel")
+    rm = ReelManifest.from_json(episodes)
     times = still_times([assembly.probe_duration(e.clip) for e in rm.episodes],
                         assembly.probe_duration(reel), rm.look)
     out = lay.build / "_review"
@@ -190,10 +220,10 @@ def pack(reel: str, reel_dir: str, *, report: str | None = None) -> dict:
         Image.fromarray(frame).save(out / f"{name}.png")
         stills.append(str((out / f"{name}.png").resolve()))
     text = prompts.render(prompts.REVIEWER_TEMPLATE, {
-        "SPEC": _spec_block(lay.reel_dir),
+        "SPEC": _spec_block(lay.reel_dir, intent),
         "EDL_MD": edl_md.read_text().rstrip(),
         "REPORT_JSON": json.dumps(report_obj, indent=1, ensure_ascii=False),
-        "MUSIC": _music_block(lay.reel_dir),
+        "MUSIC": _music_block(rm.music, lay.reel_dir),
         "REEL_PATH": str(Path(reel).resolve()),
         "STILL_PATHS": "\n".join(f"{n}: {p}" for n, p in zip(times, stills)),
         "FINDINGS_PATH": str((lay.reel_dir / "review_findings.json").resolve()),
@@ -233,13 +263,18 @@ def build_parser() -> argparse.ArgumentParser:
                    help="check_reel's report for this reel (default: "
                         "build/reel/reel_report.json); refused when the reel's "
                         "attestation names a different one")
+    k.add_argument("--intent", default="",
+                   help="the user's own words for what the reel should be — required "
+                        "in spirit when there is no SPEC.json, so the reviewer has "
+                        "something besides the EDL to judge against")
     return ap
 
 
 def main() -> None:
     a = build_parser().parse_args()
     if a.cmd == "pack":
-        print(json.dumps(pack(a.reel, a.reel_dir, report=a.report), indent=2))
+        print(json.dumps(pack(a.reel, a.reel_dir, report=a.report, intent=a.intent),
+                         indent=2))
         raise SystemExit(0)
     if not Path(a.reel).exists():
         raise ValueError(

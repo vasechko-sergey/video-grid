@@ -77,7 +77,7 @@ not reach for a tool that is not here. Resolve the launcher once —
 plugin checkout, not where you think — and pull any frames you want from the
 delivered clip itself, {CLIP}, at timestamps YOU choose:
 
-    "$VG" scripts.contact_sheet strip --source {CLIP} \
+    "$VG" scripts.contact_sheet strip --source "{CLIP}" \
           --out <a path of your own> --start <seconds> --dur <seconds> --frames <n>
 
 A short `--dur` around one moment gives you a near-full-resolution look at it.

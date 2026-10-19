@@ -57,7 +57,7 @@ the plan + signals + stills, NOT full playback — say so in your summary.
 
 ## Judge each axis; emit a finding ONLY where the reel falls short
 - idea             — delivers the brief's original idea?         (SPEC.idea vs the EDL arc)
-- mood             — mood/story land?                            (SPEC.mood vs MUSIC mood_features; the stills)
+- mood             — mood/story land?                            (SPEC.mood vs the track and its tempo; the stills)
 - hook             — opening strong, first ~1–3s?                (ep0 shot/layout/description + hook still)
 - ending           — ending right, last ~3s?                    (last-ep + ending still + SPEC.ending)
 - spine            — cuts along the energy spine?                (PACING slots vs EDL beat_slot/dur; the Energy agreement number; beat advisory)

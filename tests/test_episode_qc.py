@@ -646,7 +646,7 @@ def test_the_judge_prompt_carries_this_episodes_own_evidence(tmp_path):
     assert "{" + "INTENT}" not in text and '"composition": "lead"' in text
     assert f"Frame strip: {tmp_path / 'qc' / 'ep0' / 'strip.jpg'} — 180x320 px" in text
     assert f"Storyboard: {tmp_path / 'sb.jpg'} — 1080x1920 px" in text
-    assert f"--source {tmp_path / 'ep0.mp4'}" in text
+    assert f'--source "{tmp_path / "ep0.mp4"}"' in text      # quoted: macOS paths carry spaces
     assert f"Write your output to {(d / 'findings.json').resolve()} as JSON" in text
     assert 'Path: {\n "freedom": 384\n}' in text
 
@@ -680,3 +680,18 @@ def test_pack_writes_the_prompt_beside_the_evidence(tmp_path, monkeypatch):
     prompt = tmp_path / "qc" / "ep0" / "judge_prompt.md"
     assert res["prompts"] == [str(prompt)]
     assert "Frame strip: " + str(tmp_path / "qc" / "ep0" / "strip.jpg") in prompt.read_text()
+
+
+def test_an_unreadable_report_lands_under_the_checks(tmp_path):
+    ev = _ev(tmp_path, checks=None, unreadable={"report.json": "truncated"})
+    text = episode_qc.judge_prompt(ev, tmp_path / "qc" / "ep0")
+    checks = text.split("## The mechanical checks")[1].split("## Tracker")[0]
+    assert checks.rstrip().endswith("unreadable: truncated")
+    assert text.count("unreadable: truncated") == 1
+
+
+def test_an_unreadable_path_record_lands_under_the_path(tmp_path):
+    ev = _ev(tmp_path, geometry=None, unreadable={"path.meta.json": "truncated"})
+    text = episode_qc.judge_prompt(ev, tmp_path / "qc" / "ep0")
+    assert "Path: unreadable: truncated" in text
+    assert text.count("unreadable: truncated") == 1
