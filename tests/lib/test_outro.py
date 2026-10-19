@@ -371,3 +371,12 @@ def test_every_cause_has_a_clause_and_so_does_the_unrecorded_one():
     # review M-3) that only a check on the table itself, not on any one rendering,
     # catches. All six current values satisfy it.
     assert not any(", so " in v for v in outro.CAUSE_WHY.values())
+
+
+def test_a_fitted_record_without_its_fade_is_refused_not_defaulted_to_a_dead_cut():
+    """retro 2026-10-16 S18: build_reel closes the music on a fitted rung's fade, so a
+    hand-written {"rung": "gap", ...} with no fade must fail at load, not KeyError after
+    the whole picture loop — and must not quietly become a 0.0 fade either."""
+    with pytest.raises(ValueError, match="'fade'"):
+        OutroFit.from_dict({"rung": "gap", "reel_dur": 6.0, "line": 4.5})
+    assert OutroFit.from_dict({"rung": "unchanged"}).fade == 0.0   # nothing reads it there

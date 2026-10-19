@@ -414,7 +414,8 @@ def probe_grade_geometry(geometry_path: str, index: int, *, out_dir: str | None 
 
 
 def probe_look(master: str, delivered: str, *, vignette: float = 0.0,
-               fade: float = 0.0, titles: bool = False) -> list[dict]:
+               fade: float = 0.0, titles: bool = False,
+               fade_in: float | None = None) -> list[dict]:
     """The delivered-look check deliver gates on, run by hand against two files."""
     dur = assembly.probe_duration(delivered)
     ts = [dur * 0.25, dur * 0.5, dur * 0.75]
@@ -422,9 +423,11 @@ def probe_look(master: str, delivered: str, *, vignette: float = 0.0,
     mm = assembly.frames_rgb(master, ts, m_fps)
     dd = assembly.frames_rgb(delivered, ts, d_fps)
     f_m = f_d = l_m = l_d = None
-    if fade:
+    head = fade if fade_in is None else fade_in
+    if head:
         f_m = assembly.frames_rgb(master, [0.0], m_fps)[0]
         f_d = assembly.frames_rgb(delivered, [0.0], d_fps)[0]
+    if fade:
         # each file's TRUE last frame, via last_frame_rgb rather than a computed
         # timestamp — sampling both sides at one shared timestamp would miss exactly
         # the failure this check exists to catch (deliver derives the fade-out from
@@ -435,8 +438,8 @@ def probe_look(master: str, delivered: str, *, vignette: float = 0.0,
         l_m = assembly.last_frame_rgb(master, m_fps)
         l_d = assembly.last_frame_rgb(delivered, d_fps)
     return [f.to_dict() for f in lookcheck.evaluate(
-        mm, dd, f_m, f_d, l_m, l_d, vignette=vignette, fade=fade, fps=d_fps,
-        titles=titles)]
+        mm, dd, f_m, f_d, l_m, l_d, vignette=vignette, fade=fade, fade_in=fade_in,
+        fps=d_fps, titles=titles)]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -485,7 +488,11 @@ def build_parser() -> argparse.ArgumentParser:
     lk.add_argument("--vignette", type=float, default=0.0,
                     help="the vignette strength that was declared, 0..0.6")
     lk.add_argument("--fade", type=float, default=0.0,
-                    help="the bookend fade that was declared, seconds per end")
+                    help="the closing fade that was declared, seconds (and the opening "
+                         "one, unless --fade-in)")
+    lk.add_argument("--fade-in", type=float, default=None,
+                    help="the opening fade that was declared, seconds, when it differs "
+                         "from --fade (0 = the reel opens on picture)")
     lk.add_argument("--titles", action="store_true",
                     help="also check that title ink reached the pixels")
     return ap
@@ -514,7 +521,8 @@ def main() -> None:
         print(json.dumps(r, indent=2))
     else:
         print(json.dumps(probe_look(a.master, a.delivered, vignette=a.vignette,
-                                    fade=a.fade, titles=a.titles), indent=2))
+                                    fade=a.fade, fade_in=a.fade_in,
+                                    titles=a.titles), indent=2))
 
 
 if __name__ == "__main__":

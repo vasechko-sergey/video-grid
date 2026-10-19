@@ -8,6 +8,17 @@
 
 ---
 
+
+> **Amended 2026-10-19 (retro 2026-10-16 S6, S18).** The bookend is no longer one
+> number. `LookSpec.fade_in` sets the opening apart (absent = the same as `fade`, so
+> every older file renders the same picture; its sound gains only the 20 ms
+> anti-click ramp below), and every mood preset now opens on picture
+> (`fade_in: 0`) — the second real run's hook opened on a black frame and all four
+> reviews flagged it. `mix` keeps a 20 ms anti-click floor on the opening. And when
+> the outro fit chose the reel's length as `line + fade`, `build_reel` now hands
+> `mix` the FIT's fade for the music's close, not the look's: REEL_v5 held full
+> level 0.7 s past its bar line. The text below is history where it says one fade.
+
 ## 0. Why this slice exists
 
 The 2026-08-03 real montage run grew an effects wishlist by patching the engine

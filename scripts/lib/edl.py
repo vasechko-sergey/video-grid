@@ -427,9 +427,8 @@ class EDL:
         # always-present line would move every existing golden markdown (§1.1).
         if self.platform:
             lines.append(f"- **Platform:** {self.platform}")
-        if self.look is not None and (self.look.vignette or self.look.fade):
-            lines.append(f"- **Look:** vignette {self.look.vignette:.2f} · "
-                         f"fade {self.look.fade:.2f}s")
+        if self.look is not None and (self.look.vignette or self.look.has_fade):
+            lines.append(f"- **Look:** {self.look.describe()}")
         if self.tone_target is not None:
             lines.append("- **Tone target:** "
                          + "/".join(f"{v:.0f}" for v in self.tone_target)

@@ -94,7 +94,7 @@ Announce on entry: **"Using reel-review to judge the reel against the brief."**
    is darkened by the picture's own fade, not by anything the `colour` axis
    should read as a grade difference, and three of the four mood presets carry
    `fade >= 0.8` (`moodpreset.py`). This is the same reason `deliver.py`'s own
-   look-gate sampling clamps into `[fade, dur-fade]` (`scripts/deliver.py:110-115`)
+   look-gate sampling clamps into `[fade_in, dur-fade]` (`deliver._title_times`)
    — follow that precedent rather than inventing a new one. One pass computes
    every timestamp and grabs every frame — hook, ending, and every episode's
    mid — reading the fade and the per-episode clip lengths off the same
@@ -108,10 +108,12 @@ Announce on entry: **"Using reel-review to judge the reel against the brief."**
        from scripts.lib import assembly, proc, ffbin
        rm = json.load(open('<run>/reels/<reel>/episodes/EPISODES.json'))
        durs = [assembly.probe_duration(e['clip']) for e in rm['episodes']]
-       dur, fade = sum(durs), (rm.get('look') or {}).get('fade', 0.0)
+       look = rm.get('look') or {}
+       dur, fade = sum(durs), look.get('fade', 0.0)
+       head = look.get('fade_in', fade)     # the opening; absent = the same as fade
        starts = [0.0] + list(accumulate(durs))[:-1]
        mids = [s + d / 2 for s, d in zip(starts, durs)]
-       shots = {'hook': max(0.5, fade + 0.1), 'ending': dur - max(1.0, fade + 0.1),
+       shots = {'hook': max(0.5, head + 0.1), 'ending': dur - max(1.0, fade + 0.1),
                 **{f'mid{i}': m for i, m in enumerate(mids)}}
        out = Path('<run>/reels/<reel>/build/_review'); out.mkdir(parents=True, exist_ok=True)
        for name, t in shots.items():

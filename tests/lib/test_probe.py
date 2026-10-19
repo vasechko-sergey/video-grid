@@ -453,3 +453,23 @@ def test_cli_grade_refuses_edl_combined_with_geometry(monkeypatch, tmp_path):
         probe.main()
     assert ei.value.code == 2
     assert called == []
+
+
+def test_probe_look_decodes_and_judges_only_the_declared_ends(monkeypatch):
+    """retro 2026-10-16 S6: `probe look --fade-in 0` must not demand — or judge — an
+    opening ramp the reel never had."""
+    import numpy as np
+    from types import SimpleNamespace
+    seen = []
+    monkeypatch.setattr(probe.assembly, "probe_duration", lambda p: 10.0)
+    monkeypatch.setattr(probe.assembly, "probe_stream", lambda p: SimpleNamespace(fps=30.0))
+    monkeypatch.setattr(probe.assembly, "frames_rgb",
+                        lambda p, ts, fps: (seen.append(tuple(ts)),
+                                            [np.zeros((4, 4, 3), np.uint8)] * len(ts))[1])
+    monkeypatch.setattr(probe.assembly, "last_frame_rgb",
+                        lambda p, fps: np.zeros((4, 4, 3), np.uint8))
+    got = {}
+    monkeypatch.setattr(probe.lookcheck, "evaluate", lambda *a, **k: (got.update(k), [])[1])
+    probe.probe_look("m.mp4", "d.mp4", fade=0.8, fade_in=0.0)
+    assert (0.0,) not in seen
+    assert (got["fade"], got["fade_in"]) == (0.8, 0.0)

@@ -704,7 +704,7 @@ def test_build_reel_gives_mix_the_looks_fade(tmp_path, monkeypatch):
     monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
     build_reel.build_reel(_rm_music(music=str(tmp_path / "MUSIC.json"), look=LookSpec(fade=0.8)),
                           str(tmp_path / "out"), str(tmp_path / "work"))
-    assert got["fade"] == 0.8
+    assert (got["fade"], got["fade_in"]) == (0.8, 0.8)
 
 
 def test_a_reel_with_no_look_keeps_mixs_own_default(tmp_path, monkeypatch):
@@ -1110,3 +1110,47 @@ def test_a_stale_gates_block_in_the_provenance_never_reaches_the_attestation(
     build_reel.build_reel(dataclasses.replace(_rm(), provenance={"gates": stale}),
                           str(tmp_path / "o"), str(tmp_path / "w"))
     assert "gates" not in seen["run_provenance"]
+
+
+# --- retro 2026-10-16 S6/S18: the opening and the music's closing fade ---------------
+
+def _mix_kwargs(tmp_path, monkeypatch, rm):
+    mixed, delivered, got = [], [], {}
+    _wire_music(monkeypatch, [_passing(), _passing()], mixed, delivered)
+    monkeypatch.setattr(build_reel.mix, "mix", lambda *a, **k: (got.update(k), "stem.m4a")[1])
+    monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
+    build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "work"))
+    return got
+
+
+def test_a_look_that_opens_on_picture_opens_the_sound_without_a_fade(tmp_path, monkeypatch):
+    rm = _rm_music(music=str(tmp_path / "MUSIC.json"), look=LookSpec(fade=0.8, fade_in=0.0))
+    got = _mix_kwargs(tmp_path, monkeypatch, rm)
+    assert (got["fade"], got["fade_in"]) == (0.8, 0.0)
+
+
+def test_a_length_the_outro_fit_chose_closes_on_the_fits_own_fade(tmp_path, monkeypatch):
+    """The second real run's REEL_v5 (retro 2026-10-16 S18): the outro fit made the reel
+    `line + 1.5` so the music's fade would START on the bar line, but mix was handed the
+    look's 0.8 — the level held until 0.8s from the end, 0.7s past the line."""
+    rm = _rm_music(music=str(tmp_path / "MUSIC.json"), look=LookSpec(fade=0.8, fade_in=0.0))
+    rm.outro = {"reel_dur": 6.0, "line": 4.5, "fade": 1.5, "tail": 0.0,
+                "rung": "no-gap", "moved": 0.0}
+    got = _mix_kwargs(tmp_path, monkeypatch, rm)
+    assert (got["fade"], got["fade_in"]) == (1.5, 0.0)
+
+
+def test_an_unchanged_outro_leaves_the_looks_fade(tmp_path, monkeypatch):
+    rm = _rm_music(music=str(tmp_path / "MUSIC.json"), look=LookSpec(fade=0.8, fade_in=0.0))
+    rm.outro = {"reel_dur": 6.0, "line": None, "fade": 0.8, "tail": 0.0,
+                "rung": "unchanged", "moved": 0.0, "cause": "no-bars"}
+    got = _mix_kwargs(tmp_path, monkeypatch, rm)
+    assert (got["fade"], got["fade_in"]) == (0.8, 0.0)
+
+
+def test_a_fitted_outro_without_a_look_keeps_mixs_default_opening(tmp_path, monkeypatch):
+    rm = _rm_music(music=str(tmp_path / "MUSIC.json"))
+    rm.outro = {"reel_dur": 6.0, "line": 4.5, "fade": 1.5, "tail": 0.0,
+                "rung": "no-gap", "moved": 0.0}
+    got = _mix_kwargs(tmp_path, monkeypatch, rm)
+    assert (got["fade"], got["fade_in"]) == (1.5, build_reel.mix._FADE)

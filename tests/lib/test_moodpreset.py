@@ -165,7 +165,7 @@ def test_the_fallback_applies_no_vignette():
 
 
 def test_moody_is_the_heaviest_look():
-    assert resolve("dark and moody").look == LookSpec(vignette=0.40, fade=1.0)
+    assert resolve("dark and moody").look == LookSpec(vignette=0.40, fade=1.0, fade_in=0.0)
 
 
 def test_look_must_be_a_lookspec():
@@ -306,3 +306,12 @@ def test_evaluate_carries_unmeasured_through_without_touching_the_gaps():
     assert r.unmeasured == 40
     assert r.gaps == baseline.gaps                # identical regardless of `unmeasured`
     assert r.ok is False                          # a real, unwaived gap is never `ok`
+
+
+def test_no_preset_opens_the_reel_on_black():
+    """The second real run (retro 2026-10-16 S6): `nostalgic` faded the picture IN over
+    0.8s, so the hook's first frame — the one a swiping viewer judges — was black, and
+    all four reviews flagged it. A preset keeps its closing fade and opens on picture."""
+    for p in moodpreset.PRESETS:
+        assert p.look.head == 0.0, p.name
+        assert p.look.tail > 0.0, p.name

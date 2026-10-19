@@ -10,9 +10,23 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.16.0 — 2026-10-19
+
+- **A reel opens on picture.** The look's opening fade is its own number
+  (`look.fade_in`; absent = the same as `fade`, so older EDLs render unchanged),
+  and every mood preset now sets it to 0 — the second real run's hook opened on a
+  black frame. The closing fade is unchanged. The music keeps a 20 ms anti-click
+  ramp at its start.
+- **The music closes on the bar line it was fitted to.** When the outro fit chose
+  the reel's length as `line + fade`, the music's fade-out is the fit's own fade;
+  it used to be the look's, so the fade started late (0.7 s on REEL_v5).
+- `deliver --fade-in` and `probe look --fade-in`; the look gate checks each end only
+  when it is declared.
+
 ## 0.15.2 — 2026-10-19
 
-The second real run's four P0 rows (retro 2026-10-16):
+The second real run's retro (`docs/retro/2026-10-16-second-real-run.md`, 18
+backlog rows) and its four P0 rows:
 
 - A 9:16 reel from 1080p footage is delivered at **1080×1920**, not 1080×1922 —
   a sized delivery takes the canvas aspect, not the truncated integer crop.

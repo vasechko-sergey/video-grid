@@ -715,11 +715,9 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     fallback_look = None if preset.name == "balanced" else preset.look
     if sel_look is not None:
         eff_look = LookSpec.from_dict(sel_look)
-        _log(f"look: vignette {eff_look.vignette:.2f} · fade {eff_look.fade:.2f}s — "
-             "from selection.json")
+        _log(f"look: {eff_look.describe()} — from selection.json")
     elif fallback_look is not None:
-        _log(f"look: vignette {fallback_look.vignette:.2f} · fade {fallback_look.fade:.2f}s "
-             f"— from the {preset.name} preset")
+        _log(f"look: {fallback_look.describe()} — from the {preset.name} preset")
     else:
         _log("look: left unauthored — no SPEC mood matched a preset, and the 'balanced' "
              "fallback's own look is never applied (it would itself be a silent change "

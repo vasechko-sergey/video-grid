@@ -1024,6 +1024,12 @@ def test_edl_markdown_prints_the_look_only_when_set():
     assert "Look" not in EDL(episodes=(_ep(),), look=LookSpec()).to_markdown()
     md = EDL(episodes=(_ep(),), look=LookSpec(vignette=0.3, fade=0.8)).to_markdown()
     assert "- **Look:** vignette 0.30 · fade 0.80s" in md
+    # retro 2026-10-16 S6: an opening set apart is named apart, and a look whose only
+    # fade is the opening one still prints (the guard reads has_fade, not .fade)
+    md = EDL(episodes=(_ep(),), look=LookSpec(vignette=0.25, fade=0.8, fade_in=0.0)).to_markdown()
+    assert "- **Look:** vignette 0.25 · fade in 0.00s · out 0.80s" in md
+    md = EDL(episodes=(_ep(),), look=LookSpec(fade=0.0, fade_in=0.5)).to_markdown()
+    assert "- **Look:** vignette 0.00 · fade in 0.50s · out 0.00s" in md
 
 
 def test_episode_highlight_red_reaches_the_manifest():

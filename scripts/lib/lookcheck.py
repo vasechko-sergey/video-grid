@@ -300,16 +300,17 @@ def evaluate(mid_master: list[np.ndarray], mid_delivered: list[np.ndarray],
              first_master: np.ndarray | None, first_delivered: np.ndarray | None,
              last_master: np.ndarray | None, last_delivered: np.ndarray | None,
              *, vignette: float = 0.0, fade: float = 0.0, fps: float = 0.0,
-             titles: Sequence[TitleProbe] = ()) -> list[LookFinding]:
+             titles: Sequence[TitleProbe] = (),
+             fade_in: float | None = None) -> list[LookFinding]:
     """Judge a delivery against its master. Empty list = nothing was declared, so
     there is nothing to prove and no ffmpeg was worth spending.
 
     `mid_*` are paired frames from the reel's interior. `first_*`/`last_*` are the
     frames at t=0 and the delivery's own last decodable frame respectively, needed
-    only when a fade was declared — the fade is a BOOKEND (`look.fade_args` emits
-    both `fade=t=in` and `fade=t=out`), so both ends must be supplied together or
-    not at all; see `_fade_edge`. `fps` is the DELIVERED file's own frame rate,
-    needed only alongside `fade`: it sizes how much of the fade-out's ramp the last
+    only for the fade end each one proves — `first_*` when an opening fade is
+    declared, `last_*` when a closing one is (`look.fade_args` emits each end only
+    when it is non-zero); see `_fade_edge`. `fps` is the DELIVERED file's own frame
+    rate, needed whenever a fade end is declared: it sizes how much of the fade-out's ramp the last
     decodable frame can still be short of (`FADE_OUT_RESIDUAL_MARGIN`) — fade-in's
     t=0 needs no such slack, since it is frame-exact regardless of fps.
 
@@ -318,8 +319,14 @@ def evaluate(mid_master: list[np.ndarray], mid_delivered: list[np.ndarray],
     judged from the interior samples the other two checks reuse. Empty = no titles
     were declared, which is not the same as a title that could not be sampled — that
     one arrives as a probe with `skipped` set and reports not-checked.
+
+    `fade` is the closing fade and, unless `fade_in` sets it apart, the opening one
+    (LookSpec's convention). Each end is judged — and its two frames required — only
+    when it is declared: a reel that opens on picture has no fade-in to prove (retro
+    2026-10-16 S6).
     """
-    if not (vignette or fade or titles):
+    head = fade if fade_in is None else fade_in
+    if not (vignette or fade or head or titles):
         return []
     if not mid_master or len(mid_master) != len(mid_delivered):
         raise ValueError(f"lookcheck.evaluate needs the same number of master and "
@@ -359,23 +366,26 @@ def evaluate(mid_master: list[np.ndarray], mid_delivered: list[np.ndarray],
                         f"corner-over-centre ratio {mr:.4f} -> {dr:.4f}, a drop of {drop:.4f}"),
                 measured=drop, expected=need))
 
-    if fade:
-        need = {"first_master": first_master, "first_delivered": first_delivered,
-               "last_master": last_master, "last_delivered": last_delivered}
+    if head or fade:
+        need = {}
+        if head:
+            need.update(first_master=first_master, first_delivered=first_delivered)
+        if fade:
+            need.update(last_master=last_master, last_delivered=last_delivered)
         missing = [n for n, v in need.items() if v is None]
         if missing or not fps:
             raise ValueError(
-                f"lookcheck.evaluate needs all four bookend frames AND fps (the "
-                f"delivered file's own rate) to judge a fade — the master's and the "
-                f"delivery's first frame (t=0) AND last frame, all four, not just one "
-                f"end: the fade is a bookend (fade=t=in and fade=t=out both render), "
-                f"so checking only the first frame would report 'pass' while the "
-                f"closing half never reached black. fps sizes the fade-out's own "
-                f"quantization slack (§7, amended) — without it a correctly-rendered "
-                f"short fade cannot be told from a genuine miss. Missing: {missing}"
-                + ("" if fps else " + fps"))
-        out.append(_fade_edge(first_master, first_delivered, check="fade-in", edge="first",
-                              fade=fade, fps=fps))
-        out.append(_fade_edge(last_master, last_delivered, check="fade-out", edge="last",
-                              fade=fade, fps=fps))
+                f"lookcheck.evaluate needs both frames of every DECLARED fade end AND fps "
+                f"(the delivered file's own rate) — the master's and the delivery's first "
+                f"frame (t=0) for a fade-in, their last frames for a fade-out: checking "
+                f"only one end of a bookend would report 'pass' while the other never "
+                f"reached black. fps sizes the fade-out's own quantization slack (§7, "
+                f"amended) — without it a correctly-rendered short fade cannot be told "
+                f"from a genuine miss. Missing: {missing}" + ("" if fps else " + fps"))
+        if head:
+            out.append(_fade_edge(first_master, first_delivered, check="fade-in",
+                                  edge="first", fade=head, fps=fps))
+        if fade:
+            out.append(_fade_edge(last_master, last_delivered, check="fade-out",
+                                  edge="last", fade=fade, fps=fps))
     return out

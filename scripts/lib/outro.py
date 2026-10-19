@@ -157,11 +157,21 @@ class OutroFit:
         if not isinstance(d, dict):
             raise ValueError(f"OutroFit.from_dict: expected an object, got "
                              f"{type(d).__name__} — re-run edit_plan build")
-        return cls(reel_dur=d.get("reel_dur", 0.0), line=d.get("line"),
+        fit = cls(reel_dur=d.get("reel_dur", 0.0), line=d.get("line"),
                    fade=d.get("fade", 0.0), tail=d.get("tail", 0.0),
                    rung=d.get("rung", "unchanged"), moved=d.get("moved", 0.0),
                    brief_len=d.get("brief_len"), need=d.get("need", 0.0),
                    cause=d.get("cause", ""))
+        if fit.rung != "unchanged" and "fade" not in d:
+            # Checked AFTER construction, so a bad rung or a missing reel_dur keeps its
+            # own message. A fitted rung's fade is what mix closes the music on (retro
+            # 2026-10-16 S18), so it cannot be defaulted to 0.0 the way an "unchanged"
+            # record's fields can: that would silently cut the music dead.
+            raise ValueError(
+                f"OutroFit.from_dict: a {fit.rung!r} fit must record its 'fade' — the "
+                f"music closes on it, starting on the bar line. Re-run edit_plan build "
+                f"--pacing --music to regenerate EDL.outro")
+        return fit
 
 
 def bar_seconds(tempo: float) -> float:
