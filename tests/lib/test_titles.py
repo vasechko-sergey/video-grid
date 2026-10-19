@@ -118,23 +118,26 @@ def _spec(**kw):
     return Spec(**base)
 
 
-def test_build_titles_hook_opens():
-    ts = build_titles(_spec(), total_s=30.0)
-    assert len(ts.items) == 1              # hook only — _spec() has no text/ending
-    assert ts.items[0].text == "Watch this"
-    assert ts.items[0].start == 0.0 and ts.items[0].pos == "top"
-    assert ts.items[0].font == "system"
+def test_build_titles_drafts_only_the_briefs_on_screen_text():
+    """The second real run (retro 2026-10-16 S2): the draft copied SPEC.hook and
+    SPEC.ending onto the screen — but those name the opening and closing SHOTS, and the
+    brief had written them as notes for the editor, source file names and window
+    numbers included. Only SPEC.text is the words the reel shows."""
+    spec = _spec(hook="silhouette walks the board (DJI_0196_D.MP4, windows #26-29)",
+                 ending="the other silhouette, a rhyme with the hook",
+                 text="Sri Lanka\n3 April 2026")
+    ts = build_titles(spec, total_s=30.0)
+    assert [t.text for t in ts.items] == ["Sri Lanka\n3 April 2026"]
+    t = ts.items[0]
+    assert (t.start, t.dur, t.pos, t.font) == (0.0, 3.0, "top", "system")
 
 
-def test_build_titles_ending_closes_in_last_3s():
-    ts = build_titles(_spec(ending="Follow"), total_s=30.0)
-    end = ts.items[-1]
-    assert end.text == "Follow" and end.start == 27.0 and end.pos == "center"
+def test_build_titles_drafts_nothing_when_the_brief_shows_no_text():
+    assert build_titles(_spec(ending="Follow"), total_s=30.0).items == ()
 
 
-def test_build_titles_text_becomes_mid_caption():
-    ts = build_titles(_spec(text="mid line"), total_s=30.0)
-    assert any(t.text == "mid line" for t in ts.items)
+def test_build_titles_fits_a_reel_shorter_than_its_window():
+    assert [t.dur for t in build_titles(_spec(text="hi"), total_s=2.5).items] == [2.5]
 
 
 def test_build_titles_rejects_bad_total():
@@ -149,8 +152,8 @@ def test_build_titles_rejects_nonfinite_total():
 
 
 def test_write_titles_emits_pair(tmp_path):
-    res = write_titles(build_titles(_spec(ending="Follow"), 30.0), str(tmp_path))
-    assert res["status"] == "written" and res["count"] == 2
+    res = write_titles(build_titles(_spec(text="Follow"), 30.0), str(tmp_path))
+    assert res["status"] == "written" and res["count"] == 1
     assert (tmp_path / "TITLES.json").exists() and (tmp_path / "TITLES.md").exists()
     assert Titles.from_json(tmp_path / "TITLES.json").items[-1].text == "Follow"
 

@@ -7,6 +7,13 @@ the explicit-`fontfile=` landmine).
 **Related:** §5.13 `reel-final-check` safe-zones (built 2026-07-16 — titles now
 resolve their margins from the same `SafeZone` table via `safezones.default_zone()`).
 
+> **Amended 2026-10-19 (retro 2026-10-16 S2).** §1's premise is wrong for two of its
+> three fields: `hook` and `ending` name the opening and closing **shots** — notes for
+> the editor — and the second real run's brief carried source file names and window
+> numbers in them, which the §4 draft then put on screen. `build_titles` now drafts
+> only `Spec.text`, the literal words, as one title opening the reel at the top for
+> its first 3 s, and nothing when `text` is empty. The text below is history.
+
 ## §1 · Intent
 
 `Spec` already captures the words that belong on screen — `hook` (gate), `text`,

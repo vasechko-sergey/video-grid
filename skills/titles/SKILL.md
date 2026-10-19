@@ -1,11 +1,11 @@
 ---
 name: titles
-description: "Conveyor stage — the reel's on-screen text: turn hook, text and ending into a timed, positioned titles track (TITLES.json/.md) that deliver burns into its one encode. Optional — the autonomous path skips it. Conveyor position: after assemble-draft, before episodes. Tool index: references/tools.md."
+description: "Conveyor stage — the reel's on-screen text: turn the brief's on-screen text into a timed, positioned titles track (TITLES.json/.md) that deliver burns into its one encode. Optional — the autonomous path skips it. Conveyor position: after assemble-draft, before episodes. Tool index: references/tools.md."
 ---
 
 # titles (stage 5.16)
 
-Turn `SPEC`'s `hook`/`text`/`ending` into a timed, positioned **titles track** —
+Turn `SPEC`'s on-screen `text` into a timed, positioned **titles track** —
 `TITLES.json`, the on-screen text `deliver` burns into the reel. This is the
 **captioning of reels**: the words are already locked upstream, so this stage is a
 mechanical starting draft plus room for your judgment — no ffmpeg here. The render
@@ -14,16 +14,18 @@ itself happens downstream, inside `deliver`'s one encode (5.14).
 **Placement is your judgment.** `SPEC` already locked the words (reel-brief, 5.3);
 your job is editorial — *when* each line appears, *where* (`top`/`center`/
 `bottom`), in *what* `style`, in *what* `font`. The `titles` CLI turns those words
-into a sensible starting draft; you never retype the hook/ending text by hand —
+into a sensible starting draft; you never retype the brief's words by hand —
 refining the draft's timing/position/style/font beyond that starting point is a
 direct edit to the small `TITLES.json` it writes (no flag covers this — Procedure
 step 3).
 
 ## Inputs
 
-- **`SPEC.json`** (required, from reel-brief) — `hook` (gate, always set), `text`
-  (optional mid-caption), `ending` (optional closing line). No `SPEC.json`, no
-  titles: run reel-brief first, or skip this stage.
+- **`SPEC.json`** (required, from reel-brief) — `text`, the literal words the reel
+  shows. Empty `text` means no titles. `hook` and `ending` name the opening and
+  closing **shots** — notes for the editor, never copy: the second real run's brief
+  carried source file names in them, and an older draft put those on screen. No
+  `SPEC.json`, no titles: run reel-brief first, or skip this stage.
 - **the reel length, in seconds** — sum `EDL.json`'s episode durations (its own
   `EDL.md` header already prints the total), or probe an existing master/draft
   (`draft.mp4`, a prior `<run>/reels/<reel>/deliveries/REEL_v*.*`) with ffprobe. Whichever is at hand; never
@@ -48,9 +50,10 @@ guessing a path.
 
 Announce on entry: **"Using titles to author the reel's on-screen text."**
 
-1. **Recon.** Read `SPEC.json` — `hook`, `text`, `ending` are the words that
-   belong on screen (they're locked already; you don't invent new copy here,
-   that's reel-brief's call). Work out the reel length in seconds (Inputs,
+1. **Recon.** Read `SPEC.json` — `text` is the words that belong on screen
+   (locked already; you don't invent new copy here, that's reel-brief's call). If
+   it reads as a description of text rather than the text itself, ask the user for
+   the exact words before drafting. Work out the reel length in seconds (Inputs,
    above) — the number `--total` needs below.
 2. **Propose the titles.** For each line: its window (`start`/`dur`, seconds),
    `pos` (`top`/`center`/`bottom`), `style` (`bold-box`/`outline`/`outline-bold`/
@@ -68,11 +71,10 @@ Announce on entry: **"Using titles to author the reel's on-screen text."**
        "$VG" scripts.titles build --spec <run>/reels/<reel>/SPEC.json \
          --total <reel-length-seconds> --out-dir <run>/reels/<reel>
 
-   `--spec`/`--total`/`--out-dir` are its only flags: it projects `hook`/`text`/
-   `ending` straight into a **sensible starting draft** — hook opens top for its
-   first ~2s, `text` (if set) becomes a bottom mid-caption around the midpoint,
-   `ending` (if set) closes center over the last ~3s, all `font="system"`/
-   `style="bold-box"` — and writes `TITLES.json` + `TITLES.md`. If that already
+   `--spec`/`--total`/`--out-dir` are its only flags: it projects `text` straight
+   into a **sensible starting draft** — one title opening the reel at the top for
+   its first 3s, `font="system"`/`style="bold-box"`, nothing at all when `text` is
+   empty — and writes `TITLES.json` + `TITLES.md`. If that already
    matches your proposal, you're done. Otherwise — a different font, style, or a
    retimed window — there's no flag for it: tune `start`/`dur`/`pos`/`style`/`font`
    directly in the written `TITLES.json`, and leave `text` as the SPEC-sourced
@@ -137,7 +139,7 @@ by editing `TITLES.json` directly (Procedure step 3).
   lines, a number in `[0.5, 3]` (default `1.15`). Tighten it for a script
   face, whose own letterforms already read tall.
 
-A faded, word-revealed hook — copy this `Title` into `TITLES.json`'s
+A faded, word-revealed opening title — copy this `Title` into `TITLES.json`'s
 `items` list and adjust `text`/timing to fit your reel:
 
     {
@@ -160,7 +162,7 @@ Check the math before saving it: 5 words means 4 gaps between entrances —
 ## Gate
 
 `TITLES.json` + `TITLES.md` written, every item's words sourced from `SPEC`'s
-real `hook`/`text`/`ending` — never invented copy. `Title`/`Titles` validate on
+real `text` — never invented copy, never the hook or ending notes. `Title`/`Titles` validate on
 every write and read: empty text, a negative/non-finite `start`, a `dur <= 0`, or
 a `pos`/`style` outside the fixed enums all raise loud, naming the field and the
 allowed set. A **font name** validates structurally the same way (non-empty

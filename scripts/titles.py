@@ -1,6 +1,6 @@
 """Titles writer (design docs/specs/2026-07-13-titles-design.md, §5.16). The thin
-mechanical half: from a Spec + the reel length, draft a Titles (hook opens, ending
-closes, text as a mid caption) and write TITLES.json + TITLES.md. Judgment — the
+mechanical half: from a Spec + the reel length, draft a Titles (the brief's on-screen
+text, opening the reel) and write TITLES.json + TITLES.md. Judgment — the
 actual words / timing / style — is the titles SKILL's; this is the starting
 projection. Mirror of reel_brief.py: contract in lib, driver here."""
 import argparse
@@ -14,22 +14,22 @@ from scripts.lib.titles import Title, Titles, refuse_zone_overflow
 
 
 def build_titles(spec: Spec, total_s: float) -> Titles:
-    """A sensible starting Titles from a Spec: the hook opens [0, 2], spec.text (when
-    set) a mid caption, spec.ending (when set) a closing title in the last 3s. All
-    font='system' so the draft renders on any box, curated set or not. total_s (reel length) is
-    the caller's — EDL sum or a probed master — build_titles never guesses it."""
+    """A starting Titles from a Spec: the brief's on-screen text, opening the reel at the
+    top for its first 3s (or the whole reel, if shorter), in font='system' so the draft
+    renders on any box. No text in the brief, no titles.
+
+    ONLY spec.text. hook and ending name the opening and closing SHOTS — notes for the
+    editor, not copy: the second real run's brief carried source file names and window
+    numbers in them, and the old draft put those on screen (retro 2026-10-16 S2).
+    total_s (reel length) is the caller's — EDL sum or a probed master — build_titles
+    never guesses it."""
     if (isinstance(total_s, bool) or not isinstance(total_s, (int, float))
             or not math.isfinite(total_s) or total_s <= 0):
         raise ValueError(
             f"build_titles total_s must be a positive finite number (seconds), got {total_s!r}")
-    items: list[Title] = [Title(text=spec.hook, start=0.0, dur=min(2.0, total_s), pos="top")]
-    if spec.text.strip():
-        mid = max(0.0, total_s / 2 - 1.0)
-        items.append(Title(text=spec.text, start=mid, dur=min(2.0, total_s - mid), pos="bottom"))
-    if spec.ending.strip():
-        start = max(0.0, total_s - 3.0)
-        items.append(Title(text=spec.ending, start=start, dur=total_s - start, pos="center"))
-    return Titles(items=tuple(items))
+    if not spec.text.strip():
+        return Titles(items=())
+    return Titles(items=(Title(text=spec.text, start=0.0, dur=min(3.0, total_s), pos="top"),))
 
 
 def check_titles(titles: Titles, platform: str = "") -> dict:
@@ -61,10 +61,10 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="write TITLES.json + TITLES.md — the reel titles (§5.16)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build", help="draft TITLES from SPEC + reel length",
-                       description="draft TITLES.json + TITLES.md from SPEC and the reel's "
-                                   "length — hook, mid text and ending, positioned inside "
-                                   "the platform's safe zone.")
-    b.add_argument("--spec", required=True, help="SPEC.json (from reel-brief) — hook/text/ending source")
+                       description="draft TITLES.json + TITLES.md from SPEC's on-screen "
+                                   "text and the reel's length — the words open the reel at "
+                                   "the top; hook and ending are shots, never copy.")
+    b.add_argument("--spec", required=True, help="SPEC.json (from reel-brief) — its on-screen text")
     b.add_argument("--total", type=float, required=True, help="reel length, seconds (EDL sum / probed master)")
     b.add_argument("--out-dir", required=True, help="dir for TITLES.json + TITLES.md")
     c = sub.add_parser("check", help="refuse a TITLES.json whose text leaves the safe zone",
