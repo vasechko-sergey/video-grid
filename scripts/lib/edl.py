@@ -519,7 +519,9 @@ class EDL:
                 # what the gap rung actually asked (design 2026-08-18 §1.6).
                 why = (f"no {o.grid} line in range left {o.need:.2f}s of "
                        f"vocal-free space, so the reel ends on the nearest line at "
-                       f"{o.line:.2f}s under a longer fade{beat_note}")
+                       f"{o.line:.2f}s under "
+                       f"{'a longer fade' if o.grid == 'bar' else 'the same 1.5s fade'}"
+                       f"{beat_note}")
             else:
                 # One wording table, shared with check_reel's outro reason. This used to
                 # be a disjunction — "none that the closing shot has room for, or no bar

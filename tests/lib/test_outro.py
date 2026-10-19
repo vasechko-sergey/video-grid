@@ -405,3 +405,10 @@ def test_the_grid_rides_the_record_only_when_it_is_the_beat():
     with pytest.raises(ValueError, match="grid"):
         OutroFit(reel_dur=6.0, line=4.5, fade=1.5, tail=1.0, rung="gap", moved=0.3,
                  grid="phrase")
+
+
+
+def test_a_falsy_grid_is_refused_not_read_as_bar():
+    with pytest.raises(ValueError, match="grid"):
+        OutroFit.from_dict({"reel_dur": 6.0, "line": 4.5, "fade": 1.5, "rung": "gap",
+                            "grid": ""})

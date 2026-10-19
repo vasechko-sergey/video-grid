@@ -6,6 +6,13 @@ music-spine §9 each pushed forward in turn: librosa **section detection**.
 
 ---
 
+
+> **Amended 2026-10-19 (retro 2026-10-16 S7).** A window with no bar grid no longer
+> leaves the fit `unchanged`: `_apply_outro` passes its BEATS and `fit_outro(grid="beat")`
+> runs the same gap/no-gap ladder under `NO_GAP_FADE` on both rungs, since a beat is
+> not a phrase end. `OutroFit.grid` records which grid was used. The `no-bars` cause
+> survives only on older artifacts — `MusicSpec` refuses an empty beat list.
+
 ## §0 Why
 
 The 2026-08-03 run's music stops mid-word. Not a bug in any one stage — a hole in

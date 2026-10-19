@@ -174,7 +174,7 @@ class OutroFit:
                    fade=d.get("fade", 0.0), tail=d.get("tail", 0.0),
                    rung=d.get("rung", "unchanged"), moved=d.get("moved", 0.0),
                    brief_len=d.get("brief_len"), need=d.get("need", 0.0),
-                   cause=d.get("cause", ""), grid=d.get("grid") or "bar")
+                   cause=d.get("cause", ""), grid=d.get("grid", "bar"))
         if fit.rung != "unchanged" and "fade" not in d:
             # Checked AFTER construction, so a bad rung or a missing reel_dur keeps its
             # own message. A fitted rung's fade is what mix closes the music on (retro

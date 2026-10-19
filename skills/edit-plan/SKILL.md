@@ -176,10 +176,10 @@ guessing a path.
    (`OutroFit.grid == "beat"`, named in the report), so the music still starts to fall
    on a line of its own grid. Read `EDL.md`'s **Music outro** section (or the `outro:`
    log line) for which of three rungs won:
-   - **`gap`** — a bar line has enough vocal-free space after it for the reel's own
+   - **`gap`** — a line (bar, or beat) has enough vocal-free space after it for the
      fade; the ending is clean. Nothing to do.
-   - **`no-gap`** — no line had room at the normal fade, so the fit fell back to the
-     nearest line with a longer fade (masking the cut instead of landing in
+   - **`no-gap`** — no line had room at that fade, so the fit fell back to the
+     nearest line with the longer fade (a beat fit already uses it on both rungs) (masking the cut instead of landing in
      silence) and says so in the report. A known-imperfect ending, not a failure —
      weigh whether a different closing shot (more `room_after`) or a different music
      window would do better before accepting it.

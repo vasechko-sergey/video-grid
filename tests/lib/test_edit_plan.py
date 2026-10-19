@@ -1338,7 +1338,7 @@ def test_an_unchanged_outro_fit_does_not_unclamp_an_unrelated_pacing_overflow():
     never opens."""
     music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
                       beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
-                      bars=(), vocal_spans=())                 # no bar grid at all
+                      bars=(), vocal_spans=())                 # no bar grid; beats out of reach
     edl = edit_plan.build_edl(_footage(), _sel3(), pacing=_spine2(), music=music)
     assert edl.outro.rung == "unchanged"
     assert edl.outro.reel_dur == pytest.approx(7.65)           # unbound tail included, UNCLAMPED
@@ -1464,7 +1464,7 @@ def test_an_unfittable_reel_still_carries_the_briefs_length(capsys):
     eps = [_edl_ep(source="a.mp4", start=0.0, dur=10.0)]
     music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
                       beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
-                      bars=(), vocal_spans=())                     # no bar grid at all
+                      bars=(), vocal_spans=())                     # no bar grid; beats out of reach
     _out, fit = edit_plan._apply_outro(eps, footage, music, fade=0.5, brief_len=12.0)
     assert fit.rung == "unchanged" and fit.brief_len == 12.0
 
@@ -1518,7 +1518,7 @@ def _outro_music(**kw):
     return MusicSpec(**d)
 
 
-def test_apply_outro_falls_back_to_the_beats_when_the_music_has_no_bar_grid():
+def test_apply_outro_runs_on_the_beats_when_the_music_has_no_bar_grid():
     """All four MUSIC*.json of the first real run carried `bars: []` and the fit
     reported "n/a" (retro R7.1); the second run's track had none either (retro
     2026-10-16 S7). A bar-less window is no longer an absence: the fit runs on its

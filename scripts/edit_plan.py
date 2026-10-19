@@ -869,7 +869,8 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--spec", help="SPEC.json — its mood picks the shot-mix preset "
                                   "(optional; without it the 'balanced' preset applies)")
     b.add_argument("--music", help="MUSIC.json — fit the reel's end to a bar line "
-                                   "with a vocal-free tail (optional, §5.5/backlog #2)")
+                                   "(or a beat, when the window has no bar grid) with a "
+                                   "vocal-free tail (optional, §5.5/backlog #2)")
     return ap
 
 
