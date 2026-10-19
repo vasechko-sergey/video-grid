@@ -1219,3 +1219,33 @@ def test_intake_builds_footage_with_the_scoring_report_through_validation():
     f = footage.Footage(clips=clips, band=(1.2, 4.0), scoring=scoring)
     assert f.scoring["windows"] == 2
     assert set(f.scoring["separated"]) == set(footage.SCORE_TERMS)
+
+
+# --- retro 2026-10-16 S12: one question per person who can be recognised -------------
+# The second run surfaced 15 candidates for 2 people; 10 were background figures of
+# 43-88 px, asked about one by one, and the candidate sheet was "too small to tell".
+
+def test_a_candidate_is_nameable_only_when_its_crop_can_be_recognised(tmp_path):
+    from scripts.lib.intake_cache import CastEntry
+    hero = np.full((103, 57, 3), 200, "uint8")       # the run's smallest real hero, 57x103
+    speck = np.full((58, 88, 3), 90, "uint8")        # its largest background figure
+    entries = [CastEntry("a.mp4", 1, 0.9, _desc(1.0), presence=9.0, crop_rgb=hero),
+               CastEntry("b.mp4", 1, 0.8, _desc(0.0, 1.0), presence=1.0, crop_rgb=speck)]
+    by_source = {m["source"]: m for m in intake.save_cast_candidates(entries, str(tmp_path))}
+    assert by_source["a.mp4"]["nameable"] is True
+    assert by_source["b.mp4"]["nameable"] is False
+    assert intake.MIN_NAMEABLE_PX == 96
+
+
+def test_every_candidate_gets_a_card_enlarged_by_whole_pixels(tmp_path):
+    from scripts.lib.intake_cache import CastEntry
+    small = np.full((100, 50, 3), 120, "uint8")
+    big = np.full((600, 300, 3), 60, "uint8")
+    entries = [CastEntry("a.mp4", 1, 0.9, _desc(1.0), presence=9.0, crop_rgb=small),
+               CastEntry("b.mp4", 1, 0.8, _desc(0.0, 1.0), presence=1.0, crop_rgb=big)]
+    by_source = {m["source"]: m for m in intake.save_cast_candidates(entries, str(tmp_path))}
+    s, b = _Img.open(by_source["a.mp4"]["card"]), _Img.open(by_source["b.mp4"]["card"])
+    assert s.width >= 50 * 5                          # x5: 100 px tall -> 500, past 480
+    assert b.width == 300                             # a large crop is never enlarged
+    assert by_source["a.mp4"]["card"].endswith("card_0.jpg") or \
+        by_source["a.mp4"]["card"].endswith("card_1.jpg")

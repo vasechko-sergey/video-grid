@@ -6,7 +6,7 @@ sub-scene carve + score + phash cull. The interactive hero-naming lives in the
 footage-intake SKILL — Python cannot ask a human — this module only surfaces
 crops and embeds them (512-d OSNet via lib/reid, design 2026-08-04).
 """
-import argparse, json, statistics, tempfile
+import argparse, json, math, statistics, tempfile
 import shutil
 import sys
 from collections import Counter
@@ -16,7 +16,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import imagehash
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from scripts import check_reel                    # reuse _hamming for cull dedup
 from scripts.lib import assembly, carve, footage, intake_cache, reid, runlayout, vidstab
@@ -48,6 +48,13 @@ SHAKY_CLIP = 0.02                                 # shake (fraction of frame wid
 CLUSTER_COS = 0.30       # cosine cut for "same identity" in surfacing (design §5). A FIRST CUT
                          # calibratable on the real cache — no footage exists to tune it.
 MAX_CAST = 15            # adaptive cap on surfaced identities; excess is dropped WITH a log (no silent cap)
+MIN_NAMEABLE_PX = 96     # a candidate whose crop's long side is under this is shown, but not
+                         # asked about one by one: nobody recognises a person that small. A
+                         # CONVENTION placed on the second real run's own data (its smallest
+                         # real hero 57x103, its largest background figure 88x58; 15
+                         # candidates for 2 people, 10 asked about singly — retro 2026-10-16 S12)
+CARD_LONG_SIDE = 480     # a review card enlarges its crop by WHOLE pixels until its long side
+                         # reaches this, so a small crop is legible and nothing is invented
 _VIDEO_EXTS = runlayout.VIDEO_EXTS          # one list: intake scans it, project_init refuses on it
 DEFAULT_JOBS = 2          # 3 parallel full-clip passes pin every P-core (3x libx264 proxy
                           # alone is ~400s of CPU) and thermally throttle a laptop; 2 is the
@@ -391,12 +398,34 @@ def save_cast_candidates(entries: list[CastEntry], out_dir: str, max_cast: int =
         # was only ever 13px tall, the largest member is still 13px.
         with Image.open(dest) as im:
             crop_w, crop_h = im.size
+            card = _review_card(im, Path(out_dir) / "cast_review" / f"card_{i}.jpg",
+                                f"#{i} · {Path(e.source).name} · {e.presence:.0f}s on screen "
+                                f"· {crop_w}x{crop_h}px")
         manifest.append({"id": i, "source": e.source, "conf": round(float(e.conf), 3),
                          "presence": round(float(e.presence), 2),
                          "crop": dest, "crop_px": [crop_w, crop_h],
-                         "descriptor": e.descriptor})
+                         "nameable": max(crop_w, crop_h) >= MIN_NAMEABLE_PX,
+                         "card": card, "descriptor": e.descriptor})
     (Path(out_dir) / "cast_candidates.json").write_text(json.dumps(manifest, indent=2))
     return manifest
+
+
+def _review_card(crop: Image.Image, dest: Path, label: str) -> str:
+    """The crop enlarged by a WHOLE-pixel factor until its long side reaches
+    CARD_LONG_SIDE (never shrunk, never smoothed — nearest-neighbour shows the pixels
+    there are), under a one-line caption. The second real run's candidate sheet tiled 15
+    raw crops and the operator could not tell who was who ("the pictures are tiny";
+    retro 2026-10-16 S12); the agent drew its own cards to ask one at a time."""
+    long_side = max(crop.size)
+    k = max(1, math.ceil(CARD_LONG_SIDE / long_side)) if long_side < CARD_LONG_SIDE else 1
+    big = crop.convert("RGB").resize((crop.width * k, crop.height * k), Image.NEAREST)
+    bar = 28
+    card = Image.new("RGB", (big.width, big.height + bar), (24, 24, 24))
+    card.paste(big, (0, bar))
+    ImageDraw.Draw(card).text((6, 7), label, fill=(240, 220, 120))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    card.save(dest, quality=90)
+    return str(dest)
 
 
 def write_cast(named: list[tuple[str, str, list[float], list[str]]], out_dir: str) -> footage.Cast:
