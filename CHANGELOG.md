@@ -10,6 +10,18 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.21.2 — 2026-10-19
+
+- **A platform can be named the way the app names it.** "Instagram Reels",
+  "YouTube Shorts" and "Tik Tok" resolve to their safe zones; the brief stores the
+  zone's own name and refuses a label no zone answers to, instead of quietly
+  checking the reel against the generic zone.
+- **`crop_aspect` takes `"1:1"`**, the way `--canvas` is written, beside `[1, 1]`.
+- **match-grade says when it lifts the shadows.** An episode whose tone pair raises
+  p5 by more than 15 luma beyond the mood's own displacement is named in `MATCH.md`,
+  the log and the status JSON, with the way to keep a dark shot dark (an identity pair
+  in `selection.json`).
+
 ## 0.21.1 — 2026-10-19
 
 - **The named title fonts resolve again.** Montserrat, Inter and Oswald pointed at

@@ -1363,3 +1363,27 @@ def test_edl_md_says_a_beat_no_gap_fit_kept_the_same_fade():
     md = EDL(episodes=(_ep(),), outro=fit).to_markdown()
     assert "no beat line in range" in md and "under the same 1.5s fade" in md
     assert "no bar grid" in md
+
+
+# --- second real run S16: crop_aspect written the way --canvas is written ---
+
+@pytest.mark.parametrize("text, pair", [("1:1", (1, 1)), ("4:5", (4, 5)), (" 9 : 16 ", (9, 16))])
+def test_crop_aspect_accepts_w_colon_h(text, pair):
+    """Retro 2026-10-16 S16: `crop_aspect "1:1"` was refused, only `[1, 1]` was legal —
+    while `project_init --canvas` takes exactly "W:H"."""
+    e = _ep(crop_aspect=text)
+    assert e.crop_aspect == pair
+    assert e.to_dict()["crop_aspect"] == list(pair)
+    assert to_manifest_dict(e, "s.mp4", "o.mp4")["crop_aspect"] == list(pair)
+
+
+@pytest.mark.parametrize("word", ["canvas", "source"])
+def test_crop_aspect_keeps_its_two_words(word):
+    assert _ep(crop_aspect=word).crop_aspect == word
+
+
+@pytest.mark.parametrize("text", ["0:1", "1:0", "1.5:1", "1:", "a:b", "1:1:1"])
+def test_crop_aspect_refuses_a_malformed_ratio(text):
+    with pytest.raises(ValueError, match="crop_aspect") as e:
+        _ep(crop_aspect=text)
+    assert repr(text) in str(e.value) and "W:H" in str(e.value)

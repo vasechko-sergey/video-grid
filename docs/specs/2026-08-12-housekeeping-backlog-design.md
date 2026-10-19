@@ -248,7 +248,10 @@ re-reframe, the sharpness metric and layer 3 all get rows, not code.
   `edit_plan build` now says so on every run (`safezones.known` is the predicate),
   which makes it visible rather than impossible. A refusal would be the stronger
   answer and would break a hand-authored SP1 EDL that names a platform this table
-  has not learned yet.
+  has not learned yet. *(Amended 2026-10-19, 0.21.2: `reel_brief` now refuses an
+  unknown label and stores the zone a known one resolves to — the second real run
+  stored "Instagram Reels" — while `EDL.platform` and the SP1 front door still
+  accept any string and log it, for exactly the reason above.)*
 - **Fixing the platform pipe can change a verdict.** A reel whose brief names a
   platform will now be judged against that platform's safe zone instead of the
   generic one, and a bottom title moves accordingly. That is the point, and it is

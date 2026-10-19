@@ -8,6 +8,7 @@ import argparse
 import json
 from pathlib import Path
 
+from scripts.lib import safezones
 from scripts.lib.project import ProjectConfig
 from scripts.lib.spec import Spec
 
@@ -20,8 +21,22 @@ def build_spec(project_path: str, *, length_s: float, mood: str, hook: str,
                asl: tuple | None = None, music_known: bool = False) -> Spec:
     """Read canvas from project.json (fail-loud if absent — reel-brief FOLLOWS
     project-init), then construct+validate a Spec. The project is the single source
-    of aspect; build_spec never sources canvas itself."""
+    of aspect; build_spec never sources canvas itself.
+
+    A platform is stored as the safe zone it resolves to ("Instagram Reels" → `reels`),
+    and one no zone answers to is refused: downstream it would silently get the
+    generic zone while the EDL and the attestation recorded the label as authored —
+    which is what the second real run did (retro 2026-10-16 S15). Unset stays unset."""
     cfg = ProjectConfig.from_json(project_path)
+    if platform.strip():
+        if not safezones.known(platform):
+            raise ValueError(
+                f"--platform {platform!r} names no safe zone, so every check and title "
+                f"would quietly use the generic zone. Known: "
+                f"{', '.join(safezones.labels())} — or leave it unset for the generic zone")
+        platform = safezones.zone_name(platform)
+    else:
+        platform = ""
     return Spec(canvas=cfg.canvas, length_s=length_s, mood=mood, hook=hook,
                 reel_count=reel_count, music=music, music_mode=music_mode,
                 style_lean=style_lean, platform=platform, text=text,
@@ -83,7 +98,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="the brief wants a known track (a hit, a trend), not just one that "
                         "fits the mood — music_find then searches and sorts by popularity")
     b.add_argument("--style-lean", default="balanced", help="classic / balanced (default) / trend")
-    b.add_argument("--platform", default="", help="free label (reel/tiktok/youtube/…)")
+    b.add_argument("--platform", default="",
+                   help="the app: reels/tiktok/shorts, or its own name ('Instagram Reels', "
+                        "'YouTube Shorts'); stored as the safe zone it resolves to, refused "
+                        "when none does; unset = the generic zone")
     b.add_argument("--text", default="", help="the literal words the reel shows on screen (a real newline makes two lines); empty = no text. Never a description of them — titles draft exactly this")
     b.add_argument("--ending", default="", help="the closing shot — a note for the editor, never shown on screen")
     b.add_argument("--cast", action="append", default=None, help="a cast name (repeatable)")

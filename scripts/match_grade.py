@@ -12,6 +12,7 @@ matchgrade owns the decisions; this driver owns the ffmpeg measuring
 here."""
 import argparse
 import json
+import sys
 from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -163,7 +164,8 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
                decisions: list[matchgrade.ToneDecision], eps: float, *,
                bias: tuple[float, float, float] = (0.0, 0.0, 0.0),
                bias_source: str = "", mood: str | None = None, k: float = 1.0,
-               declared: Declared = _NO_DECLARATION) -> str:
+               declared: Declared = _NO_DECLARATION,
+               lifts: list[tuple[int, float, float]] = ()) -> str:
     """The human-readable half a reviewer reads at CP-time: the target, and one row per
     episode with its measured profile (carried on the decision — no second measure), its
     distance to the target, and what was decided.
@@ -191,7 +193,10 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
     second: "graded against the whole crop because you asked for nothing" and
     "graded against the whole crop because I could not look" are different claims
     about the same pixels. The state is a FIELD, never a prefix on the detail
-    string — see Declared."""
+    string — see Declared.
+
+    `lifts` is matchgrade.toe_lifts over the pairs the enriched EDL ships, computed by
+    the caller because only it holds that EDL (retro 2026-10-16 S17)."""
     def _triple(t):
         return "/".join(f"{v:.0f}" for v in t)
     n_auth = sum(1 for d in decisions if d.action == "author")
@@ -219,7 +224,10 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
     elif mood is not None:
         head += "\n\nNo mood matched the brief — the target is the plain median."
     lines = [head, "",
-             f"{n_auth}/{len(decisions)} episodes authored a tone pair.", "",
+             f"{n_auth}/{len(decisions)} episodes authored a tone pair.", ""]
+    for i, lo, hi in lifts:
+        lines += [_toe_lift_line(i, sources[i], lo, hi, bias[0] * k), ""]
+    lines += [
              "| # | source | measured (p5/p50/p95) | max Δ | action · reason |",
              "|---|--------|-----------------------|:-----:|-----------------|"]
     for src, d in zip(sources, decisions):
@@ -244,6 +252,26 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
             lines.append(f"| {d.index} | {r['anchor']} | {r['name']} | {r['of']} "
                          f"| {r['fraction'] * 100:.2f}% | {r['value']:.0f} | {fb} |")
     return "\n".join(lines) + "\n"
+
+
+def _toe_lift_line(index: int, source: str, lo: float, hi: float, offset: float) -> str:
+    """One warning per lifted toe — the same sentence in MATCH.md and the log, because
+    the log is what the agent reads in the moment and MATCH.md what a human reads at the
+    checkpoint (retro 2026-10-16 S17).
+
+    The pin goes through selection.json, never EDL.json: write_match re-stamps the EDL,
+    and EDL.from_json refuses a stamped file edited afterwards (review finding 1)."""
+    bar = matchgrade.TOE_LIFT_WARN
+    why = (f"{offset:+.0f} of it the mood's, the rest more than {bar:g} luma" if offset > 0
+           else f"more than {bar:g} luma")
+    return (f"> **toe-lift** — episode {index} ({source}): shadows lifted p5 {lo:.0f} → "
+            f"{hi:.0f}, {why}. If the dark is the point (a silhouette, a backlit hook), "
+            f"look at it with `probe grade`, then pin it: in selection.json give that "
+            f"episode tone_src and tone_dst both equal to its measured profile (its row "
+            f"in MATCH.md), re-run `edit_plan build` with the flags of the last build "
+            f"(the one that applied --pacing), then "
+            f"`match_grade build` again — it leaves a pinned episode alone as "
+            f"hand-authored.")
 
 
 def _find_regions(geo: ReelGeometry) -> Declared:
@@ -315,11 +343,17 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
     out = replace(out, tone_target=target)
     write_edl(out, geo.edl)       # re-stamp: match_grade is a legitimate tool, and its
                                   # output is the tool's output (design §4)
+    sources = [e.source for e in edl.episodes]
+    lifts = matchgrade.toe_lifts([(e.tone_src, e.tone_dst) for e in out.episodes],
+                                 offset=bias[0] * k)
+    for i, lo, hi in lifts:
+        print(_toe_lift_line(i, sources[i], lo, hi, bias[0] * k).removeprefix("> "),
+              file=sys.stderr)
     md_path = Path(geo.edl).parent / "MATCH.md"
-    md_path.write_text(_report_md([e.source for e in edl.episodes], target, decisions, eps,
+    md_path.write_text(_report_md(sources, target, decisions, eps,
                                   bias=bias, bias_source=bias_source,
                                   mood=preset.name if preset is not None else None, k=k,
-                                  declared=declared))
+                                  declared=declared, lifts=lifts))
     # The machine-readable twin (design 2026-09-09 §2). MATCH.md's claim — "8/8
     # episodes authored a tone pair" — was prose, and the EDL written an hour later
     # carried five with nothing able to notice. The decisions are what the report
@@ -345,7 +379,9 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
             "bias_source": bias_source, "bias_scale": k,
             "regions": declared.state, "regions_at": declared.detail,
             "authored": sum(1 for d in decisions if d.action == "author"),
-            "skipped": dict(skipped)}
+            "skipped": dict(skipped),
+            "toe_lifts": [{"index": i, "source": sources[i], "from": lo, "to": hi}
+                          for i, lo, hi in lifts]}
 
 
 def build_parser() -> argparse.ArgumentParser:

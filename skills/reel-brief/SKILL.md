@@ -57,6 +57,9 @@ Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
    hero, ask how screen time should split and record it with `--cast-share`
    (`equal`, or `NAME=WEIGHT` per hero) — not in `--notes`, which nothing reads:
    `edit_plan` reports the cut's screen time against it at CP2.
+   **Platform** is the app (`reels` / `tiktok` / `shorts`, or the app's own name —
+   "Instagram Reels" works); the brief stores the safe zone it resolves to and
+   refuses a label no zone answers to. Leave it unset only when there is no app.
    Ask separately whether the music should be a **known** track (a hit, a trend) or
    anything that fits the mood: `--music-known` — `--music-mode` is the licence lane
    only, and the second real run read "any" as rights and searched niche artists.

@@ -87,11 +87,10 @@ def test_known_accepts_every_label_safe_zone_for_resolves(label):
     # normalization (case, whitespace, aliases), or the log line would call a
     # perfectly good platform unknown.
     assert safezones.known(label) is True
-    assert safezones.safe_zone_for(label) == safezones.SAFE_ZONES[
-        safezones._ALIASES.get(label.strip().lower(), label.strip().lower())]
+    assert safezones.safe_zone_for(label) == safezones.SAFE_ZONES[safezones.zone_name(label)]
 
 
-@pytest.mark.parametrize("label", ["facebook", "vimeo", "", "   ", "tik tok"])
+@pytest.mark.parametrize("label", ["facebook", "vimeo", "", "   ", "instagram stories"])
 def test_known_rejects_a_label_that_silently_falls_back_to_generic(label):
     # These are exactly the cases worth a log line: safe_zone_for hands back the
     # generic zone and says nothing, so the reel is checked against a table the
@@ -109,3 +108,27 @@ def test_a_reels_top_title_clears_the_apps_header():
     zone = safezones.safe_zone_for("reels")
     assert zone.top == 0.14
     assert titles.y_exprs("reels")["top"] == "h*0.14"
+
+
+# --- second real run S15: the app's own name for the format resolves ---
+
+@pytest.mark.parametrize("label, zone", [
+    ("Instagram Reels", "reels"), ("IG Reels", "reels"), ("instagram-reels", "reels"),
+    ("  instagram   reels ", "reels"), ("Instagram Reel", "reels"),
+    ("YouTube Shorts", "shorts"), ("yt shorts", "shorts"), ("youtube_shorts", "shorts"),
+    ("Tik Tok", "tiktok"), ("tik-tok", "tiktok"),
+])
+def test_a_platform_named_the_way_people_say_it_resolves(label, zone):
+    """Retro 2026-10-16 S15: the brief stored "Instagram Reels", and edit_plan judged the
+    reel against the GENERIC zone until the agent re-ran the brief with `reels`. The
+    label a person types is the app's name for the format, so it must resolve."""
+    assert safezones.known(label) is True
+    assert safezones.zone_name(label) == zone
+    assert safezones.safe_zone_for(label) is SAFE_ZONES[zone]
+
+
+def test_labels_lists_every_zone_and_every_alias():
+    labels = safezones.labels()
+    assert set(SAFE_ZONES) <= set(labels)
+    assert {"instagram reels", "youtube shorts", "tik tok", "ig"} <= set(labels)
+    assert all(safezones.known(x) for x in labels)

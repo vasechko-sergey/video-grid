@@ -199,6 +199,36 @@ def plan(profiles: list[Profile], has_tone: list[bool], target: Profile,
     return out
 
 
+TOE_LIFT_WARN = 15.0   # luma units. A first cut, not a measurement: the one case on
+                       # record is the second real run's backlit hook, lifted p5 38 → 60
+                       # (+22) — a silhouette turned grey, caught only because the agent
+                       # ran `probe grade` (retro 2026-10-16 S17). Below the bar a lifted
+                       # toe is an ordinary exposure match.
+
+
+def toe_lifts(pairs: list[tuple[Profile | None, Profile | None]], *,
+              offset: float = 0.0) -> list[tuple[int, float, float]]:
+    """(index, p5 from, p5 to) for every episode whose tone pair raises the shadows by
+    more than TOE_LIFT_WARN beyond `offset`. The conductor cannot tell an underexposed
+    shot from one dark on purpose — both read as a low p5 — so it does not refuse; it
+    says so, and pinning the episode stays the author's call.
+
+    `pairs` is (tone_src, tone_dst) per episode, as the EDL will ship them — not the
+    decisions, so a re-run that leaves last run's pairs alone as hand-authored still
+    names them (review finding 3) — but `offset` is THIS run's, so a re-run with a
+    different brief judges last run's pairs against the wrong excuse.
+
+    `offset` is the mood's own displacement of the toe (bias p5 x scale): a brief that
+    asks for lifted blacks lifts every episode on purpose, and counting it would name
+    most of a `nostalgic` reel (review finding 2). Only a LIFT is excused: a mood that
+    deepens the blacks (`moody`, `epic`) leaves the bar where it is rather than lowering
+    it, or a shot it barely moved would read as lifted (re-review finding 1)."""
+    excuse = max(offset, 0.0)
+    return [(i, src[0], dst[0]) for i, (src, dst) in enumerate(pairs)
+            if src is not None and dst is not None
+            and dst[0] - excuse - src[0] > TOE_LIFT_WARN]
+
+
 def _triple(v, what: str) -> Profile:
     """A JSON list of three numbers back into a Profile, refusing anything else by name."""
     if not (isinstance(v, (list, tuple)) and len(v) == 3
