@@ -93,6 +93,7 @@ def _fake_fonts_draw_everything(monkeypatch, request):
     test asks for `real_glyph_cover` explicitly."""
     if "real_glyph_cover" not in request.fixturenames:
         monkeypatch.setattr(titles_mod, "cover_glyphs", lambda font, text, work: font)
+        monkeypatch.setattr(titles_mod, "static_instance", lambda font, work: font)
 
 
 def test_build_filterchain_empty_is_blank(tmp_path):
@@ -599,3 +600,15 @@ def test_glyph_titles_check_reports_icons_and_refuses_what_no_font_draws(tmp_pat
     assert ok["icons_from_icon_font"] == [chr(PIN)]
     with pytest.raises(ValueError, match=chr(CAL)):
         check_titles(Titles(items=(Title(f"A {chr(CAL)}", 0.0, 1.0, pos="top"),)), "reels")
+
+
+def test_glyph_a_variable_title_font_reaches_drawtext_pinned_at_regular(tmp_path, make_ttf,
+                                                                        real_glyph_cover):
+    """S19: drawtext alone renders a variable font's default instance (Thin for
+    Montserrat[wght]); the chain must point at the pinned copy."""
+    from fontTools.ttLib import TTFont
+    var = make_ttf(tmp_path / "var.ttf", [ord(c) for c in "Hi"], variable=True, default_wght=100)
+    vf = build_filterchain(Titles(items=(Title("Hi", 0.0, 2.0, pos="top"),)),
+                           str(tmp_path / "w"), resolve=lambda name: var)
+    used = vf.split("fontfile='", 1)[1].split("'", 1)[0]
+    assert used != var and "fvar" not in TTFont(used)

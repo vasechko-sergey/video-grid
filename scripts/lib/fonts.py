@@ -24,15 +24,22 @@ FONT_CANDIDATES: tuple[str, ...] = (
     "/usr/share/fonts/dejavu/DejaVuSans.ttf",           # Fedora/Arch
 )
 
-# friendly name -> the file `brew install --cask font-<x>` drops in ~/Library/Fonts
-FONT_NAMES: dict[str, str] = {
-    "Montserrat": "Montserrat-Regular.ttf",
-    "Inter": "Inter-Regular.ttf",
-    "Bebas Neue": "BebasNeue-Regular.ttf",
-    "BebasNeue": "BebasNeue-Regular.ttf",
-    "Oswald": "Oswald-Regular.ttf",
-    "Noto Emoji": "NotoEmoji[wght].ttf",       # monochrome icons for titles (cover_glyphs)
+# friendly name -> the files `brew install --cask font-<x>` may drop in ~/Library/Fonts,
+# first existing wins. The casks install VARIABLE fonts today (Montserrat[wght].ttf,
+# InterVariable.ttf, Oswald[wght].ttf); the *-Regular.ttf names are older static installs.
+# Listing only the old names made three of the four fail with "run bash setup.sh", which
+# could not fix it (S19, found reviewing retro 2026-10-16 S13). A variable font is drawn
+# at TITLE_WEIGHT — see static_instance.
+FONT_NAMES: dict[str, tuple[str, ...]] = {
+    "Montserrat": ("Montserrat[wght].ttf", "Montserrat-Regular.ttf"),
+    "Inter": ("InterVariable.ttf", "Inter-Regular.ttf"),
+    "Bebas Neue": ("BebasNeue-Regular.ttf",),
+    "BebasNeue": ("BebasNeue-Regular.ttf",),
+    "Oswald": ("Oswald[wght].ttf", "Oswald-Regular.ttf"),
+    "Noto Emoji": ("NotoEmoji[wght].ttf",),    # monochrome icons for titles (cover_glyphs)
 }
+TITLE_WEIGHT = 400     # the weight a variable title font is drawn at (Regular). drawtext
+                       # alone draws its DEFAULT instance — 100, Thin, for Montserrat[wght]
 
 # The font a title's icons (📍 🗓 …) are taken from when its own font lacks them. The
 # second real run's brief asked for a map pin and a calendar; no curated font draws them,
@@ -77,12 +84,14 @@ def resolve_font(font: str | None = None) -> str:
             return font
         raise ValueError(f"font path {font!r} does not exist — pass a real .ttf/.ttc/.otf")
     if font in FONT_NAMES:
-        p = Path.home() / "Library/Fonts" / FONT_NAMES[font]
-        if p.exists():
-            return str(p)
+        lib = Path.home() / "Library/Fonts"
+        for name in FONT_NAMES[font]:
+            if (lib / name).exists():
+                return str(lib / name)
         raise ValueError(
-            f"font {font!r} is not installed at {p} — run `bash setup.sh`, which installs "
-            "the curated set, or pass a .ttf/.ttc path")
+            f"font {font!r} is not installed in {lib} (looked for "
+            f"{', '.join(FONT_NAMES[font])}) — run `bash setup.sh`, which installs the "
+            "curated set, or pass a .ttf/.ttc path")
     raise ValueError(
         f"font {font!r} is neither an existing path nor a known name {tuple(FONT_NAMES)} "
         "— pass a .ttf/.ttc/.otf path, or install & name one via `bash setup.sh`")
@@ -94,11 +103,33 @@ def _open(font_path: str) -> TTFont:
 
 
 def _static(font: TTFont) -> TTFont:
-    """A variable font pinned at its own default instance (drawtext draws that one)."""
+    """A variable font pinned: wght at TITLE_WEIGHT (clamped to the axis), every other
+    axis at its default. A no-op on a static font."""
     if "fvar" not in font:
         return font
-    return instancer.instantiateVariableFont(
-        font, {a.axisTag: a.defaultValue for a in font["fvar"].axes})
+    loc = {a.axisTag: (min(max(TITLE_WEIGHT, a.minValue), a.maxValue) if a.axisTag == "wght"
+                       else a.defaultValue) for a in font["fvar"].axes}
+    return instancer.instantiateVariableFont(font, loc, updateFontNames=False)
+
+
+def static_instance(font_path: str, work_dir: str) -> str:
+    """A fontfile= drawtext draws as intended: the font itself when it is static, else a
+    cached copy pinned by _static. drawtext alone renders a variable font's DEFAULT
+    instance, which for Montserrat[wght] is Thin (S19)."""
+    font = _open(font_path)
+    if "fvar" not in font:
+        return font_path
+    st = os.stat(font_path)
+    key = hashlib.sha1(f"{TITLE_WEIGHT}|{font_path}|{st.st_size}|{st.st_mtime_ns}"
+                       .encode()).hexdigest()[:12]
+    out = Path(work_dir) / f"{Path(font_path).stem}-w{TITLE_WEIGHT}-{key}.ttf"
+    if out.exists():
+        return str(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    part = out.with_name(f".{out.name}.partial")
+    _static(font).save(str(part))
+    os.replace(part, out)
+    return str(out)
 
 
 def missing_glyphs(font_path: str, text: str) -> list[str]:

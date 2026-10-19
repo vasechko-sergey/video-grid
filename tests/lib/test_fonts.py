@@ -33,7 +33,7 @@ def test_known_name_maps_to_installed_cask_file(tmp_path, monkeypatch):
     monkeypatch.setattr(fonts.Path, "home", staticmethod(lambda: tmp_path))
     lib = tmp_path / "Library" / "Fonts"
     lib.mkdir(parents=True)
-    (lib / "Montserrat-Regular.ttf").write_text("x")
+    (lib / "Montserrat-Regular.ttf").write_text("x")       # the older static install
     assert fonts.resolve_font("Montserrat") == str(lib / "Montserrat-Regular.ttf")
 
 
@@ -111,7 +111,7 @@ def test_a_character_no_font_draws_is_refused_by_name(tmp_path, make_ttf):
 
 def test_the_icon_font_is_a_named_font_the_setup_installs():
     from scripts.lib import fonts
-    assert fonts.FONT_NAMES[fonts.ICON_FONT] == "NotoEmoji[wght].ttf"
+    assert fonts.FONT_NAMES[fonts.ICON_FONT] == ("NotoEmoji[wght].ttf",)
 
 
 def test_invisible_joiners_and_selectors_are_never_required(tmp_path, make_ttf):
@@ -172,3 +172,27 @@ def test_a_composite_icon_glyph_is_drawn_decomposed(tmp_path, make_ttf):
     merged = TTFont(fonts.cover_glyphs(base, chr(PIN), str(tmp_path / "w"), icon_font=icons))
     g = merged["glyf"][merged.getBestCmap()[PIN]]
     assert not g.isComposite() and g.numberOfContours > 0
+
+
+# --- S19 (found by the S13 review): the named fonts resolve to what the casks install --
+
+def test_a_name_resolves_to_the_variable_font_the_cask_installs(tmp_path, monkeypatch):
+    monkeypatch.setattr(fonts.Path, "home", staticmethod(lambda: tmp_path))
+    lib = tmp_path / "Library" / "Fonts"
+    lib.mkdir(parents=True)
+    (lib / "Montserrat[wght].ttf").write_text("x")
+    assert fonts.resolve_font("Montserrat") == str(lib / "Montserrat[wght].ttf")
+    (lib / "Oswald-Regular.ttf").write_text("x")                 # an older static install
+    assert fonts.resolve_font("Oswald") == str(lib / "Oswald-Regular.ttf")
+
+
+def test_a_variable_font_is_drawn_at_regular_weight_not_its_default(tmp_path, make_ttf):
+    """drawtext renders a variable font at its DEFAULT instance — weight 100 (Thin) for
+    Montserrat[wght]. A title is pinned at TITLE_WEIGHT instead."""
+    from fontTools.ttLib import TTFont
+    var = make_ttf(tmp_path / "var.ttf", [ord("A")], variable=True, default_wght=100)
+    pinned = fonts.static_instance(var, str(tmp_path / "w"))
+    f = TTFont(pinned)
+    assert "fvar" not in f and f["OS/2"].usWeightClass == fonts.TITLE_WEIGHT == 400
+    static = make_ttf(tmp_path / "s.ttf", [ord("A")])
+    assert fonts.static_instance(static, str(tmp_path / "w")) == static
