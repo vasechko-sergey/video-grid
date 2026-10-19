@@ -10,6 +10,14 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.20.2 — 2026-10-19
+
+- **Naming the cast asks about people, not specks.** Every cast candidate gets a review
+  card (`cast_review/card_{i}.jpg`, the crop enlarged by whole pixels) and a `nameable`
+  flag; the footage-intake skill asks one question per recognisable candidate and one
+  question for all the background figures under 96 px. The second real run asked 15
+  questions for 2 people, 10 of them about 43–88 px figures.
+
 ## 0.20.1 — 2026-10-19
 
 - `project_init` refuses a `--project-dir` that holds the video files themselves and

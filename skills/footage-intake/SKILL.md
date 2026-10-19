@@ -63,7 +63,8 @@ guessing a path.
    shot-type, people, motion, shake, score, and a `★` on the best moments), plus
    — from the same single YOLO-seg pass — candidate hero crops under
    `<out_dir>/cast_crops/candidate_*.png` and a `<out_dir>/cast_candidates.json`
-   manifest (`id, source, conf, presence, crop, descriptor`). `score` is a
+   manifest (`id, source, conf, presence, crop, crop_px, nameable, card,
+   descriptor`), with one review card per candidate under `<out_dir>/cast_review/`. `score` is a
    **percentile within this footage set** (design 2026-08-06-intake-motion-scoring
    §4.2), never an absolute quality bar and never comparable to another shoot's
    numbers; `motion` is the window's raw mean per-sample subject displacement as a
@@ -99,17 +100,27 @@ guessing a path.
    downstream that reads it instead of assuming the default.
 
 3. **Cast pass — only when people matter to the reel.** Read
-   `cast_candidates.json` and look at each `candidate_*.png`. Each entry
+   `cast_candidates.json` — each entry's `card` is what you show, `nameable` says
+   whether to ask about it alone. Each entry
    records `crop_px` — the crop's real pixel size. **Say it out loud when you
    show a small one**: on the 2026-06 run seven of fifteen candidates were
    under 5000 px total and three were about 13x13, and the operator was asked
    to name them anyway. A candidate too small to identify is a candidate to
-   skip, not to guess at; nothing upscales it, because an interpolated 13x12
-   crop looks like evidence and is not. Candidates are
-   **presence-ranked** — clustered into real identities (a person re-ID
-   embedding, not a colour/clothing feature) and sorted by on-screen seconds
-   across all clips, most-visible first — so each entry is one real person, not
-   one track, and entry 0 is normally the easiest to recognize. **Ask the human
+   skip, not to guess at; nothing interpolates it, because a smoothed 13x12
+   crop looks like evidence and is not. **Show each candidate's `card`**
+   (`cast_review/card_{i}.jpg`: the crop enlarged by whole pixels, captioned)
+   **one per question** for every entry with `nameable: true`, and ask about all
+   the `nameable: false` ones (long side under 96 px) in ONE question — "skip
+   these N background figures?" — never one by one: the second real run asked
+   ten such questions in a row. Show those cards together with that question and
+   let the human name any of them anyway ("all but #7"). Candidates are
+   **presence-ranked** — clustered by a person re-ID embedding and sorted by
+   on-screen seconds, most-visible first — but the clustering is not identity
+   you can rely on: on the second run (two people, a drone shoot) the descriptor
+   tracked viewpoint more than person — one person surfaced as two entries and
+   the other as three, and the closest man/woman pair sat at a cosine distance
+   of 0.13 while the man's own front and back sat at 0.25. Expect the same person
+   on several cards; the human's answer is the identity, not the cluster. **Ask the human
    who each hero is** — any domain (family, athletes, friends, a vlogger); name
    the people you recognize and skip the rest. If the reel is scenery or the
    footage has no people (empty manifest), skip this step cleanly. Never name a
