@@ -170,7 +170,9 @@ else
 # guard each cask on already-installed (like the DejaVu block guards on outcome) so a
 # rerun is a clean no-op — an unguarded `brew install --cask` on a present cask exits
 # non-zero and, under `set -e`, would abort the whole setup.
-for cask in font-montserrat font-inter font-bebas-neue font-oswald; do
+# font-noto-emoji: the monochrome icons a title's 📍/🗓 are drawn from when its own
+# font lacks them (scripts/lib/fonts.py ICON_FONT, retro 2026-10-16 S13).
+for cask in font-montserrat font-inter font-bebas-neue font-oswald font-noto-emoji; do
   brew list --cask "$cask" >/dev/null 2>&1 || {
     echo "installing $cask -> ~/Library/Fonts..."; brew install --cask "$cask"; }
 done

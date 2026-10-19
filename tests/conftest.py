@@ -387,3 +387,32 @@ def fake_render():
         monkeypatch.setattr(edl_to_reel.track, "ensure_model", lambda m: None)
         return FakeRender(tuple(src_dims), delivery, pan_aware)
     return _install
+
+
+@pytest.fixture
+def make_ttf():
+    """make_ttf(path, codepoints) -> path of a minimal TrueType font drawing a filled
+    square for every codepoint given. The glyph-cover tests (retro 2026-10-16 S13) need
+    a title font and an icon font they control, without depending on what is installed."""
+    from fontTools.fontBuilder import FontBuilder
+    from fontTools.pens.ttGlyphPen import TTGlyphPen
+
+    def build(path, cps):
+        cps = sorted(set(cps))                 # a repeated letter is one glyph
+        names = [".notdef"] + [f"g{cp:x}" for cp in cps]
+        fb = FontBuilder(1000, isTTF=True)
+        fb.setupGlyphOrder(names)
+        fb.setupCharacterMap({cp: f"g{cp:x}" for cp in cps})
+        pen = TTGlyphPen(None)
+        pen.moveTo((100, 0)); pen.lineTo((100, 700)); pen.lineTo((600, 700))
+        pen.lineTo((600, 0)); pen.closePath()
+        square, empty = pen.glyph(), TTGlyphPen(None).glyph()
+        fb.setupGlyf({n: (empty if n == ".notdef" else square) for n in names})
+        fb.setupHorizontalMetrics({n: (700, 100) for n in names})
+        fb.setupHorizontalHeader(ascent=800, descent=-200)
+        fb.setupNameTable({"familyName": "T", "styleName": "Regular"})
+        fb.setupOS2(sCapHeight=700)
+        fb.setupPost()
+        fb.save(str(path))
+        return str(path)
+    return build

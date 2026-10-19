@@ -28,7 +28,7 @@ from scripts.lib.models import MODELS
 # excluded, dev-only) + cv2 (a direct import of lib/flow.py; transitive via
 # ultralytics). Import NAMES, not pip names (Pillow→PIL, yt-dlp→yt_dlp).
 _DEPS = ("numpy", "scipy", "PIL", "cv2", "librosa", "ultralytics",
-         "scenedetect", "imagehash", "yt_dlp", "requests", "certifi")
+         "scenedetect", "imagehash", "yt_dlp", "requests", "certifi", "fontTools")
 
 _ROOT = Path(__file__).resolve().parent.parent   # repo root (bin/vg cd's here)
 

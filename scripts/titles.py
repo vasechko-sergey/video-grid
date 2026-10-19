@@ -6,10 +6,11 @@ projection. Mirror of reel_brief.py: contract in lib, driver here."""
 import argparse
 import json
 import math
+import tempfile
 from pathlib import Path
 
 from scripts.lib.spec import Spec
-from scripts.lib import safezones
+from scripts.lib import fonts, safezones
 from scripts.lib.titles import Title, Titles, refuse_zone_overflow
 
 
@@ -44,8 +45,18 @@ def check_titles(titles: Titles, platform: str = "") -> dict:
     drafts single-line titles, which cannot overflow. The overflow arrives when the
     author hand-edits the JSON afterwards, exactly as the titles SKILL tells them to."""
     refuse_zone_overflow(titles.items, platform)
+    # The glyph check too, here where the fix is a one-line edit: a character neither
+    # the title font nor the icon font draws is refused by name; one only the icon font
+    # draws is reported, since deliver will merge it in (retro 2026-10-16 S13).
+    icons = []
+    for t in titles.items:
+        miss = fonts.missing_glyphs(fonts.resolve_font(t.font), t.text)
+        if miss:
+            with tempfile.TemporaryDirectory() as d:
+                fonts.cover_glyphs(fonts.resolve_font(t.font), t.text, d)
+            icons += [c for c in miss if c not in icons]
     return {"status": "ok", "count": len(titles.items),
-            "platform": safezones.zone_name(platform)}
+            "platform": safezones.zone_name(platform), "icons_from_icon_font": icons}
 
 
 def write_titles(titles: Titles, out_dir: str) -> dict:

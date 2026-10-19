@@ -60,3 +60,55 @@ def test_unknown_name_fails_loud():
         fonts.resolve_font("Comic Papyrus")
     assert "known name" in str(e.value)
     assert "--with-fonts" not in str(e.value)
+
+
+# --- retro 2026-10-16 S13: a title's icons are drawn, never left as empty boxes -------
+
+PIN, CAL = 0x1F4CD, 0x1F5D3
+
+
+def test_missing_glyphs_names_what_the_font_cannot_draw(tmp_path, make_ttf):
+    from scripts.lib import fonts
+    _ttf = make_ttf
+    base = _ttf(tmp_path / "base.ttf", [ord("A"), ord("B")])
+    assert fonts.missing_glyphs(base, "AB A") == []                    # whitespace is free
+    assert fonts.missing_glyphs(base, f"{chr(PIN)} AB {chr(PIN)}") == [chr(PIN)]
+
+
+def test_an_icon_the_icon_font_has_is_merged_into_a_new_font(tmp_path, make_ttf):
+    from fontTools.ttLib import TTFont
+    from scripts.lib import fonts
+    _ttf = make_ttf
+    base = _ttf(tmp_path / "base.ttf", [ord("A")])
+    icons = _ttf(tmp_path / "icons.ttf", [PIN, CAL])
+    out = fonts.cover_glyphs(base, f"{chr(PIN)} A\n{chr(CAL)} A", str(tmp_path / "w"),
+                             icon_font=icons)
+    assert out != base
+    cmap = TTFont(out).getBestCmap()
+    assert {PIN, CAL, ord("A")} <= set(cmap)
+    assert fonts.missing_glyphs(out, f"{chr(PIN)} A") == []
+    # the same request reuses the same file
+    assert fonts.cover_glyphs(base, f"{chr(PIN)} A\n{chr(CAL)} A", str(tmp_path / "w"),
+                              icon_font=icons) == out
+
+
+def test_text_the_font_already_draws_keeps_its_font(tmp_path, make_ttf):
+    from scripts.lib import fonts
+    _ttf = make_ttf
+    base = _ttf(tmp_path / "base.ttf", [ord("A")])
+    assert fonts.cover_glyphs(base, "A A", str(tmp_path / "w"),
+                              icon_font=_ttf(tmp_path / "i.ttf", [PIN])) == base
+
+
+def test_a_character_no_font_draws_is_refused_by_name(tmp_path, make_ttf):
+    from scripts.lib import fonts
+    _ttf = make_ttf
+    base = _ttf(tmp_path / "base.ttf", [ord("A")])
+    icons = _ttf(tmp_path / "icons.ttf", [PIN])
+    with pytest.raises(ValueError, match=chr(CAL)):
+        fonts.cover_glyphs(base, f"A {chr(CAL)}", str(tmp_path / "w"), icon_font=icons)
+
+
+def test_the_icon_font_is_a_named_font_the_setup_installs():
+    from scripts.lib import fonts
+    assert fonts.FONT_NAMES[fonts.ICON_FONT] == "NotoEmoji[wght].ttf"
