@@ -10,6 +10,12 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.22.1 — 2026-10-19
+
+- **A README for the public repository**: what a run looks like stage by stage,
+  the requirements, the install, and the honest limits (two real shoots, macOS
+  only, music rights are yours).
+
 ## 0.22.0 — 2026-10-19
 
 - **The judge and reviewer prompts come filled.** `episode_qc pack` writes each
