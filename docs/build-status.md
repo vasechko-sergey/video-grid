@@ -4,7 +4,7 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — add/adjust the relevant bullet here in the same
 commit.
 
-_Last updated: 2026-10-13._
+_Last updated: 2026-10-19._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
@@ -12,6 +12,7 @@ _Last updated: 2026-10-13._
 
 ## Done
 
+- **Retro of the second real run (2026-10-19)** — branch `docs/retro-run-2`, docs only. [docs/retro/2026-10-16-second-real-run.md](retro/2026-10-16-second-real-run.md) reads the 2026-10-16 run (20 DJI clips, `REEL_v5` approved) against the backlog's two run-2 lists: five rows closed into the archive (two of them folded into the new S5), the other seven left open with the run's answer. 17 rows filed — 4 P0, 9 P1, 4 P2.
 - **Pre-run-2 triage (2026-10-13, 0.15.1)** — branch `chore/pre-run-2`, no design
   or plan (a small fix, per the new small-fix path in
   [development-workflow.md](development-workflow.md#execution-protocol)). The
@@ -7084,6 +7085,8 @@ _Last updated: 2026-10-13._
     see an argv reordering — landmine-lint design §5).
 
 ## Next action
+
+> **2026-10-19: the second real run is read; the next action is its P0 rows.** [backlog.md](backlog.md) holds S1–S4 at P0 — the 1080×1922 delivery, the title draft that puts the brief's prose on screen, music sourcing's TLS failure, the Reels top margin — each a small fix (test-first, one review, no design). Then P1: shot length (S5) — the operator's first complaint — the fade (S6, every review), hero balance (S9), the music ending and search (S7, S8). Every blockquote below this one is history.
 
 > **2026-10-13: the next action is the second real run, not a slice.** The user
 > updates the installed plugin (`claude plugin update video-grid@video-grid` and a

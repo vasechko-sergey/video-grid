@@ -16,6 +16,19 @@ is where its neighbours were.
 
 ---
 
+## Closed by the second real run (2026-10-16)
+
+Answered by [retro 2](retro/2026-10-16-second-real-run.md) §4 — the run-2 rows whose question the run answered.
+
+| | Item | Size | Source |
+|---|------|------|--------|
+| ✅ | **Explain the operator's "pull toward two seconds" against the run's own drafts.** mood-contract (0.8.0) ruled out both mechanisms the retro's R1.2 named, without explaining the impression itself: the delivered reel's median shot was 4.10s — *above* `nostalgic`'s own declared 2.0–4.0s `asl` ceiling — and the carve floor was already 1.2s before this slice touched anything, so neither the preset band nor `WIN_MAX` produced it. Whatever did is still unexplained. **Run 2 (2026-10-16):** **explained** — the pull lives in the FIRST plan, not the delivered reel mood-contract §0.4 measured after the operator had already lengthened it: run 2's first EDL sized 13 spans to `nostalgic`'s 2.0–4.0 s band (ASL 3.33 s) and the operator rejected it. Now row S5. | S | [mood-contract](specs/2026-09-03-mood-contract-design.md) §0.4/§8 |
+| ✅ | **Measure the length band against real footage and genre — R1.2's second half.** `carve.DEFAULT_BAND = (1.2, 4.0)` is the same first-cut pair the old `WIN_MIN`/`WIN_MAX` module constants held; mood-contract (0.8.0) made the band selectable and impossible to change silently, not *right* — no number in it was measured against taste. The right floor/ceiling are unknown and genre-dependent and must be measured, not typed. **Run 2 (2026-10-16):** answered by genre — longboard wants 6–10 s whole rides against a 1.2–4.0 s carve band. Folded into S5. | S | [mood-contract](specs/2026-09-03-mood-contract-design.md) §7, R1.2 |
+| ✅ | **R8.2 · The pool was never widened after day 1.** The delivered reel uses 8 windows out of 1508, and the required contact-sheet "look at the pixels" stage ran **once**, for 177 seconds, on day 1, and was never re-run against a revised cut. **Run 2 (2026-10-16):** the contact sheet ran once, but frame strips ran for the selection and again for every revision. | S | [retro](retro/2026-08-25-first-real-run.md) R8 |
+| ✅ | **R10.12 · Eight of 22 `AskUserQuestion` turns were the human arbitrating a per-episode sensor failure** — the clearest measure of where a person's attention was actually spent. **Run 2 (2026-10-16):** 0 of 36 questions arbitrated a sensor failure. | S | [retro](retro/2026-08-25-first-real-run.md) R10 |
+| ✅ | **R8.1 · The score bought no part of the delivered reel.** Of 1508 windows the selection reaches rank **1338**; **zero** of the top-8 are used; 8 of 30 chosen windows are `best=False`. `cull` only marks `best`, so nothing was unreachable — but the CV time spent ranking contributed nothing. Either it earns its cost or it stops being presented as authority. **Measured and named, 2026-09-10**: `Footage.scoring` (design [unmeasured-named](specs/2026-09-10-unmeasured-named-design.md) §0.1/§4) is the number this row was missing — the largest weight, `W_PRESENT` at 0.44, separated **3 of 1508** windows on the only real pool: not that the score was ignored, but that 44% of it had nothing to say. **Run 2 (2026-10-16):** 6 of the top 10 and 15 of the top 30 windows sit inside the delivered spans; the score is `motion` + `shake`, `present` contributes nothing on this pool. | M | [retro](retro/2026-08-25-first-real-run.md) R8 |
+
+
 ## Closed from P1
 
 | | Item | Size | Source |
