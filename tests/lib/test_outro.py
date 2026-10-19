@@ -380,3 +380,28 @@ def test_a_fitted_record_without_its_fade_is_refused_not_defaulted_to_a_dead_cut
     with pytest.raises(ValueError, match="'fade'"):
         OutroFit.from_dict({"rung": "gap", "reel_dur": 6.0, "line": 4.5})
     assert OutroFit.from_dict({"rung": "unchanged"}).fade == 0.0   # nothing reads it there
+
+
+# --- retro 2026-10-16 S7: no bar grid falls back to the beat grid ---------------------
+# By the second run's agent's count 6 of 32 calm candidates carried a bar grid; the
+# chosen track had none, the fit stayed "unchanged", and the reel cut the song
+# mid-phrase under a 0.8 s fade. Three reviews flagged it; the operator swapped tracks.
+
+def test_a_beat_grid_fit_lands_on_a_beat_under_the_longer_fade():
+    beats = tuple(round(0.5 * k, 3) for k in range(0, 100))   # 120 BPM
+    fit = outro.fit_outro(beats, ((0.0, 9.6),), 10.0, outro.bar_seconds(120.0), 0.8,
+                          music_dur=40.0, grow_max=3.0, shrink_max=3.0, grid="beat")
+    assert fit.grid == "beat" and fit.rung == "gap"
+    assert fit.fade == outro.NO_GAP_FADE                    # a beat is not a phrase end
+    assert fit.line in beats and fit.reel_dur == pytest.approx(fit.line + outro.NO_GAP_FADE)
+
+
+def test_the_grid_rides_the_record_only_when_it_is_the_beat():
+    bar = OutroFit(reel_dur=6.0, line=4.5, fade=0.5, tail=1.0, rung="gap", moved=0.3)
+    assert "grid" not in bar.to_dict() and bar.grid == "bar"
+    beat = OutroFit(reel_dur=6.0, line=4.5, fade=1.5, tail=1.0, rung="gap", moved=0.3,
+                    grid="beat")
+    assert beat.to_dict()["grid"] == "beat" and OutroFit.from_dict(beat.to_dict()) == beat
+    with pytest.raises(ValueError, match="grid"):
+        OutroFit(reel_dur=6.0, line=4.5, fade=1.5, tail=1.0, rung="gap", moved=0.3,
+                 grid="phrase")

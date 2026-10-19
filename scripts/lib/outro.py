@@ -30,6 +30,9 @@ MIN_LAST = 1.0      # the last episode may not be shrunk below this. A floor, no
                     # finding (§11.7): without it a one-bar step down can leave a 2.5s
                     # closing shot at 0.3s, which is a glitch, not an ending.
 RUNGS = ("gap", "no-gap", "unchanged")
+GRIDS = ("bar", "beat")   # the lines a fit chose among. "beat" is the fallback when the
+                          # music window carries no bar grid (retro 2026-10-16 S7): a beat
+                          # is not a phrase end, so a beat fit always takes the longer fade.
 
 CAUSES = ("no-bars", "no-episodes", "ramped-closer",
           "closer-not-in-footage", "no-reachable-line")
@@ -52,7 +55,8 @@ CAUSE_WHY = {
                      "length",
     "closer-not-in-footage": "the room the closing episode has left could not be "
                              "measured, because its source is not in FOOTAGE.json",
-    "no-reachable-line": "the fit ran and no bar line within one bar of the cut's own "
+    "no-reachable-line": "the fit ran and no line of its grid (bar, or beat when the window "
+                         "has no bar grid) within one bar of the cut's own "
                          "length was one the closing shot could reach",
     # Reworded (final review M-12): the original read "...became distinguishable, so
     # the reel keeps its footage-derived length" once edl.py's tail was appended —
@@ -114,7 +118,13 @@ class OutroFit:
                                      # line" for a run whose music had no bar grid and
                                      # where no fit had run (design 2026-09-07 §3).
 
+    grid: str = "bar"               # which lines the fit chose among — GRIDS. "beat"
+                                     # = the window had no bar grid and the fit fell
+                                     # back to its beats under the longer fade.
+
     def __post_init__(self) -> None:
+        if self.grid not in GRIDS:
+            raise ValueError(f"OutroFit.grid must be one of {GRIDS}, got {self.grid!r}")
         if self.rung not in RUNGS:
             raise ValueError(f"OutroFit.rung must be one of {RUNGS}, got {self.rung!r}")
         if self.rung == "unchanged":
@@ -148,9 +158,12 @@ class OutroFit:
                 f"--pacing --music to regenerate EDL.outro")
 
     def to_dict(self) -> dict:
-        return {"reel_dur": self.reel_dur, "line": self.line, "fade": self.fade,
-                "tail": self.tail, "rung": self.rung, "moved": self.moved,
-                "brief_len": self.brief_len, "need": self.need, "cause": self.cause}
+        d = {"reel_dur": self.reel_dur, "line": self.line, "fade": self.fade,
+             "tail": self.tail, "rung": self.rung, "moved": self.moved,
+             "brief_len": self.brief_len, "need": self.need, "cause": self.cause}
+        if self.grid != "bar":     # absent for a bar fit: older records stay byte-identical
+            d["grid"] = self.grid
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "OutroFit":
@@ -161,7 +174,7 @@ class OutroFit:
                    fade=d.get("fade", 0.0), tail=d.get("tail", 0.0),
                    rung=d.get("rung", "unchanged"), moved=d.get("moved", 0.0),
                    brief_len=d.get("brief_len"), need=d.get("need", 0.0),
-                   cause=d.get("cause", ""))
+                   cause=d.get("cause", ""), grid=d.get("grid") or "bar")
         if fit.rung != "unchanged" and "fade" not in d:
             # Checked AFTER construction, so a bad rung or a missing reel_dur keeps its
             # own message. A fitted rung's fade is what mix closes the music on (retro
@@ -228,7 +241,7 @@ def _candidates(bars, reel_dur, bar_s, fade, music_dur, grow_max, shrink_max):
 def fit_outro(bars: Sequence[float], vocal_spans: Sequence[tuple[float, float]],
               reel_dur: float, bar_s: float, fade: float, *, music_dur: float,
               grow_max: float, shrink_max: float,
-              brief_len: float | None = None) -> OutroFit:
+              brief_len: float | None = None, grid: str = "bar") -> OutroFit:
     """Pick the reel length that makes the music resolve on a bar line.
 
     The ladder (design §5): a line with `fade + TAIL_MARGIN` of vocal-free space after
@@ -246,10 +259,17 @@ def fit_outro(bars: Sequence[float], vocal_spans: Sequence[tuple[float, float]],
         raise ValueError(f"outro.fit_outro: bar_s must be a positive number of seconds "
                          f"(one bar) — got {bar_s!r}; derive it with outro.bar_seconds")
     reel_dur = float(reel_dur)
+    if grid not in GRIDS:
+        raise ValueError(f"outro.fit_outro: grid must be one of {GRIDS}, got {grid!r}")
+    if grid == "beat":
+        # `bars` holds BEATS here. A beat is not a phrase end, so both rungs take the
+        # longer fade: the music still starts to fall on a line of its own grid, and
+        # over long enough not to read as a cut (retro 2026-10-16 S7).
+        fade = max(float(fade), NO_GAP_FADE)
     # The FINAL return's cause: the ladder ran and rejected every candidate.
     unchanged = OutroFit(reel_dur=reel_dur, line=None, fade=float(fade), tail=0.0,
                          rung="unchanged", moved=0.0, brief_len=brief_len,
-                         cause="no-reachable-line")
+                         cause="no-reachable-line", grid=grid)
     if not bars:
         # A DIFFERENT absence: with no bar grid the ladder below never runs at all.
         # It must be its own object — returning the shared `unchanged` here would
@@ -275,7 +295,8 @@ def fit_outro(bars: Sequence[float], vocal_spans: Sequence[tuple[float, float]],
         line = pick(gapped, fade)
         return OutroFit(reel_dur=line + fade, line=line, fade=float(fade),
                         tail=free_after(vocal_spans, line), rung="gap",
-                        moved=(line + fade) - reel_dur, brief_len=brief_len, need=need)
+                        moved=(line + fade) - reel_dur, brief_len=brief_len, need=need,
+                        grid=grid)
     long_fade = max(float(fade), NO_GAP_FADE)
     nearest = _candidates(bars, reel_dur, bar_s, long_fade, music_dur,
                           grow_max, shrink_max)
@@ -284,5 +305,5 @@ def fit_outro(bars: Sequence[float], vocal_spans: Sequence[tuple[float, float]],
         return OutroFit(reel_dur=line + long_fade, line=line, fade=long_fade,
                         tail=free_after(vocal_spans, line), rung="no-gap",
                         moved=(line + long_fade) - reel_dur, brief_len=brief_len,
-                        need=need)
+                        need=need, grid=grid)
     return unchanged
