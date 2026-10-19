@@ -21,7 +21,9 @@ Write `{}` or `{"vignette": 0, "fade": 0}` to mean *no look, and the preset
 does not get to override that* — but know this is **not** the same as
 omitting the key. An authored `{"vignette": 0, "fade": 0}` sets `EDL.look`
 to a real `LookSpec`, and `build_reel` then passes its `fade=0.0` to `mix`
-explicitly, switching OFF the 0.5s audio bookend every other reel keeps. An
+explicitly, switching OFF the 0.5s audio bookend every other reel keeps (the
+music still opens on a 20 ms anti-click ramp, and a reel whose length the outro
+fit chose still closes on the fit's own fade). An
 authored zero is a decision with an audible consequence, not the same
 no-op as leaving the key out — they render the same silent picture but not
 the same audio. A hand-picked `{"vignette": 0.4, "fade": 1.0}` overrides
