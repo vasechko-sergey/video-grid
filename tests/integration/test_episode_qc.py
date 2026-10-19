@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from scripts import build_reel, edl_to_reel, episode_qc, reframe
-from scripts.lib import naturalness, provenance
+from scripts.lib import naturalness, prompts, provenance
 from scripts.lib.models import (CheckResult, Delivery, LayoutSpec, ReelEpisode,
                                 ReelFailure, ReelManifest, ReelReport, ReframeSpec)
 
@@ -77,6 +77,10 @@ def test_pack_gives_the_judge_pixels_and_numbers(tmp_path, sample_clip):
     assert ev["naturalness"]["stats"]["frames"] == episode_qc.SENSOR_FRAMES
     assert set(ev["naturalness"]["flags"]) == {"blown_highlights", "crushed_blacks"}
     assert ev["geometry"] is not None          # the path.meta sidecar reframe wrote
+    # The judge's prompt, filled from that same evidence (retro 2026-10-16 S14).
+    prompt = (tmp_path / "qc" / "ep0" / "judge_prompt.md").read_text()
+    assert prompts.tokens(prompt) == set()
+    assert str((tmp_path / "qc" / "ep0" / "strip.jpg").resolve()) in prompt
 
 
 @pytest.mark.integration

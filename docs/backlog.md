@@ -37,9 +37,7 @@ Rows S1–S17 come from the second real run — evidence and measurements in
 
 ## P2 — friction
 
-| | Item | Size | Source |
-|---|------|------|--------|
-| ○ | **S14 · Judge and reviewer prompts are filled by hand** — `episode_qc pack`/`reel-review` leave placeholders; the agent wrote two fill scripts. | S | [retro 2](retro/2026-10-16-second-real-run.md) S14 |
+**P2 is empty** — S14–S17 closed 2026-10-19 (0.21.2, 0.22.0), see the archive.
 
 ## Still waiting on a run
 

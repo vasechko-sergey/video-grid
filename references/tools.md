@@ -50,6 +50,7 @@ One row per `--help` surface. It answers *which tool*; `--help` answers
 | `reel_brief build` | `reel-brief` | `SPEC.json` | write SPEC.json + SPEC.md from the brief's fields — mood, hook, length, music intent, cast |
 | `reel_review` | `reel-review` | `REVIEW.json` | write REVIEW.json + REVIEW.md — the editorial reel review (§5.13 Slice B) |
 | `reel_review build` | `reel-review` | `REVIEW.json` | validate the reviewer subagent's raw findings into REVIEW.json + REVIEW.md, stamping the reel's own digest read from disk |
+| `reel_review pack` | `reel-review` | `REVIEW.json` | grab the hook, ending and per-episode stills from the delivered reel (clear of its bookend fade) and write build/_review/reviewer_prompt.md — the reviewer template filled with SPEC, EDL.md, the check_reel report and the music |
 | `reframe` | — | — | compose one episode — crop a segment over its route into the delivery canvas, applying layout, colour and any generated pan → the episode clip plus a path.meta.json sidecar |
 | `storyboard` | — | — | render a grid-overlaid contact sheet of one clip for editorial verification → one .jpg |
 | `titles` | `titles` | `TITLES.json` | write TITLES.json + TITLES.md — the reel titles (§5.16) |

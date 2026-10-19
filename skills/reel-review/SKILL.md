@@ -82,49 +82,39 @@ guessing a path.
 
 Announce on entry: **"Using reel-review to judge the reel against the brief."**
 
-1. **Build the packet.** Resolve the paths above. Grab a cheap **thumbnail
-   contact-sheet** to ground visual judgement (output-seek — `-ss` AFTER `-i`,
-   design §12): the hook frame, the ending frame, and one mid-frame per episode.
-   The stills go under `build/`, not the reel dir: they are scratch, stale the
-   moment the reel is re-rendered, and `build/` is the one bucket the next render
-   clears — a real run left 14 MB of exactly these frames sitting where nothing
-   ever cleaned them.
+1. **Pack.** Grab the stills and write the reviewer's prompt, filled:
 
-   Clamp every grab OUT of the reel's own bookend fade — a frame taken inside it
-   is darkened by the picture's own fade, not by anything the `colour` axis
-   should read as a grade difference, and three of the four mood presets carry
-   `fade >= 0.8` (`moodpreset.py`). This is the same reason `deliver.py`'s own
-   look-gate sampling clamps into `[fade_in, dur-fade]` (`deliver._title_times`)
-   — follow that precedent rather than inventing a new one. One pass computes
-   every timestamp and grabs every frame — hook, ending, and every episode's
-   mid — reading the fade and the per-episode clip lengths off the same
-   `EPISODES.json` phase 1 already wrote (swap in whichever `REEL_v{n}.mp4`
-   `montage status` names as latest):
+       "$VG" scripts.reel_review pack \
+         --reel <run>/reels/<reel>/deliveries/REEL_v{n}.mp4 \
+         --reel-dir <run>/reels/<reel> \
+         [--intent "<the user's own words for the reel>"]
 
-       "$VG" -c "
-       import json
-       from itertools import accumulate
-       from pathlib import Path
-       from scripts.lib import assembly, proc, ffbin
-       rm = json.load(open('<run>/reels/<reel>/episodes/EPISODES.json'))
-       durs = [assembly.probe_duration(e['clip']) for e in rm['episodes']]
-       look = rm.get('look') or {}
-       dur, fade = sum(durs), look.get('fade', 0.0)
-       head = look.get('fade_in', fade)     # the opening; absent = the same as fade
-       starts = [0.0] + list(accumulate(durs))[:-1]
-       mids = [s + d / 2 for s, d in zip(starts, durs)]
-       shots = {'hook': max(0.5, head + 0.1), 'ending': dur - max(1.0, fade + 0.1),
-                **{f'mid{i}': m for i, m in enumerate(mids)}}
-       out = Path('<run>/reels/<reel>/build/_review'); out.mkdir(parents=True, exist_ok=True)
-       for name, t in shots.items():
-           proc.run([ffbin.ffmpeg(), '-y', '-i',
-                     '<run>/reels/<reel>/deliveries/REEL_v1.mp4', '-ss', f'{t:.3f}',
-                     '-frames:v', '1', str(out / f'{name}.png')])
-       "
+   Use the `REEL_v{n}.mp4` `montage status` names as latest. `pack` grabs the
+   hook, the ending and one mid-frame per episode from the delivered file into
+   `build/_review/` — every one clamped out of the reel's own bookend fade, which
+   would otherwise darken a still by the picture's fade rather than by anything
+   the `colour` axis should read as a grade — and writes
+   `build/_review/reviewer_prompt.md`: the `reel-reviewer.md` template filled with
+   `SPEC.md`/`SPEC.json` (or that there is no brief), `EDL.md`, `check_reel`'s
+   report, the track and `PACING.md` (or that the reel is silent), the reel and the
+   stills. The stills sit under `build/`, not the reel dir: they are scratch, stale
+   the moment the reel is re-rendered, and `build/` is the one bucket the next
+   render clears.
+
+   With no `SPEC.json` (the autonomous path), pass `--intent` with what the user
+   said they wanted, in their words — otherwise the reviewer has only the EDL to
+   judge against, and the prompt says so.
+
+   The report defaults to `build/reel/reel_report.json`, and `pack` refuses it
+   when the reel's attestation names a different one — `build/` keeps only the
+   LAST render's report, and a later render that stopped rewrites it. Review the
+   reel the report passed, or re-deliver and review the new `REEL_v{n+1}`. `report_bound: false` in the
+   result means the reel has no attestation at all: say so at CP3 — `deliver`
+   did not attest it (its look gate refused it, or it was encoded by hand).
 
 2. **Dispatch the reviewer subagent** (Task tool, `general-purpose`) with the
-   `reel-reviewer.md` template filled in — the packet paths + the axes/questions +
-   the required output shape. It writes `<run>/reels/<reel>/review_findings.json` and returns.
+   contents of `build/_review/reviewer_prompt.md`, verbatim. Never fill or edit
+   it by hand. It writes `<run>/reels/<reel>/review_findings.json` and returns.
    Do NOT review inline — the dispatch is the point (fresh, unanchored eyes).
 
 3. **Validate + write.** Turn the raw findings into the typed artifact:

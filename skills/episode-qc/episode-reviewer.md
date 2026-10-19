@@ -1,7 +1,11 @@
 # Episode QC Reviewer Prompt Template
 
-Fill in the placeholders and dispatch with the Task tool (`general-purpose`) —
-one subagent per episode, at most 3 concurrently (see the `episode-qc` SKILL).
+`episode_qc pack` fills this template for every episode and writes the result to
+`ep{i}/judge_prompt.md` beside that episode's `evidence.json`. Dispatch the file's
+contents verbatim with the Task tool (`general-purpose`) — one subagent per episode,
+at most 3 concurrently (see the `episode-qc` SKILL). Never fill it by hand: every
+`{NAME}` below is a token the packer substitutes, and a template edit that adds or
+drops one is refused at pack time (`scripts/lib/prompts.py`).
 
 ```
 You are a fresh quality-control judge for ONE episode of a short video reel.
@@ -11,38 +15,39 @@ this is a per-episode judgment, not a reel judgment. Your final message is not
 read by a human; your deliverable is the file you write.
 
 ## This episode's declared intent
-{INTENT — paste evidence.json's "intent" object: composition (center / lead /
- break), grid, hero (the pin, if any), target_dur, layout, pan, stabilize,
- canvas.}
+composition (center / lead / break), grid, hero (the pin, if any), target_dur,
+layout, pan, stabilize, canvas:
+
+{INTENT}
 
 ## The mechanical checks (already passed — context, not yours to re-litigate)
-{CHECKS — paste evidence.json's "checks" object (check_episode's report.json),
- "none recorded" if it is null, or, if evidence.json's "unreadable" map names
- "report.json", "unreadable: <the reason given there>" instead. The
- difference matters: a missing report.json means check_episode never ran; an
- unreadable one means it ran and its record was lost, which is reason to
- distrust the rest of this packet's evidence from the same render too.}
+check_episode's report.json. `none recorded` means check_episode never ran;
+`unreadable: <reason>` means it ran and its record was lost, which is reason to
+distrust the rest of this packet's evidence from the same render too.
+
+{CHECKS}
 
 ## Tracker + path provenance
-{TRACK / GEOMETRY — paste evidence.json's "track" object (route.meta.json:
- degraded / stitched / ambiguous) and "geometry" object (path.meta.json:
- freedom / pan / stabilized); "none recorded" for either that is null, or, if
- evidence.json's "unreadable" map names "route.meta.json" / "path.meta.json",
- "unreadable: <the reason given there>" for that one instead. The difference
- matters: a missing sidecar means that stage never ran; an unreadable one
- means it ran and its record was lost, which is reason to distrust the rest
- of this packet's evidence from the same render too.}
+The tracker's record (route.meta.json: degraded / stitched / ambiguous) and the
+path's (path.meta.json: freedom / pan / stabilized). The same two absences as
+above: `none recorded` — that stage never ran; `unreadable: <reason>` — it ran
+and its record was lost.
+
+Tracker: {TRACK}
+
+Path: {GEOMETRY}
 
 ## The colour-naturalness sensor (advisory — see Rules)
-{NATURALNESS — paste evidence.json's "naturalness" object: stats (means /
- cast / saturation / contrast / clip_high / clip_low — a fact about the
- footage on its own, not a defect); flags (blown_highlights / crushed_blacks
- — information the grade destroyed, true regardless of source); source (the
- pre-grade segment's own stats, or null EITHER because there is no source OR
- because this episode's geometry could not be confirmed as the one that
- shipped — both read the same here) and delta (cast_shift / saturation_shift
- / contrast_drop — what the grade CHANGED, against source; null alongside it,
- for either reason).}
+stats (means / cast / saturation / contrast / clip_high / clip_low — a fact
+about the footage on its own, not a defect); flags (blown_highlights /
+crushed_blacks — information the grade destroyed, true regardless of source);
+source (the pre-grade segment's own stats, or null EITHER because there is no
+source OR because this episode's geometry could not be confirmed as the one
+that shipped — both read the same here) and delta (cast_shift /
+saturation_shift / contrast_drop — what the grade CHANGED, against source;
+null alongside it, for either reason):
+
+{NATURALNESS}
 
 ## What shipped
 Frame strip: {STRIP_PATH} — {STRIP_PX} px per frame, sampled across the
@@ -52,14 +57,13 @@ episode in one image.
 
 Storyboard: {STORYBOARD_PATH} — {STORYBOARD_PX} px per frame, with the
 composition grid and the hero marker on every sampled frame when one was
-tracked. Both read `none recorded` when evidence.json's `storyboard` /
-`storyboard_px` are null. This is the **composition evidence**; it is far larger per frame than
-the strip and is what you judge framing from.
+tracked. Both read `none recorded` when no storyboard was rendered. This is the
+**composition evidence**; it is far larger per frame than the strip and is what
+you judge framing from.
 
-Both sizes are in `evidence.json` as `strip_px` and `storyboard_px`. They are
-RENDERED sizes — your own viewer may downsample further.
+Both are RENDERED sizes — your own viewer may downsample further.
 
-When {STORYBOARD_PATH} reads `none recorded`, there is no composition evidence
+When the storyboard reads `none recorded`, there is no composition evidence
 beyond it: the strip, plus whatever frames you pull yourself (below), are the
 whole of the pixel evidence for this episode — say so in your summary.
 
@@ -71,9 +75,9 @@ not reach for a tool that is not here. Resolve the launcher once —
 — run every step as `"$VG" scripts.X`, passing **absolute** paths: `bin/vg`
 `cd`s to the repo root before it runs, so a relative `--out` writes into the
 plugin checkout, not where you think — and pull any frames you want from the
-delivered clip itself (`evidence.json`'s `clip`), at timestamps YOU choose:
+delivered clip itself, {CLIP}, at timestamps YOU choose:
 
-    "$VG" scripts.contact_sheet strip --source <evidence.json "clip"> \
+    "$VG" scripts.contact_sheet strip --source "{CLIP}" \
           --out <a path of your own> --start <seconds> --dur <seconds> --frames <n>
 
 A short `--dur` around one moment gives you a near-full-resolution look at it.

@@ -84,7 +84,8 @@ guessing a path.
    sampled across the DELIVERED clip, in timeline order) and `evidence.json`
    (the episode's declared intent, the mechanical `report.json`, the tracker
    provenance, the `path.meta` geometry, and the naturalness sensor's
-   stats/flags plus its source-relative delta).
+   stats/flags plus its source-relative delta), and `judge_prompt.md` — the
+   judge's prompt, already filled from that episode's own `evidence.json`.
 
    **Since 2026-09-09, `evidence.json` also records the digest of the clip it
    just decoded** (`clip_digest`), and `build` (step 4) refuses a packet whose
@@ -107,23 +108,14 @@ guessing a path.
    scratch dir to read.
 
 2. **Dispatch one fresh judge per episode — at most 3 concurrently.** For each
-   episode `i`, fill `skills/episode-qc/episode-reviewer.md` with THAT
-   episode's own `<run>/reels/<reel>/episodes/qc/ep{i}/evidence.json` — which now names its
-   own artifacts: `strip`, `strip_px`, `storyboard`, `storyboard_px`, and,
-   when non-empty, `unreadable` (sidecar filename → why `json.loads` failed on
-   it, for whichever of `report.json`/`route.meta.json`/`path.meta.json` came
-   back corrupt). Fill `{STRIP_PATH}`/`{STRIP_PX}` and
-   `{STORYBOARD_PATH}`/`{STORYBOARD_PX}` from those four keys, writing `none
-   recorded` for either storyboard key that is null — the same substitution
-   the CHECKS and TRACK/GEOMETRY placeholders already ask for (two
-   placeholders reading three sidecars: TRACK/GEOMETRY is ONE placeholder
-   covering both `route.meta.json` and `path.meta.json`), and what the
-   template's no-storyboard branch keys on — except when `unreadable` names
-   the sidecar behind one of those two placeholders: paste `unreadable`,
-   with its reason, instead of `none recorded` there, because a sidecar that
-   ran and lost its record is a different fact from one that never ran, and
-   only the first is reason to distrust the rest of that render's evidence.
-   Pass nothing else. A judge reads only its own episode:
+   episode `i`, dispatch the contents of
+   `<run>/reels/<reel>/episodes/qc/ep{i}/judge_prompt.md` verbatim. `pack` filled
+   it from that episode's own `evidence.json` — strip and storyboard paths and
+   sizes, the checks, the tracker and path records (with `none recorded` for a
+   sidecar that was never written and `unreadable: <why>` for one that was and
+   could not be parsed), the colour sensor, the clip and where to write. Never
+   fill or edit it by hand: a template edit that breaks a token is refused at
+   pack time. Pass nothing else. A judge reads only its own episode:
    never another's packet, never the EDL as a whole, never a comparison
    across episodes (adjacency and rhythm are reel-review's question, not
    this one). Dispatch with the Task tool (`general-purpose`), batching up

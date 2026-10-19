@@ -625,3 +625,73 @@ def test_a_packet_digest_complaint_joins_the_others_in_one_raise(tmp_path):
     with pytest.raises(ValueError) as e:
         episode_qc.build_qc(str(p), str(packets))
     assert "ep0" in str(e.value) and "ep1 finding 0" in str(e.value)
+
+
+# --- second real run S14: pack writes the judge's prompt, filled ---
+
+def _ev(tmp_path, **over):
+    ev = {"idx": 0, "clip": str(tmp_path / "ep0.mp4"), "clip_digest": "d",
+          "intent": {"composition": "lead", "grid": "thirds"},
+          "storyboard": str(tmp_path / "sb.jpg"), "storyboard_px": [1080, 1920],
+          "strip": str(tmp_path / "qc" / "ep0" / "strip.jpg"), "strip_px": [180, 320],
+          "naturalness": {"stats": {"frames": 3}}, "checks": {"overall": "pass"},
+          "track": {"degraded": None}, "geometry": {"freedom": 384}}
+    ev.update(over)
+    return ev
+
+
+def test_the_judge_prompt_carries_this_episodes_own_evidence(tmp_path):
+    d = tmp_path / "qc" / "ep0"
+    text = episode_qc.judge_prompt(_ev(tmp_path), d)
+    assert "{" + "INTENT}" not in text and '"composition": "lead"' in text
+    assert f"Frame strip: {tmp_path / 'qc' / 'ep0' / 'strip.jpg'} — 180x320 px" in text
+    assert f"Storyboard: {tmp_path / 'sb.jpg'} — 1080x1920 px" in text
+    assert f'--source "{tmp_path / "ep0.mp4"}"' in text      # quoted: macOS paths carry spaces
+    assert f"Write your output to {(d / 'findings.json').resolve()} as JSON" in text
+    assert 'Path: {\n "freedom": 384\n}' in text
+
+
+def test_the_judge_prompt_tells_never_ran_from_ran_and_lost(tmp_path):
+    ev = _ev(tmp_path, storyboard=None, storyboard_px=None, checks=None, track=None,
+             unreadable={"route.meta.json": "Expecting value: line 1 column 1 (char 0)"})
+    text = episode_qc.judge_prompt(ev, tmp_path / "qc" / "ep0")
+    assert "Storyboard: none recorded — none recorded px" in text
+    assert "## The mechanical checks (already passed — context, not yours to re-litigate)" in text
+    checks = text.split("## The mechanical checks")[1].split("## Tracker")[0]
+    assert checks.rstrip().endswith("none recorded")
+    assert "Tracker: unreadable: Expecting value: line 1 column 1 (char 0)" in text
+
+
+def test_pack_writes_the_prompt_beside_the_evidence(tmp_path, monkeypatch):
+    rm = _rm(tmp_path, n=1)
+    p = tmp_path / "EPISODES.json"
+    rm.write(p)
+    monkeypatch.setattr(episode_qc, "_epdir", lambda ep, i: tmp_path / f"ep{i}")
+    monkeypatch.setattr(episode_qc.assembly, "probe_stream",
+                        lambda c: SimpleNamespace(fps=30.0, w=1080, h=1920))
+    monkeypatch.setattr(episode_qc.assembly, "probe_duration", lambda c: 2.0)
+    monkeypatch.setattr(episode_qc.contact_sheet, "build_strip",
+                        lambda src, out, **k: {"strip": out, "cell_px": (180, 320)})
+    monkeypatch.setattr(episode_qc.assembly, "frames_rgb",
+                        lambda c, t, fps: [np.full((4, 4, 3), 128, dtype=np.uint8)
+                                           for _ in t])
+    monkeypatch.setattr(episode_qc, "_source_reading", lambda ep, stats: {})
+    res = episode_qc.pack(str(p), str(tmp_path / "qc"))
+    prompt = tmp_path / "qc" / "ep0" / "judge_prompt.md"
+    assert res["prompts"] == [str(prompt)]
+    assert "Frame strip: " + str(tmp_path / "qc" / "ep0" / "strip.jpg") in prompt.read_text()
+
+
+def test_an_unreadable_report_lands_under_the_checks(tmp_path):
+    ev = _ev(tmp_path, checks=None, unreadable={"report.json": "truncated"})
+    text = episode_qc.judge_prompt(ev, tmp_path / "qc" / "ep0")
+    checks = text.split("## The mechanical checks")[1].split("## Tracker")[0]
+    assert checks.rstrip().endswith("unreadable: truncated")
+    assert text.count("unreadable: truncated") == 1
+
+
+def test_an_unreadable_path_record_lands_under_the_path(tmp_path):
+    ev = _ev(tmp_path, geometry=None, unreadable={"path.meta.json": "truncated"})
+    text = episode_qc.judge_prompt(ev, tmp_path / "qc" / "ep0")
+    assert "Path: unreadable: truncated" in text
+    assert text.count("unreadable: truncated") == 1

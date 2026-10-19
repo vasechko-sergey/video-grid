@@ -1,6 +1,10 @@
 # Reel Editorial Reviewer Prompt Template
 
-Fill in the placeholders and dispatch with the Task tool (`general-purpose`).
+`reel_review pack` fills this template for one delivered reel — grabbing the stills it
+names — and writes the result to `<reel>/build/_review/reviewer_prompt.md`. Dispatch
+the file's contents verbatim with the Task tool (`general-purpose`). Never fill it by
+hand: every `{NAME}` below is a token the packer substitutes, and a template edit that
+adds or drops one is refused at pack time (`scripts/lib/prompts.py`).
 
 ```
 You are a fresh editorial reviewer for a short vertical video reel. You did NOT
@@ -8,30 +12,42 @@ build this reel — judge only what the artifacts show. Your final message is no
 read by a human; your deliverable is the file you write.
 
 ## The brief (intent)
-{SPEC_SUMMARY — paste the SPEC.md / SPEC.json intent: idea, mood, hook, ending,
- style_lean, length, platform. If none exists, say "no SPEC — judge against the EDL
- + this stated intent: {INTENT}".}
+SPEC.md and SPEC.json — idea, mood, hook, ending, style_lean, length, platform.
+When there is no brief this says so: judge against the EDL and say that you did.
+
+{SPEC}
 
 ## The realized plan
-{EDL_MD — paste EDL.md: per-episode source/window/shot/layout/comp/motion/beat/notes.}
+EDL.md — per-episode source/window/shot/layout/comp/motion/beat/notes:
+
+{EDL_MD}
 
 ## Mechanical + advisory signals (check_reel report.json)
-{REPORT_JSON — paste report.json. The advisory signals key_action / pad_bars /
- transitions / safe_zones / beat / brief_length / outro / chroma_spread are
- yours to cite as evidence. `brief_length` is advisory by design and expected
- to be frequently red (design 2026-09-07 §7) — a red row there is a real gap
- to weigh, not a mechanical failure. `chroma_spread` (design 2026-09-17 §2.4)
- measures whether the grade treated the episodes ALIKE, never whether they end
- up agreeing — cite it for the `colour` axis below, but it is corroborating
- evidence, not a substitute for looking at the stills.}
+The advisory signals key_action / pad_bars / transitions / safe_zones / beat /
+brief_length / outro / chroma_spread are yours to cite as evidence.
+`brief_length` is advisory by design and expected to be frequently red (design
+2026-09-07 §7) — a red row there is a real gap to weigh, not a mechanical
+failure. `chroma_spread` (design 2026-09-17 §2.4) measures whether the grade
+treated the episodes ALIKE, never whether they end up agreeing — cite it for the
+`colour` axis below, but it is corroborating evidence, not a substitute for
+looking at the stills.
 
-## Music / pacing (if present)
-{MUSIC_JSON / PACING_MD — mood_features + the fit report's Verdict and Energy
- agreement lines, or "silent reel".}
+{REPORT_JSON}
+
+## Music / pacing
+The track and its window, MUSIC.json's scalars, and PACING.md (whose Verdict and
+Energy agreement lines are what the `spine` axis cites) — or that the reel is
+silent:
+
+{MUSIC}
 
 ## The reel + stills
-The reel is at {REEL_PATH}. Contact-sheet stills: {STILL_PATHS} (hook, ending,
-per-episode mids). Open and look at every still — this is the pixel evidence
+The reel is at {REEL_PATH}. Stills, one per line (hook, ending, one mid-frame
+per episode — each clamped out of the reel's own bookend fade):
+
+{STILL_PATHS}
+
+Open and look at every still — this is the pixel evidence
 itself, not a summary of it. For the `colour` axis below, `report.json`'s
 advisory `chroma_spread` (design 2026-09-17 §2.4) puts a number on how far
 apart the episodes are in what the grade did to their colour, but it measures
@@ -41,7 +57,7 @@ the plan + signals + stills, NOT full playback — say so in your summary.
 
 ## Judge each axis; emit a finding ONLY where the reel falls short
 - idea             — delivers the brief's original idea?         (SPEC.idea vs the EDL arc)
-- mood             — mood/story land?                            (SPEC.mood vs MUSIC mood_features; the stills)
+- mood             — mood/story land?                            (SPEC.mood vs the track and its tempo; the stills)
 - hook             — opening strong, first ~1–3s?                (ep0 shot/layout/description + hook still)
 - ending           — ending right, last ~3s?                    (last-ep + ending still + SPEC.ending)
 - spine            — cuts along the energy spine?                (PACING slots vs EDL beat_slot/dur; the Energy agreement number; beat advisory)
