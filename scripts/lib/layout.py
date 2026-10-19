@@ -56,6 +56,14 @@ def resolve(spec: LayoutSpec, canvas: tuple[int, int], src: tuple[int, int],
         # Re-deriving canvas_h from crop_w drifts: a 21:9 crop of 4K is
         # 3840x1645, and 3840 * 9/21 evens to 1646, not 1644.
         canvas_w, canvas_h = float(crop_w), float(crop_h)
+        if delivery.mode in ("short_edge", "long_edge"):
+            # ...except that a SIZED delivery asks for a shape, and the integer crop
+            # is only the nearest pixel to it: the 9:16 crop of a 1080-tall source is
+            # 607 wide (607.5 rounded), and 1080 * 1080 / 607 evens to 1922 — the
+            # second real run shipped 1080x1922 (retro 2026-10-16 S1). The squash
+            # onto the canvas absorbs the half pixel, exactly as it absorbs a native
+            # canvas's evening. Native keeps the crop: it promises no scaling.
+            canvas_h = canvas_w * aspect[1] / aspect[0]
     else:
         canvas_w = crop_w / rw_f
         canvas_h = canvas_w * canvas[1] / canvas[0]
