@@ -48,7 +48,10 @@ Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
    lane) · style-lean (classic / balanced / trend) · on-screen text · ending · cast.
    `hook` and `ending` describe **shots** for the editor; `--text` is the **literal
    words** the reel shows (the titles stage drafts exactly them) — ask for the
-   exact wording, never record a description of it.
+   exact wording, never record a description of it. When the reel has more than one
+   hero, ask how screen time should split and record it with `--cast-share`
+   (`equal`, or `NAME=WEIGHT` per hero) — not in `--notes`, which nothing reads:
+   `edit_plan` reports the cut's screen time against it at CP2.
    Prefer the user's free text ("without music" → `--music none`; "any source" →
    `--music-mode any`).
 3. **HARD-GATE.** Do not write until **mood + canvas + length + hook** are locked.
@@ -59,7 +62,8 @@ Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
        "$VG" scripts.reel_brief build --project <run>/project.json \
          --length 30 --mood "…" --hook "…" \
          [--reel-count 1] [--music …] [--music-mode free] [--style-lean balanced] \
-         [--platform …] [--text …] [--ending …] [--cast NAME]... [--notes …] \
+         [--platform …] [--text …] [--ending …] [--cast NAME]... \
+         [--cast-share equal | --cast-share NAME=WEIGHT ...] [--notes …] \
          --out-dir <run>/reels/<reel>
 
    It validates the fields and writes `SPEC.json` + `SPEC.md`. A `ValueError` names

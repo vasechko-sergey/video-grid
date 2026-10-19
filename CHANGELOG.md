@@ -10,6 +10,15 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.17.0 — 2026-10-19
+
+- **The brief's hero balance is checked at CP2.** `reel_brief --cast-share equal`
+  (or `NAME=WEIGHT` per hero) records the split in `SPEC.cast_share`; `edit_plan`
+  carries it onto the EDL, and `EDL.md` gains a **Screen time** section — each
+  hero's played seconds and share beside the brief's — with the same line in the
+  log. A report, not a gate. The second real run's "both equally" lived only in
+  `notes` and REEL_v3 shipped 55/45.
+
 ## 0.16.0 — 2026-10-19
 
 - **A reel opens on picture.** The look's opening fade is its own number

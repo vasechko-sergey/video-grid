@@ -21,10 +21,11 @@ from scripts.lib.constraints import ConstraintReport
 from scripts.lib.footage import Cast
 from scripts.lib.look import LookSpec
 from scripts.lib.manifest import DEFAULT_COLOR, LAYOUTS_SUPPORTED, Manifest, validate
-from scripts.lib.models import COMPOSITIONS, GRIDS, MOTIONS, RampSpec
+from scripts.lib.models import COMPOSITIONS, GRIDS, HERO_RULES, MOTIONS, RampSpec
 from scripts.lib.moodpreset import VarietyReport
 from scripts.lib.outro import CAUSE_WHY, OutroFit
 from scripts.lib.project import ProjectConfig, resolve_manifest
+from scripts.lib.spec import share_line, validate_cast_share
 
 
 @dataclass
@@ -286,6 +287,11 @@ class EDL:
     tone_target: tuple[float, float, float] | None = None   # (p5, p50, p95) — the
                                     # reel's common tone, measured on the tracked crop
                                     # (design 2026-08-30 §2). None = never measured.
+    cast_share: dict | None = None   # SPEC.cast_share — the brief's screen-time weights
+                                     # per hero, carried so EDL.md can set the cut's
+                                     # own screen time beside them at CP2 (retro
+                                     # 2026-10-16 S9). A report, never a gate. None =
+                                     # the brief did not ask.
     provenance: dict = field(default_factory=dict)   # design §4; empty = unstamped
 
     def __post_init__(self) -> None:
@@ -298,6 +304,8 @@ class EDL:
         self.episodes = eps
         if isinstance(self.cap, bool) or not isinstance(self.cap, int) or self.cap < 1:
             raise ValueError(f"EDL.cap must be an int >= 1, got {self.cap!r}")
+        if self.cast_share is not None:
+            self.cast_share = validate_cast_share(self.cast_share, "EDL.cast_share")
         if self.music is not None and not (isinstance(self.music, str) and self.music):
             raise ValueError("EDL.music must be a MUSIC.json path or null, got an empty/non-str value")
         if self.cast is not None and not (isinstance(self.cast, str) and self.cast):
@@ -379,6 +387,7 @@ class EDL:
                    outro=OutroFit.from_dict(d["outro"]) if d.get("outro") else None,
                    brief_len=d.get("brief_len"),
                    tone_target=tuple(d["tone_target"]) if d.get("tone_target") else None,
+                   cast_share=d.get("cast_share"),
                    provenance=d.get(provenance.PROV_KEY) or {})
 
     @classmethod
@@ -413,6 +422,8 @@ class EDL:
              "outro": self.outro.to_dict() if self.outro is not None else None,
              "brief_len": self.brief_len,
              "tone_target": list(self.tone_target) if self.tone_target is not None else None}
+        if self.cast_share is not None:    # absent when unasked: older EDLs stay byte-identical
+            d["cast_share"] = dict(self.cast_share)
         if self.provenance:
             d[provenance.PROV_KEY] = dict(self.provenance)
         return d
@@ -458,6 +469,7 @@ class EDL:
                          f"(plays {e.play_dur():.2f}s, silent) · {notes}").rstrip(" ·")
             lines.append(f"| {i} | {e.source} | {window} | {e.shot_type} | {e.layout} | "
                          f"{e.composition} | {e.grid} | {motion} | {beat} | {notes} |")
+        lines += screen_time_md(self.episodes, self.cast_share)
         if self.variety is not None:
             v = self.variety
             lines += ["", f"## Variety — preset `{v.preset}`", "",
@@ -640,3 +652,57 @@ def preflight(edl: EDL, cfg: ProjectConfig, seg_dir: str,
                          "finding": {"reason": "edl-invalid", "episode_idx": i, "problems": problems}}
         mds.append(md)
     return mds, None
+
+
+def screen_time(episodes) -> list[tuple[str | None, float]]:
+    """[(hero name, played seconds), ...] in order of first appearance; episodes whose
+    hero is not a cast name (a bbox, a track id, a rule pin like "largest", none at all)
+    pool under None, last. Played seconds — `play_dur()`, so a ramp counts the time it
+    is on screen."""
+    named: dict[str, float] = {}
+    other = 0.0
+    for e in episodes:
+        if isinstance(e.hero, str) and e.hero.strip() and e.hero not in HERO_RULES:
+            named[e.hero] = named.get(e.hero, 0.0) + e.play_dur()
+        else:
+            other += e.play_dur()
+    out: list[tuple[str | None, float]] = [(n, round(s, 3)) for n, s in named.items()]
+    if other > 0:
+        out.append((None, round(other, 3)))
+    return out
+
+
+def screen_rows(episodes, cast_share: dict | None) -> list[tuple[str | None, float, str, str]]:
+    """(name, seconds, share, brief) rows, or [] when there is nothing to compare: no
+    named hero AND no briefed split. Shares are of the NAMED heroes' total, so they read
+    against the brief's own weights; the unnamed pool gets seconds only. A briefed hero
+    who never appears is a 0.0s row — that is the finding, not an omission — and a
+    briefed split with no hero named anywhere is the loudest case, never silence."""
+    rows = screen_time(episodes)
+    named = [(n, s) for n, s in rows if n is not None]
+    if not named and not cast_share:
+        return []
+    have = {n for n, _ in named}
+    named += [(n, 0.0) for n in (cast_share or {}) if n not in have]
+    total = sum(s for _, s in named)
+    wsum = sum(cast_share.values()) if cast_share else 0.0
+    out = [(n, s, f"{100 * s / total:.0f}%" if total else "0%",
+            f"{100 * cast_share[n] / wsum:.0f}%" if cast_share and n in cast_share else "–")
+           for n, s in named]
+    out += [(None, s, "–", "–") for n, s in rows if n is None]
+    return out
+
+
+def screen_time_md(episodes, cast_share: dict | None) -> list[str]:
+    """The EDL.md section (see screen_rows), or [] when there is nothing to compare."""
+    rows = screen_rows(episodes, cast_share)
+    if not rows:
+        return []
+    out = ["", "## Screen time", ""]
+    if cast_share:
+        out += [f"The brief asks {share_line(cast_share)}. Shares are of the named heroes' "
+                f"time. Reported, not enforced.", ""]
+    out += ["| hero | on screen | share | brief |", "|------|----------:|------:|------:|"]
+    out += [f"| {n if n is not None else '(no named hero)'} | {s:.1f}s | {sh} | {br} |"
+            for n, s, sh, br in rows]
+    return out

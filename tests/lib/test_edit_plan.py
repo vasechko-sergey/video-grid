@@ -1824,3 +1824,41 @@ def test_write_edit_plan_does_not_refuse_a_brief_less_run_against_a_high_carved_
     err = capsys.readouterr().err
     assert "length band: no SPEC mood matched a preset" in err
     assert "never reconciled" in err
+
+
+def test_write_edit_plan_carries_the_briefs_cast_share_and_reports_screen_time(tmp_path, capsys):
+    """retro 2026-10-16 S9: the brief's "both equally" must reach EDL.md and the log at
+    CP2, beside the cut's own screen time — REEL_v3 shipped 55/45 unnoticed."""
+    sel = _plain_selection()
+    sel["episodes"][0]["hero"] = "Lena"
+    sel["episodes"][1]["hero"] = "Sergei"
+    fp, sp, pp = _write_inputs(tmp_path, sel)
+    spec_path = _write_spec(tmp_path, cast=("Lena", "Sergei"),
+                            cast_share={"Lena": 1, "Sergei": 1})
+    from scripts.lib.footage import DESCRIPTOR_LEN, Cast, CastMember
+    cast = tmp_path / "cast.json"
+    cast.write_text(json.dumps(Cast(members=[
+        CastMember(name=n, descriptor=[1.0 if k == i else 0.0 for k in range(DESCRIPTOR_LEN)])
+        for i, n in enumerate(("Lena", "Sergei"))]).to_dict()))
+    result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path), cast=str(cast),
+                                       spec=spec_path)
+    assert result["status"] == "written", result
+    edl = EDL.from_json(str(tmp_path / "EDL.json"))
+    assert edl.cast_share == {"Lena": 1.0, "Sergei": 1.0}
+    assert "## Screen time" in (tmp_path / "EDL.md").read_text()
+    err = capsys.readouterr().err
+    assert "screen time: Lena" in err and "brief: Lena 50% · Sergei 50%" in err
+
+
+def test_screen_time_log_says_when_there_was_no_spec_rather_than_no_share(tmp_path, capsys):
+    from scripts.lib.edl import EDL as _EDL, EDLEpisode
+    ep = EDLEpisode(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
+                    composition="center", grid="thirds", hero="Lena")
+    edit_plan._log_screen_time(_EDL(episodes=(ep,)), spec_given=False)
+    assert "no SPEC.json was given" in capsys.readouterr().err
+    edit_plan._log_screen_time(_EDL(episodes=(ep,)), spec_given=True)
+    assert "the brief set no share" in capsys.readouterr().err
+    edit_plan._log_screen_time(_EDL(episodes=(ep,), cast_share={"Lena": 1, "Sergei": 1}),
+                               spec_given=True)
+    err = capsys.readouterr().err
+    assert "Sergei 0.0s (0%)" in err and "brief: Lena 50% · Sergei 50%" in err

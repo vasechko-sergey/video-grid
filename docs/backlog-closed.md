@@ -30,6 +30,7 @@ is where its neighbours were.
 
 | | Item | Size | Source |
 |---|------|------|--------|
+| ✅ | **S9 · "Both heroes equally" is never checked** — free text in `SPEC.notes`; `EDL.md` shows no screen time per hero though `hero` × played length is exact. `REEL_v3` shipped 55/45 and was re-cut after the operator asked. **Fixed 2026-10-19 (0.17.0):** `SPEC.cast_share` (`reel_brief --cast-share equal` or `NAME=WEIGHT`) rides onto `EDL.cast_share`; `EDL.md` gains a **Screen time** section (played seconds and share per hero beside the brief's), and `edit_plan` logs the same line. A report at CP2, not a gate. | S | [retro 2](retro/2026-10-16-second-real-run.md) S9 |
 | ✅ | **S6 · One fade value serves three ends** — `LookSpec.fade` fades the picture in, out, and is the audio bookend: the hook's first frame is black (all four reviews), and a music ending gets only 0.8 s. **Fixed 2026-10-19 (0.16.0):** `LookSpec.fade_in` sets the opening apart (absent = the same as `fade`); every preset opens on picture; `mix` and the look gate treat each end separately, with a 20 ms anti-click floor on the music's opening. | S | [retro 2](retro/2026-10-16-second-real-run.md) S6 |
 
 ## Closed by the second real run (2026-10-16)

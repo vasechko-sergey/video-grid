@@ -116,3 +116,31 @@ def test_cli_refuses_a_two_element_tone_bias(tmp_path, monkeypatch, capsys):
                          "--out-dir", str(tmp_path)])
     with pytest.raises(ValueError, match="tone_bias"):
         reel_brief.main()
+
+
+def test_cast_share_parses_weights_and_the_equal_shorthand():
+    assert reel_brief.parse_cast_share(["Sergei=1", "Lena=2"], ("Sergei", "Lena")) == \
+        {"Sergei": 1.0, "Lena": 2.0}
+    assert reel_brief.parse_cast_share(["equal"], ("Sergei", "Lena")) == \
+        {"Sergei": 1.0, "Lena": 1.0}
+    assert reel_brief.parse_cast_share(None, ("Sergei",)) is None
+    with pytest.raises(ValueError, match="NAME=WEIGHT"):
+        reel_brief.parse_cast_share(["Sergei"], ("Sergei",))
+    with pytest.raises(ValueError, match="--cast"):
+        reel_brief.parse_cast_share(["equal"], ())
+
+
+def test_the_cli_writes_the_share_into_spec(tmp_path, monkeypatch, capsys):
+    proj = _project(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["reel_brief", "build", "--project", str(proj),
+                                      "--length", "45", "--mood", "calm", "--hook", "h",
+                                      "--cast", "Sergei", "--cast", "Lena",
+                                      "--cast-share", "equal", "--out-dir", str(tmp_path)])
+    with pytest.raises(SystemExit):
+        reel_brief.main()
+    assert Spec.from_json(tmp_path / "SPEC.json").cast_share == {"Sergei": 1.0, "Lena": 1.0}
+
+
+def test_cast_share_refuses_a_name_given_twice():
+    with pytest.raises(ValueError, match="twice"):
+        reel_brief.parse_cast_share(["Lena=1", "Lena=2"], ("Lena",))
