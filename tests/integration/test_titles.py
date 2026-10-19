@@ -132,3 +132,20 @@ def test_an_icon_merged_into_the_title_font_draws_ink_where_the_bare_font_draws_
     merged = fonts.cover_glyphs(base, pin, str(tmp_path / "w"), icon_font=icons)
     bare, covered = _ink(base, pin, tmp_path, "bare"), _ink(merged, pin, tmp_path, "covered")
     assert covered > 3 * max(bare, 1), (bare, covered)
+
+
+@pytest.mark.integration
+def test_a_variable_title_font_renders_regular_not_thin(tmp_path):
+    """S19 through real drawtext: Montserrat[wght]'s default instance is weight 100, so
+    the bare variable file draws hairlines; the pinned copy draws Regular strokes."""
+    from scripts.lib import fonts
+    try:
+        var = fonts.resolve_font("Montserrat")
+    except ValueError:
+        pytest.skip("Montserrat is not installed (bash setup.sh installs it)")
+    from fontTools.ttLib import TTFont
+    if "fvar" not in TTFont(var):
+        pytest.skip("the installed Montserrat is a static file — nothing to pin")
+    pinned = fonts.static_instance(var, str(tmp_path / "w"))
+    thin, regular = _ink(var, "HELLO", tmp_path, "thin"), _ink(pinned, "HELLO", tmp_path, "reg")
+    assert regular > 1.5 * thin, (thin, regular)

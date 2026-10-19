@@ -62,7 +62,8 @@ Announce on entry: **"Using titles to author the reel's on-screen text."**
    disappears; its heavier 7px border plus an offset shadow is what a plain
    outline lacks (this is what the 2026-08-03 real run hit against bright
    water). Default `font="system"` — it always renders, no setup required. A
-   named font (Montserrat / Inter / Bebas Neue / Oswald) needs the curated set,
+   named font (Montserrat / Inter / Bebas Neue / Oswald — a variable one is drawn at
+   Regular weight) needs the curated set,
    which `bash setup.sh` installs as baseline; a named-but-uninstalled font is
    not a silent fallback — `deliver` fails loud instead (Landmines, below).
 3. **Build.** Run the authoring script (explicit args; the user never types

@@ -406,7 +406,7 @@ def make_ttf():
         pen.moveTo((100, 0)); pen.lineTo((100, 700)); pen.lineTo((600, 700))
         pen.lineTo((600, 0)); pen.closePath()
 
-    def build(path, cps, *, variable=False, cff=False, composite=False):
+    def build(path, cps, *, variable=False, cff=False, composite=False, default_wght=400):
         cps = sorted(set(cps))                 # a repeated letter is one glyph
         names = [".notdef"] + [f"g{cp:x}" for cp in cps] + (["base"] if composite else [])
         fb = FontBuilder(1000, isTTF=not cff)
@@ -443,7 +443,7 @@ def make_ttf():
         fb.setupOS2(sCapHeight=700)
         fb.setupPost()
         if variable:
-            fb.setupFvar([("wght", 100, 400, 900, "Weight")], [])
+            fb.setupFvar([("wght", 100, default_wght, 900, "Weight")], [])
             fb.setupGvar({})
         fb.save(str(path))
         return str(path)
