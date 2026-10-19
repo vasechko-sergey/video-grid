@@ -10,6 +10,16 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.21.0 — 2026-10-19
+
+- **Titles can carry icons.** A character the title font lacks (📍, 🗓, …) is drawn
+  from the monochrome Noto Emoji font, merged into a copy of the title font at render;
+  a character no font draws is refused by name instead of rendering an empty box.
+  `titles check` reports both. **Run `bash setup.sh` once** — it now installs
+  `font-noto-emoji`; `verify_runtime` warns when it is missing. Invisible selectors and
+  joiners (the U+FE0F after 🗓) need no glyph. The second real run's agent built this
+  font by hand.
+
 ## 0.20.2 — 2026-10-19
 
 - **Naming the cast asks about people, not specks.** Every cast candidate gets a review

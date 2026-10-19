@@ -11,7 +11,7 @@ from pathlib import Path
 
 from PIL import ImageFont
 
-from scripts.lib.fonts import resolve_font
+from scripts.lib.fonts import cover_glyphs, resolve_font
 from scripts.lib import safezones
 
 POSITIONS: tuple[str, ...] = ("top", "center", "bottom")
@@ -314,7 +314,10 @@ def build_filterchain(titles: Titles, work_dir: str, resolve=resolve_font,
     measure = measure or _measure
     parts: list[str] = []
     for i, t in enumerate(titles.items):
-        font = resolve(t.font)
+        # Every character drawn, or refused by name: an icon the title font lacks is
+        # merged in from the icon font; anything else would be an empty box on screen
+        # that nothing notices (retro 2026-10-16 S13).
+        font = cover_glyphs(resolve(t.font), t.text, str(work / "fonts"))
         style = _STYLE_FRAGMENTS[t.style]
         end = t.start + t.dur
         for j, (text, appears, x_expr, y_drop) in enumerate(_layers(t, font, measure)):

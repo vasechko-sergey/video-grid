@@ -387,3 +387,64 @@ def fake_render():
         monkeypatch.setattr(edl_to_reel.track, "ensure_model", lambda m: None)
         return FakeRender(tuple(src_dims), delivery, pan_aware)
     return _install
+
+
+@pytest.fixture
+def make_ttf():
+    """make_ttf(path, codepoints, *, variable=False, cff=False, composite=False) -> the
+    path of a minimal font drawing a filled 500x700 square for every codepoint given.
+    `variable` adds a one-axis fvar/gvar (no deltas); `cff` writes CFF outlines instead
+    of glyf; `composite` makes every mapped glyph a composite referencing a base square.
+    The glyph-cover tests (retro 2026-10-16 S13) need fonts they control, without
+    depending on what is installed."""
+    from fontTools.fontBuilder import FontBuilder
+    from fontTools.pens.t2CharStringPen import T2CharStringPen
+    from fontTools.pens.ttGlyphPen import TTGlyphPen
+    from fontTools.ttLib.tables._g_l_y_f import Glyph, GlyphComponent
+
+    def square(pen):
+        pen.moveTo((100, 0)); pen.lineTo((100, 700)); pen.lineTo((600, 700))
+        pen.lineTo((600, 0)); pen.closePath()
+
+    def build(path, cps, *, variable=False, cff=False, composite=False):
+        cps = sorted(set(cps))                 # a repeated letter is one glyph
+        names = [".notdef"] + [f"g{cp:x}" for cp in cps] + (["base"] if composite else [])
+        fb = FontBuilder(1000, isTTF=not cff)
+        fb.setupGlyphOrder(names)
+        fb.setupCharacterMap({cp: f"g{cp:x}" for cp in cps})
+        if cff:
+            def cs(draw):
+                p = T2CharStringPen(700, None)
+                if draw:
+                    square(p)
+                return p.getCharString()
+            fb.setupCFF("T-Regular", {"FullName": "T"},
+                        {n: cs(n != ".notdef") for n in names}, {})
+        else:
+            pen = TTGlyphPen(None)
+            square(pen)
+            sq, empty = pen.glyph(), TTGlyphPen(None).glyph()
+            glyphs = {}
+            for n in names:
+                if n == ".notdef":
+                    glyphs[n] = empty
+                elif composite and n != "base":
+                    g = Glyph()
+                    comp = GlyphComponent()
+                    comp.glyphName, comp.x, comp.y, comp.flags = "base", 0, 0, 0
+                    g.numberOfContours, g.components = -1, [comp]
+                    glyphs[n] = g
+                else:
+                    glyphs[n] = sq
+            fb.setupGlyf(glyphs)
+        fb.setupHorizontalMetrics({n: (700, 100) for n in names})
+        fb.setupHorizontalHeader(ascent=800, descent=-200)
+        fb.setupNameTable({"familyName": "T", "styleName": "Regular"})
+        fb.setupOS2(sCapHeight=700)
+        fb.setupPost()
+        if variable:
+            fb.setupFvar([("wght", 100, 400, 900, "Weight")], [])
+            fb.setupGvar({})
+        fb.save(str(path))
+        return str(path)
+    return build

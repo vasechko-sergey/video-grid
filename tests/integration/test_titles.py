@@ -103,3 +103,32 @@ def test_word_reveal_with_fade_burns_into_a_real_encode(tmp_path):
     proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi", "-i", "color=c=gray:s=160x284:d=3",
               "-vf", chain, "-frames:v", "1", str(out)])
     assert out.exists() and out.stat().st_size > 0
+
+
+def _ink(font, text, tmp_path, name):
+    """White text on black through real drawtext; the count of lit pixels."""
+    import numpy as np
+    tf = tmp_path / f"{name}.txt"
+    tf.write_text(text)
+    raw = proc.run([ffbin.ffmpeg(), "-v", "error", "-f", "lavfi", "-i",
+                    "color=c=black:s=320x160:d=1:r=1", "-vf",
+                    f"drawtext=fontfile='{font}':textfile='{tf}':fontsize=96:"
+                    f"fontcolor=white:x=40:y=20", "-frames:v", "1", "-f", "rawvideo",
+                    "-pix_fmt", "gray", "-"]).stdout
+    return int((np.frombuffer(raw, np.uint8) > 128).sum())
+
+
+@pytest.mark.integration
+def test_an_icon_merged_into_the_title_font_draws_ink_where_the_bare_font_draws_a_box(
+        tmp_path, make_ttf):
+    """retro 2026-10-16 S13, through real drawtext: the system title font has no map
+    pin, so the bare font draws its .notdef box; the font cover_glyphs builds draws the
+    icon font's glyph (here a filled square) at that place instead."""
+    from scripts.lib import fonts
+    pin = chr(0x1F4CD)
+    base = resolve_font()
+    assert fonts.missing_glyphs(base, pin) == [pin]               # the premise
+    icons = make_ttf(tmp_path / "icons.ttf", [0x1F4CD])
+    merged = fonts.cover_glyphs(base, pin, str(tmp_path / "w"), icon_font=icons)
+    bare, covered = _ink(base, pin, tmp_path, "bare"), _ink(merged, pin, tmp_path, "covered")
+    assert covered > 3 * max(bare, 1), (bare, covered)

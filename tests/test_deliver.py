@@ -48,11 +48,11 @@ def test_deliver_without_titles_has_no_vf(tmp_path, monkeypatch):
     assert "-vf" not in calls[0]
 
 
-def test_deliver_with_titles_injects_drawtext_vf(tmp_path, monkeypatch):
+def test_deliver_with_titles_injects_drawtext_vf(tmp_path, monkeypatch, make_ttf):
     calls = _capture(monkeypatch)
     monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **kw: [])
     f = tmp_path / "f.ttf"
-    f.write_text("x")
+    make_ttf(f, [ord(c) for c in "Hook"])   # a font that draws the title
     tj = tmp_path / "TITLES.json"
     Titles(items=(Title("Hook", 0.0, 2.0, font=str(f)),)).write(tj)
     master, rep = _bound(tmp_path)
@@ -74,11 +74,11 @@ def test_deliver_with_empty_titles_has_no_vf(tmp_path, monkeypatch):
     assert "-vf" not in calls[0]
 
 
-def test_deliver_with_titles_and_audio_muxes_and_burns(tmp_path, monkeypatch):
+def test_deliver_with_titles_and_audio_muxes_and_burns(tmp_path, monkeypatch, make_ttf):
     calls = _capture(monkeypatch)
     monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **kw: [])
     f = tmp_path / "f.ttf"
-    f.write_text("x")
+    make_ttf(f, [ord(c) for c in "Hook"])   # a font that draws the title
     tj = tmp_path / "TITLES.json"
     Titles(items=(Title("Hook", 0.0, 2.0, font=str(f)),)).write(tj)
     master, rep = _bound(tmp_path)
@@ -114,13 +114,13 @@ def test_fade_only_look_stays_on_the_vf_slot(tmp_path, monkeypatch):
     assert not (tmp_path / "look_mask.png").exists()
 
 
-def test_vignette_renders_a_mask_and_moves_to_filter_complex(tmp_path, monkeypatch):
+def test_vignette_renders_a_mask_and_moves_to_filter_complex(tmp_path, monkeypatch, make_ttf):
     calls = _capture(monkeypatch)
     monkeypatch.setattr(deliver_mod.assembly, "probe_stream",
                         lambda p: StreamInfo(1080, 1920, 30.0, "yuv420p", "h264"))
     monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **kw: [])
     f = tmp_path / "f.ttf"
-    f.write_text("x")
+    make_ttf(f, [ord(c) for c in "Hook"])   # a font that draws the title
     tj = tmp_path / "TITLES.json"
     Titles(items=(Title("Hook", 0.0, 2.0, font=str(f)),)).write(tj)
     master, rep = _bound(tmp_path)
@@ -200,13 +200,13 @@ def test_audio_input_index_is_one_without_a_mask(tmp_path, monkeypatch):
     assert "1:a:0" in calls[-1]
 
 
-def test_titles_and_fade_share_one_slot_in_the_right_order(tmp_path, monkeypatch):
+def test_titles_and_fade_share_one_slot_in_the_right_order(tmp_path, monkeypatch, make_ttf):
     # titles first, fade last — the chain order look.chain owns
     calls = _capture(monkeypatch)
     monkeypatch.setattr(deliver_mod.assembly, "probe_duration", lambda p: 10.0)
     monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **kw: [])
     f = tmp_path / "f.ttf"
-    f.write_text("x")
+    make_ttf(f, [ord(c) for c in "Hook"])   # a font that draws the title
     tj = tmp_path / "TITLES.json"
     Titles(items=(Title("Hook", 0.0, 2.0, font=str(f)),)).write(tj)
     master, rep = _bound(tmp_path)

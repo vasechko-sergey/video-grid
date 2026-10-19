@@ -28,7 +28,7 @@ from scripts.lib.models import MODELS
 # excluded, dev-only) + cv2 (a direct import of lib/flow.py; transitive via
 # ultralytics). Import NAMES, not pip names (Pillow→PIL, yt-dlp→yt_dlp).
 _DEPS = ("numpy", "scipy", "PIL", "cv2", "librosa", "ultralytics",
-         "scenedetect", "imagehash", "yt_dlp", "requests", "certifi")
+         "scenedetect", "imagehash", "yt_dlp", "requests", "certifi", "fontTools")
 
 _ROOT = Path(__file__).resolve().parent.parent   # repo root (bin/vg cd's here)
 
@@ -87,6 +87,13 @@ def _probe_font() -> tuple[bool, str]:
         return True, fonts.resolve_font()
     except ValueError:
         return False, f"no usable font found (checked {len(fonts.FONT_CANDIDATES)} candidates)"
+
+
+def _probe_icon_font() -> tuple[bool, str]:
+    try:
+        return True, fonts.resolve_font(fonts.ICON_FONT)
+    except ValueError:
+        return False, f"{fonts.ICON_FONT} is not installed — a title carrying an icon is refused"
 
 
 def _probe_weights() -> tuple[bool, str]:
@@ -173,6 +180,7 @@ _PROBES = {
     "weights": _probe_weights,
     "demucs": _probe_demucs,
     "reid": _probe_reid,
+    "icon_font": _probe_icon_font,
 }
 
 

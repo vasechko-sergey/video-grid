@@ -34,7 +34,7 @@ Rows S1–S17 come from the second real run — evidence and measurements in
 
 | | Item | Size | Source |
 |---|------|------|--------|
-| ○ | **S13 · Titles cannot carry an icon** — the agent downloaded Noto Emoji and merged it into Montserrat with its own fontTools script. | S | [retro 2](retro/2026-10-16-second-real-run.md) S13 |
+| ○ | **S19 · Three of the four named title fonts cannot resolve.** `fonts.FONT_NAMES` maps Montserrat/Inter/Oswald to `*-Regular.ttf`, but the casks install `Montserrat[wght].ttf`, `InterVariable.ttf` (+ CFF `.otf`) and `Oswald[wght].ttf`, so naming one fails with "run bash setup.sh", which cannot fix it — the second run's agent passed the variable font's path by hand. And remapping is not enough: a variable font renders at its DEFAULT instance, which for Montserrat[wght] is weight 100 (Thin). Needs a static instance at a chosen weight. Found by the S13 review, 2026-10-19. | S | retro 2026-10-16 S13 review |
 
 ## P2 — friction
 
