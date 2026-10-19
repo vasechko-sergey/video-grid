@@ -744,6 +744,7 @@ def test_report_md_warns_about_a_lifted_toe_and_names_the_pin():
     # Review finding 1: EDL.json is stamped by this stage and refused once edited, so
     # the pin must go through selection.json and a rebuild.
     assert "selection.json" in line and "edit_plan build" in line and "EDL.json" not in line
+    assert "--pacing" in line
 
 
 def test_report_md_names_the_moods_share_of_a_lift():
@@ -782,6 +783,41 @@ def test_write_match_reports_a_lifted_toe_in_its_status_and_its_log(
     err = capsys.readouterr().err
     assert "toe-lift" in err and "dark.mp4" in err and "20 → 60" in err
     assert "toe-lift" in (tmp_path / "MATCH.md").read_text()
+
+
+def _mood_spec(tmp_path, mood):
+    path = tmp_path / "SPEC.json"
+    path.write_text(json.dumps(Spec(canvas=(1080, 1920), length_s=10.0, mood=mood,
+                                    hook="h").to_dict()))
+    return str(path)
+
+
+def test_write_match_does_not_name_a_lift_the_mood_alone_made(tmp_path, monkeypatch, crop_anchor_rows):
+    """Re-review finding 2: the driver must hand toe_lifts the mood's offset — a unit test
+    that supplies it by hand cannot see the wiring drop. `nostalgic` lifts p5 by +20 on
+    every episode; only the one the MATCH itself lifted past the bar is named."""
+    profs = {"dark.mp4": (20.0, 100.0, 200.0), "b.mp4": (42.0, 100.0, 200.0),
+             "c.mp4": (44.0, 100.0, 200.0)}
+    monkeypatch.setattr(match_grade, "measure_crop",
+                        lambda md, src, route, **k: (profs[src], crop_anchor_rows(profs[src])))
+    geometry_path, _ = _write_geometry(tmp_path, _ep("dark.mp4"), _ep("b.mp4"), _ep("c.mp4"))
+    bias = moodpreset.resolve("nostalgic").tone_bias
+    _, k = matchgrade.biased_target((42.0, 100.0, 200.0), bias)
+    assert bias[0] > matchgrade.TOE_LIFT_WARN and k == 1.0   # the mood alone is past the bar
+    status = match_grade.write_match(geometry_path, spec=_mood_spec(tmp_path, "nostalgic"))
+    assert status["authored"] == 3                           # all three were lifted ...
+    assert [x["index"] for x in status["toe_lifts"]] == [0]  # ... one past the mood
+
+
+def test_write_match_does_not_name_a_shot_a_darkening_mood_barely_moved(
+        tmp_path, monkeypatch, crop_anchor_rows):
+    profs = {"a.mp4": (30.0, 100.0, 200.0), "b.mp4": (46.0, 100.0, 200.0),
+             "c.mp4": (48.0, 100.0, 200.0)}
+    monkeypatch.setattr(match_grade, "measure_crop",
+                        lambda md, src, route, **k: (profs[src], crop_anchor_rows(profs[src])))
+    geometry_path, _ = _write_geometry(tmp_path, _ep("a.mp4"), _ep("b.mp4"), _ep("c.mp4"))
+    status = match_grade.write_match(geometry_path, spec=_mood_spec(tmp_path, "moody"))
+    assert status["toe_lifts"] == []
 
 
 def test_a_rerun_that_keeps_last_runs_pairs_still_names_the_lift(

@@ -383,5 +383,13 @@ def test_toe_lifts_does_not_count_the_moods_own_lift():
     assert matchgrade.toe_lifts(pairs, offset=20.0) == [(1, 20.0, 56.0)]
 
 
+def test_a_mood_that_deepens_the_blacks_does_not_lower_the_bar():
+    """Re-review finding 1: `moody`'s -18 on p5 subtracted as-is made a +2 lift read as
+    +20 — a shot the grade barely moved, named as lifted."""
+    pairs = [((30.0, 90.0, 200.0), (32.0, 100.0, 210.0)),        # +2
+             ((30.0, 90.0, 200.0), (46.0, 100.0, 210.0))]        # +16: past the bar anyway
+    assert matchgrade.toe_lifts(pairs, offset=-18.0) == [(1, 30.0, 46.0)]
+
+
 def test_the_toe_lift_bar_is_fifteen_luma_units():
     assert matchgrade.TOE_LIFT_WARN == 15.0

@@ -150,7 +150,8 @@ guessing a path.
    p5 38 to 60. Look at it with `probe grade --geometry`; if the dark is the
    point, pin it in **`selection.json`**: give the episode `tone_src` and
    `tone_dst` both equal to its measured profile (its `MATCH.md` row), re-run
-   `edit_plan build` with the same flags, then this stage again — it leaves the
+   `edit_plan build` with the flags of the last build (the one that applied
+   `--pacing`), then this stage again — it leaves the
    pinned episode alone as `hand-authored` unless `--force`. Never edit
    `EDL.json` itself: this stage stamped it, and the next reader refuses a
    stamped file edited afterwards.

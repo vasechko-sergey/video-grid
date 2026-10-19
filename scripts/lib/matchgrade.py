@@ -215,12 +215,18 @@ def toe_lifts(pairs: list[tuple[Profile | None, Profile | None]], *,
 
     `pairs` is (tone_src, tone_dst) per episode, as the EDL will ship them — not the
     decisions, so a re-run that leaves last run's pairs alone as hand-authored still
-    names them (review finding 3). `offset` is the mood's own displacement of the toe
-    (bias p5 x scale): a brief that asks for lifted blacks lifts every episode on
-    purpose, and counting it would name most of a `nostalgic` reel (review finding 2)."""
+    names them (review finding 3) — but `offset` is THIS run's, so a re-run with a
+    different brief judges last run's pairs against the wrong excuse.
+
+    `offset` is the mood's own displacement of the toe (bias p5 x scale): a brief that
+    asks for lifted blacks lifts every episode on purpose, and counting it would name
+    most of a `nostalgic` reel (review finding 2). Only a LIFT is excused: a mood that
+    deepens the blacks (`moody`, `epic`) leaves the bar where it is rather than lowering
+    it, or a shot it barely moved would read as lifted (re-review finding 1)."""
+    excuse = max(offset, 0.0)
     return [(i, src[0], dst[0]) for i, (src, dst) in enumerate(pairs)
             if src is not None and dst is not None
-            and dst[0] - offset - src[0] > TOE_LIFT_WARN]
+            and dst[0] - excuse - src[0] > TOE_LIFT_WARN]
 
 
 def _triple(v, what: str) -> Profile:

@@ -262,13 +262,14 @@ def _toe_lift_line(index: int, source: str, lo: float, hi: float, offset: float)
     The pin goes through selection.json, never EDL.json: write_match re-stamps the EDL,
     and EDL.from_json refuses a stamped file edited afterwards (review finding 1)."""
     bar = matchgrade.TOE_LIFT_WARN
-    why = (f"{offset:+.0f} of it the mood's, the rest more than {bar:g} luma" if offset
+    why = (f"{offset:+.0f} of it the mood's, the rest more than {bar:g} luma" if offset > 0
            else f"more than {bar:g} luma")
     return (f"> **toe-lift** — episode {index} ({source}): shadows lifted p5 {lo:.0f} → "
             f"{hi:.0f}, {why}. If the dark is the point (a silhouette, a backlit hook), "
             f"look at it with `probe grade`, then pin it: in selection.json give that "
             f"episode tone_src and tone_dst both equal to its measured profile (its row "
-            f"in MATCH.md), re-run `edit_plan build` with the same flags, then "
+            f"in MATCH.md), re-run `edit_plan build` with the flags of the last build "
+            f"(the one that applied --pacing), then "
             f"`match_grade build` again — it leaves a pinned episode alone as "
             f"hand-authored.")
 
