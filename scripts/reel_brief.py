@@ -42,6 +42,9 @@ def parse_cast_share(values: list[str] | None, cast: tuple) -> dict | None:
         name, sep, weight = v.partition("=")
         if not sep or not name.strip():
             raise ValueError(f"--cast-share takes NAME=WEIGHT (or 'equal'), got {v!r}")
+        if name.strip() in share:
+            raise ValueError(f"--cast-share names {name.strip()!r} twice — give each hero "
+                             f"one weight")
         try:
             share[name.strip()] = float(weight)
         except ValueError as e:

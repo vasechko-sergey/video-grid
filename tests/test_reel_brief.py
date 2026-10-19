@@ -139,3 +139,8 @@ def test_the_cli_writes_the_share_into_spec(tmp_path, monkeypatch, capsys):
     with pytest.raises(SystemExit):
         reel_brief.main()
     assert Spec.from_json(tmp_path / "SPEC.json").cast_share == {"Sergei": 1.0, "Lena": 1.0}
+
+
+def test_cast_share_refuses_a_name_given_twice():
+    with pytest.raises(ValueError, match="twice"):
+        reel_brief.parse_cast_share(["Lena=1", "Lena=2"], ("Lena",))

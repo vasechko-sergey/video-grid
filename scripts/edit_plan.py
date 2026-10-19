@@ -624,17 +624,21 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
                brief_len=brief_len, cast_share=cast_share)
 
 
-def _log_screen_time(edl: EDL) -> None:
+def _log_screen_time(edl: EDL, *, spec_given: bool) -> None:
     """One line at CP2: who is on screen for how long, beside the brief's share when it
     asked. The second real run's brief said "both equally" and REEL_v3 shipped 55/45,
     computed only when the operator asked (retro 2026-10-16 S9)."""
-    rows = [(n, s) for n, s in edl_lib.screen_time(edl.episodes) if n is not None]
+    rows = [(n, sec, sh) for n, sec, sh, _ in edl_lib.screen_rows(edl.episodes, edl.cast_share)
+            if n is not None]
     if not rows:
         return
-    total = sum(e.play_dur() for e in edl.episodes)
-    have = " · ".join(f"{n} {s:.1f}s ({100 * s / total:.0f}%)" for n, s in rows)
-    brief = (f" — brief: {share_line(edl.cast_share)}" if edl.cast_share
-             else " — the brief set no share")
+    have = " · ".join(f"{n} {sec:.1f}s ({sh})" for n, sec, sh in rows)
+    if edl.cast_share:
+        brief = f" — brief: {share_line(edl.cast_share)}"
+    elif spec_given:
+        brief = " — the brief set no share"
+    else:
+        brief = " — no SPEC.json was given, so there is no brief share to compare"
     _log(f"screen time: {have}{brief}")
 
 
@@ -750,7 +754,7 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
                     platform=plat, look=fallback_look,
                     music=ms, brief_len=sp.length_s if sp else None,
                     cast_share=sp.cast_share if sp else None)
-    _log_screen_time(edl)
+    _log_screen_time(edl, spec_given=sp is not None)
     c = edl.constraints
     if c is not None and not c.ok:
         # The user's own stated rule outranks the preset's inference, so its finding is

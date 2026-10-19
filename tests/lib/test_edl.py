@@ -1316,3 +1316,23 @@ def test_screen_time_counts_a_ramp_at_the_length_it_plays():
     slow = _ep(dur=4.0, hero="Lena", ramp={"at": 1.0, "factor": 0.5, "ease": 0.2, "hold": 0.5})
     assert slow.play_dur() > slow.dur
     assert edl_mod.screen_time((slow,)) == [("Lena", round(slow.play_dur(), 3))]
+
+
+def test_a_rule_pin_is_not_a_hero_name():
+    # "largest"/"leftmost" are tracking rules, not identities (models.HERO_RULES)
+    eps = (_ep(dur=2.0, hero="Lena"), _ep(dur=1.0, hero="largest"))
+    assert edl_mod.screen_time(eps) == [("Lena", 2.0), (None, 1.0)]
+
+
+def test_shares_are_of_the_named_heroes_so_they_compare_with_the_brief():
+    md = EDL(episodes=(_ep(dur=4.0, hero="Lena"), _ep(dur=3.0, hero="Sergei"), _ep(dur=2.0)),
+             cast_share={"Lena": 1, "Sergei": 1}).to_markdown()
+    assert "| Lena | 4.0s | 57% | 50% |" in md
+    assert "| Sergei | 3.0s | 43% | 50% |" in md
+    assert "| (no named hero) | 2.0s | – | – |" in md
+
+
+def test_a_briefed_split_with_no_hero_named_in_the_cut_is_the_loudest_finding():
+    md = EDL(episodes=(_ep(dur=5.0),), cast_share={"Lena": 1, "Sergei": 1}).to_markdown()
+    assert "## Screen time" in md
+    assert "| Lena | 0.0s | 0% | 50% |" in md and "| (no named hero) | 5.0s | – | – |" in md

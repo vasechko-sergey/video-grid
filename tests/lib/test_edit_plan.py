@@ -1848,3 +1848,17 @@ def test_write_edit_plan_carries_the_briefs_cast_share_and_reports_screen_time(t
     assert "## Screen time" in (tmp_path / "EDL.md").read_text()
     err = capsys.readouterr().err
     assert "screen time: Lena" in err and "brief: Lena 50% · Sergei 50%" in err
+
+
+def test_screen_time_log_says_when_there_was_no_spec_rather_than_no_share(tmp_path, capsys):
+    from scripts.lib.edl import EDL as _EDL, EDLEpisode
+    ep = EDLEpisode(source="a.mp4", start=0.0, dur=2.0, shot_type="wide",
+                    composition="center", grid="thirds", hero="Lena")
+    edit_plan._log_screen_time(_EDL(episodes=(ep,)), spec_given=False)
+    assert "no SPEC.json was given" in capsys.readouterr().err
+    edit_plan._log_screen_time(_EDL(episodes=(ep,)), spec_given=True)
+    assert "the brief set no share" in capsys.readouterr().err
+    edit_plan._log_screen_time(_EDL(episodes=(ep,), cast_share={"Lena": 1, "Sergei": 1}),
+                               spec_given=True)
+    err = capsys.readouterr().err
+    assert "Sergei 0.0s (0%)" in err and "brief: Lena 50% · Sergei 50%" in err

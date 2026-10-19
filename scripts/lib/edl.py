@@ -21,7 +21,7 @@ from scripts.lib.constraints import ConstraintReport
 from scripts.lib.footage import Cast
 from scripts.lib.look import LookSpec
 from scripts.lib.manifest import DEFAULT_COLOR, LAYOUTS_SUPPORTED, Manifest, validate
-from scripts.lib.models import COMPOSITIONS, GRIDS, MOTIONS, RampSpec
+from scripts.lib.models import COMPOSITIONS, GRIDS, HERO_RULES, MOTIONS, RampSpec
 from scripts.lib.moodpreset import VarietyReport
 from scripts.lib.outro import CAUSE_WHY, OutroFit
 from scripts.lib.project import ProjectConfig, resolve_manifest
@@ -656,40 +656,53 @@ def preflight(edl: EDL, cfg: ProjectConfig, seg_dir: str,
 
 def screen_time(episodes) -> list[tuple[str | None, float]]:
     """[(hero name, played seconds), ...] in order of first appearance; episodes whose
-    hero is not a cast name (a bbox, a track id, none at all) pool under None, last.
-    Played seconds — `play_dur()`, so a ramp counts the time it is on screen."""
+    hero is not a cast name (a bbox, a track id, a rule pin like "largest", none at all)
+    pool under None, last. Played seconds — `play_dur()`, so a ramp counts the time it
+    is on screen."""
     named: dict[str, float] = {}
     other = 0.0
     for e in episodes:
-        if isinstance(e.hero, str) and e.hero.strip():
+        if isinstance(e.hero, str) and e.hero.strip() and e.hero not in HERO_RULES:
             named[e.hero] = named.get(e.hero, 0.0) + e.play_dur()
         else:
             other += e.play_dur()
     out: list[tuple[str | None, float]] = [(n, round(s, 3)) for n, s in named.items()]
-    if other > 0 and named:
+    if other > 0:
         out.append((None, round(other, 3)))
     return out
 
 
-def screen_time_md(episodes, cast_share: dict | None) -> list[str]:
-    """The EDL.md section, or [] when no episode names a hero. A briefed hero who never
-    appears still gets a 0.0s row — that is the finding, not an omission."""
+def screen_rows(episodes, cast_share: dict | None) -> list[tuple[str | None, float, str, str]]:
+    """(name, seconds, share, brief) rows, or [] when there is nothing to compare: no
+    named hero AND no briefed split. Shares are of the NAMED heroes' total, so they read
+    against the brief's own weights; the unnamed pool gets seconds only. A briefed hero
+    who never appears is a 0.0s row — that is the finding, not an omission — and a
+    briefed split with no hero named anywhere is the loudest case, never silence."""
     rows = screen_time(episodes)
-    if not any(n is not None for n, _ in rows):
+    named = [(n, s) for n, s in rows if n is not None]
+    if not named and not cast_share:
         return []
-    have = {n for n, _ in rows}
-    rows = ([r for r in rows if r[0] is not None]
-            + [(n, 0.0) for n in (cast_share or {}) if n not in have]
-            + [r for r in rows if r[0] is None])
-    total = sum(e.play_dur() for e in episodes)
+    have = {n for n, _ in named}
+    named += [(n, 0.0) for n in (cast_share or {}) if n not in have]
+    total = sum(s for _, s in named)
     wsum = sum(cast_share.values()) if cast_share else 0.0
+    out = [(n, s, f"{100 * s / total:.0f}%" if total else "0%",
+            f"{100 * cast_share[n] / wsum:.0f}%" if cast_share and n in cast_share else "–")
+           for n, s in named]
+    out += [(None, s, "–", "–") for n, s in rows if n is None]
+    return out
+
+
+def screen_time_md(episodes, cast_share: dict | None) -> list[str]:
+    """The EDL.md section (see screen_rows), or [] when there is nothing to compare."""
+    rows = screen_rows(episodes, cast_share)
+    if not rows:
+        return []
     out = ["", "## Screen time", ""]
     if cast_share:
-        out += [f"The brief asks {share_line(cast_share)}. Reported, not enforced.", ""]
+        out += [f"The brief asks {share_line(cast_share)}. Shares are of the named heroes' "
+                f"time. Reported, not enforced.", ""]
     out += ["| hero | on screen | share | brief |", "|------|----------:|------:|------:|"]
-    for n, s in rows:
-        brief = (f"{100 * cast_share[n] / wsum:.0f}%" if cast_share and n in cast_share
-                 else "–")
-        out.append(f"| {n if n is not None else '(no named hero)'} | {s:.1f}s | "
-                   f"{100 * s / total:.0f}% | {brief} |")
+    out += [f"| {n if n is not None else '(no named hero)'} | {s:.1f}s | {sh} | {br} |"
+            for n, s, sh, br in rows]
     return out
