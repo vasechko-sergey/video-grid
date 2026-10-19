@@ -315,3 +315,16 @@ def test_no_preset_opens_the_reel_on_black():
     for p in moodpreset.PRESETS:
         assert p.look.head == 0.0, p.name
         assert p.look.tail > 0.0, p.name
+
+
+def test_a_variety_report_names_where_its_asl_band_came_from():
+    p = moodpreset.resolve("nostalgic")
+    avail = {"close": 0, "medium": 0, "wide": 5}
+    rep = moodpreset.evaluate(avail, avail, 7.0, p, asl_from="brief")
+    assert rep.asl_from == "brief" and rep.to_dict()["asl_from"] == "brief"
+    assert moodpreset.VarietyReport.from_dict(rep.to_dict()) == rep
+    plain = moodpreset.evaluate(avail, avail, 7.0, p)
+    assert plain.asl_from == "preset" and "asl_from" not in plain.to_dict()
+    with pytest.raises(ValueError, match="asl_from"):
+        moodpreset.VarietyReport(**{**plain.to_dict(), "asl_band": (2.0, 4.0),
+                                    "gaps": (), "asl_from": "elsewhere"})

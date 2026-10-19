@@ -481,7 +481,8 @@ class EDL:
                               f"`wide`. Shot size is the subject's share of the frame, measured "
                               f"with a person detector — so on footage without people this "
                               f"census describes what it could not see (design 2026-09-10 §2)."]
-            lines += ["", f"ASL {v.asl:.2f}s against the preset's "
+            lines += ["", f"ASL {v.asl:.2f}s against the "
+                          f"{'brief' if v.asl_from == 'brief' else 'preset'}'s "
                           f"{v.asl_band[0]:.1f}–{v.asl_band[1]:.1f}s band "
                           f"(reported, not enforced)."]
             if v.gaps:

@@ -16,7 +16,8 @@ def build_spec(project_path: str, *, length_s: float, mood: str, hook: str,
                reel_count: int = 1, music: str = "auto", music_mode: str = "free",
                style_lean: str = "balanced", platform: str = "", text: str = "",
                ending: str = "", cast: tuple = (), notes: str = "",
-               tone_bias: tuple | None = None, cast_share: dict | None = None) -> Spec:
+               tone_bias: tuple | None = None, cast_share: dict | None = None,
+               asl: tuple | None = None) -> Spec:
     """Read canvas from project.json (fail-loud if absent — reel-brief FOLLOWS
     project-init), then construct+validate a Spec. The project is the single source
     of aspect; build_spec never sources canvas itself."""
@@ -25,7 +26,7 @@ def build_spec(project_path: str, *, length_s: float, mood: str, hook: str,
                 reel_count=reel_count, music=music, music_mode=music_mode,
                 style_lean=style_lean, platform=platform, text=text,
                 ending=ending, cast=tuple(cast), notes=notes, tone_bias=tone_bias,
-                cast_share=cast_share)
+                cast_share=cast_share, asl=asl)
 
 
 def parse_cast_share(values: list[str] | None, cast: tuple) -> dict | None:
@@ -86,6 +87,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="screen-time weight per hero, NAME=WEIGHT (repeatable), or "
                         "'equal' for every --cast name — edit_plan reports the cut's "
                         "screen time against it at CP2. Omit when the brief did not ask")
+    b.add_argument("--asl", default=None,
+                   help="the brief's average shot length as LO,HI seconds (e.g. 6,10 for "
+                        "whole rides) — outranks the mood preset's band, which edit_plan "
+                        "reports the cut against. Omit to take the preset's")
     b.add_argument("--notes", default="", help="free text recorded in SPEC.json")
     b.add_argument("--tone-bias", default=None,
                    help="colour displacement as p5,p50,p95 luma units (e.g. 20,0,-18) — "
@@ -108,7 +113,8 @@ def main() -> None:
                       style_lean=a.style_lean, platform=a.platform, text=a.text,
                       ending=a.ending, cast=tuple(a.cast or ()), notes=a.notes,
                       tone_bias=tone_bias,
-                      cast_share=parse_cast_share(a.cast_share, tuple(a.cast or ())))
+                      cast_share=parse_cast_share(a.cast_share, tuple(a.cast or ())),
+                      asl=tuple(float(v) for v in a.asl.split(",")) if a.asl else None)
     result = write_reel_brief(spec, a.out_dir)
     print(json.dumps(result, indent=2))
     raise SystemExit(0)

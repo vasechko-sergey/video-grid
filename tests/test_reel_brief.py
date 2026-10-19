@@ -144,3 +144,13 @@ def test_the_cli_writes_the_share_into_spec(tmp_path, monkeypatch, capsys):
 def test_cast_share_refuses_a_name_given_twice():
     with pytest.raises(ValueError, match="twice"):
         reel_brief.parse_cast_share(["Lena=1", "Lena=2"], ("Lena",))
+
+
+def test_the_cli_writes_the_briefs_shot_length(tmp_path, monkeypatch):
+    proj = _project(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["reel_brief", "build", "--project", str(proj),
+                                      "--length", "45", "--mood", "calm", "--hook", "h",
+                                      "--asl", "6,10", "--out-dir", str(tmp_path)])
+    with pytest.raises(SystemExit):
+        reel_brief.main()
+    assert Spec.from_json(tmp_path / "SPEC.json").asl == (6.0, 10.0)

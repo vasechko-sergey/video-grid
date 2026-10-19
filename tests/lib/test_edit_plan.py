@@ -1862,3 +1862,18 @@ def test_screen_time_log_says_when_there_was_no_spec_rather_than_no_share(tmp_pa
                                spec_given=True)
     err = capsys.readouterr().err
     assert "Sergei 0.0s (0%)" in err and "brief: Lena 50% · Sergei 50%" in err
+
+
+def test_the_briefs_shot_length_band_outranks_the_presets_and_is_said_out_loud(tmp_path, capsys):
+    """retro 2026-10-16 S5: the first plan cut longboard rides to `nostalgic`'s 2-4 s
+    band and the operator rejected it at CP2. A brief band replaces the preset's in the
+    report, and a cut outside it is named before CP2 — still a report, not a gate."""
+    fp, sp, pp = _write_inputs(tmp_path, _plain_selection())
+    spec_path = _write_spec(tmp_path, mood="nostalgic", asl=(6, 10))
+    result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path), spec=spec_path)
+    assert result["status"] == "written", result
+    v = EDL.from_json(str(tmp_path / "EDL.json")).variety
+    assert (v.asl_band, v.asl_from) == ((6.0, 10.0), "brief")
+    err = capsys.readouterr().err
+    assert "length band: the brief asks 6.0–10.0s" in err
+    assert f"ASL {v.asl:.2f}s is under the brief's 6.0–10.0s band" in err

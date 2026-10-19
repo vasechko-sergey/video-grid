@@ -167,6 +167,7 @@ def test_to_markdown_full_render_whole_string():
         "- **Platform:** tiktok\n"
         "- **Cast:** Anna, Ben\n"
         "- **Cast share:** –\n"
+        "- **Shot length:** –\n"
         "- **Text:** captions\n"
         "- **Ending:** freeze frame\n"
         "- **Notes:** keep it tight"
@@ -255,3 +256,20 @@ def test_cast_share_refuses_a_shape_it_cannot_divide(bad):
 def test_spec_md_prints_the_share_as_percentages():
     md = Spec(**GOOD, cast=("Sergei", "Lena"), cast_share={"Sergei": 1, "Lena": 3}).to_markdown()
     assert "- **Cast share:** Sergei 25% · Lena 75%" in md
+
+
+# --- retro 2026-10-16 S5: the brief's shot length outranks the preset's band ---------
+
+def test_asl_is_the_briefs_shot_length_band():
+    s = Spec(**GOOD, asl=(6, 10))
+    assert s.asl == (6.0, 10.0)
+    assert Spec.from_dict(s.to_dict()) == s
+    assert Spec(**GOOD).asl is None and Spec(**GOOD).to_dict()["asl"] is None
+    assert "- **Shot length:** 6.0–10.0s" in s.to_markdown()
+
+
+@pytest.mark.parametrize("bad", [(0, 5), (5, 5), (10, 6), ("a", 1), (True, 3), (1, 2, 3),
+                                 (1, float("inf"))])
+def test_asl_refuses_a_band_it_cannot_hold(bad):
+    with pytest.raises(ValueError, match="Spec.asl"):
+        Spec(**GOOD, asl=bad)

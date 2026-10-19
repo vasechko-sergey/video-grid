@@ -424,7 +424,8 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
               preset: MoodPreset | None = None,
               rules: Constraints | None = None, platform: str = "",
               look: LookSpec | None = None, music: MusicSpec | None = None,
-              brief_len: float | None = None, cast_share: dict | None = None) -> EDL:
+              brief_len: float | None = None, cast_share: dict | None = None,
+              asl_from: str = "preset") -> EDL:
     """Assemble an EDL from a selection dict; when a pacing Spine is supplied, bind each
     episode to its slot (beat_slot + the FITTED dur, which is the episode's own length plus
     at most a half-beat snap — binding applies a fit, it does not re-time). Each selection
@@ -613,7 +614,7 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
         avail, unmeasured = _available_census(footage, aspect)
         variety = moodpreset.evaluate(avail, used, asl, preset,
                                       waiver=selection.get("variety_waiver"),
-                                      unmeasured=unmeasured)
+                                      unmeasured=unmeasured, asl_from=asl_from)
     # After pacing: binding rewrites `dur` only, which none of the four rule kinds
     # reads — but evaluating the FINAL episode list keeps the report describing the
     # EDL that is actually written.
@@ -698,6 +699,13 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
         _log(f"constraints: {len(rules.rules)} editorial rule(s) from {rules_path}")
     sp = Spec.from_json(spec) if spec else None
     preset = moodpreset.resolve(sp.mood if sp else None)
+    # The brief's own shot-length band outranks the preset's (retro 2026-10-16 S5): the
+    # second run's "calm" resolved to nostalgic's 2.0-4.0 s and the first plan cut whole
+    # rides into 3.3 s pieces. Swapped in once, here, so the variety report and the
+    # length-band reconcile below both read the band the brief asked for.
+    asl_from = "preset"
+    if sp is not None and sp.asl is not None:
+        preset, asl_from = dataclasses.replace(preset, asl=sp.asl), "brief"
     if preset.name == "balanced":
         _log(f"variety: no SPEC mood matched a preset — using the 'balanced' shot mix "
              f"{preset.shot_mix} (a skipped brief must not disable the gate)")
@@ -753,7 +761,7 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
                     aspect=tuple(cfg.canvas), preset=preset, rules=rules,
                     platform=plat, look=fallback_look,
                     music=ms, brief_len=sp.length_s if sp else None,
-                    cast_share=sp.cast_share if sp else None)
+                    cast_share=sp.cast_share if sp else None, asl_from=asl_from)
     _log_screen_time(edl, spec_given=sp is not None)
     c = edl.constraints
     if c is not None and not c.ok:
@@ -771,9 +779,16 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     # not a decision (moodpreset.py's own comment on BALANCED says as much for `look`
     # and `tone_bias`; nothing analogous was ever written for `asl`, which is how this
     # gap survived review — final-findings.md I-1).
-    band_problem = (None if preset.name == "balanced"
+    band_problem = (None if preset.name == "balanced" and asl_from != "brief"
                     else moodpreset.reconcile_band(preset, footage.band))
-    if footage.band is None:
+    if asl_from == "brief":
+        carved = ("its carve band is not recorded (FOOTAGE.json predates 2026-09-03)"
+                  if footage.band is None else
+                  f"footage carved {footage.band[0]:.1f}–{footage.band[1]:.1f}s")
+        _log(f"length band: the brief asks {preset.asl[0]:.1f}–{preset.asl[1]:.1f}s, "
+             f"{carved} — a shot longer than one window is a span [i, j] of adjacent "
+             f"windows")
+    elif footage.band is None:
         _log("length band: not checked — this FOOTAGE.json predates the recorded carve "
              "band (2026-09-03). Re-run footage-intake to record it")
     elif preset.name == "balanced":
@@ -790,6 +805,13 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
                 "finding": {"reason": "length-band", "episode_idx": None,
                             "problems": [band_problem]}}
     v = edl.variety
+    lo, hi = v.asl_band
+    if not lo <= v.asl <= hi:
+        # A report, not a gate — but said BEFORE CP2, where the operator would otherwise
+        # find it by watching the draft (retro 2026-10-16 S5).
+        _log(f"ASL {v.asl:.2f}s is {'under' if v.asl < lo else 'over'} the "
+             f"{'brief' if v.asl_from == 'brief' else 'preset ' + repr(v.preset)}'s "
+             f"{lo:.1f}–{hi:.1f}s band — re-plan the spans before CP2, or say why not")
     _log("variety: preset {} — footage offers {}{}".format(
         v.preset, ", ".join(f"{s} {v.available[s]}" for s in SHOT_TYPES),
         f" ({v.unmeasured} with no detected subject)" if v.unmeasured else ""))
