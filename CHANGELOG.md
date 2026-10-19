@@ -10,6 +10,15 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.18.0 — 2026-10-19
+
+- **The brief sets the shot length.** `reel_brief --asl LO,HI` records the reel's
+  average-shot-length band in `SPEC.asl`; it outranks the mood preset's band in the
+  edit plan's report and length check (`EDL.md` says which band it read). `edit_plan`
+  logs the band and names a cut whose average shot falls outside it, before CP2.
+  The second real run's "calm" brief got `nostalgic`'s 2–4 s and the first plan cut
+  longboard rides into 3.3 s pieces.
+
 ## 0.17.0 — 2026-10-19
 
 - **The brief's hero balance is checked at CP2.** `reel_brief --cast-share equal`

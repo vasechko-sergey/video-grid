@@ -1336,3 +1336,12 @@ def test_a_briefed_split_with_no_hero_named_in_the_cut_is_the_loudest_finding():
     md = EDL(episodes=(_ep(dur=5.0),), cast_share={"Lena": 1, "Sergei": 1}).to_markdown()
     assert "## Screen time" in md
     assert "| Lena | 0.0s | 0% | 50% |" in md and "| (no named hero) | 5.0s | – | – |" in md
+
+
+def test_edl_md_names_the_briefs_band_when_the_brief_set_one():
+    from scripts.lib.moodpreset import VarietyReport
+    counts = {"close": 0, "medium": 0, "wide": 3}
+    v = VarietyReport(preset="nostalgic", available=counts, used=counts, asl=3.33,
+                      asl_band=(6.0, 10.0), asl_from="brief")
+    md = EDL(episodes=(_ep(),), variety=v).to_markdown()
+    assert "ASL 3.33s against the brief's 6.0–10.0s band" in md

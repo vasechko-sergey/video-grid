@@ -168,10 +168,17 @@ class VarietyReport:
     # the census states that the footage offers no close-ups about footage that may be
     # entirely close-ups (§0.2). A subset of the census, never a fourth bucket.
     unmeasured: int = 0
+    # Where asl_band came from: "preset" (the mood's) or "brief" (SPEC.asl, which
+    # outranks it — retro 2026-10-16 S5). The report must say which, because the two
+    # are different promises: a preset band is a default nobody chose.
+    asl_from: str = "preset"
 
     def __post_init__(self) -> None:
         if not (isinstance(self.preset, str) and self.preset):
             raise ValueError("VarietyReport.preset must be the preset's name")
+        if self.asl_from not in ("preset", "brief"):
+            raise ValueError(f"VarietyReport.asl_from must be 'preset' or 'brief', got "
+                             f"{self.asl_from!r}")
         for name in ("available", "used"):
             c = getattr(self, name)
             if not isinstance(c, dict) or set(c) != set(SHOT_TYPES):
@@ -216,7 +223,8 @@ class VarietyReport:
     def to_dict(self) -> dict:
         return {"preset": self.preset, "available": dict(self.available),
                 "used": dict(self.used), "asl": self.asl, "asl_band": list(self.asl_band),
-                "gaps": list(self.gaps), "waiver": self.waiver, "unmeasured": self.unmeasured}
+                "gaps": list(self.gaps), "waiver": self.waiver, "unmeasured": self.unmeasured,
+                **({"asl_from": self.asl_from} if self.asl_from != "preset" else {})}
 
     @classmethod
     def from_dict(cls, d: dict) -> "VarietyReport":
@@ -226,12 +234,13 @@ class VarietyReport:
         return cls(preset=d.get("preset"), available=d.get("available"), used=d.get("used"),
                    asl=d.get("asl"), asl_band=d.get("asl_band"),
                    gaps=tuple(d.get("gaps") or ()), waiver=d.get("waiver"),
-                   unmeasured=d.get("unmeasured") or 0)
+                   unmeasured=d.get("unmeasured") or 0,
+                   asl_from=d.get("asl_from") or "preset")
 
 
 def evaluate(available: dict[str, int], used: dict[str, int], asl: float,
              preset: MoodPreset, waiver: str | None = None,
-             unmeasured: int = 0) -> VarietyReport:
+             unmeasured: int = 0, asl_from: str = "preset") -> VarietyReport:
     """Refuse only on a size the cut uses ZERO of, that the footage genuinely offers,
     and that the preset genuinely wants (design §7, decision 6). Deviation from the
     target fractions when the size IS used, and the realized ASL, are carried in the
@@ -245,10 +254,11 @@ def evaluate(available: dict[str, int], used: dict[str, int], asl: float,
                          available={s: int(available.get(s, 0)) for s in SHOT_TYPES},
                          used={s: int(used.get(s, 0)) for s in SHOT_TYPES},
                          asl=float(asl), asl_band=preset.asl, gaps=gaps, waiver=waiver,
-                         unmeasured=unmeasured)
+                         unmeasured=unmeasured, asl_from=asl_from)
 
 
-def reconcile_band(preset: MoodPreset, carved: tuple | None) -> str | None:
+def reconcile_band(preset: MoodPreset, carved: tuple | None,
+                   asl_from: str = "preset") -> str | None:
     """The preset's asl band against the band the footage was CARVED with.
     None = compatible, or uncheckable; a string = the refusal's problem text.
 
@@ -271,6 +281,15 @@ def reconcile_band(preset: MoodPreset, carved: tuple | None) -> str | None:
         return None
     if preset.asl[0] >= carved[0]:
         return None
+    if asl_from == "brief":
+        # The band is the brief's own (SPEC.asl, retro 2026-10-16 S5) — name it, and
+        # offer the remedies that apply to a band somebody chose.
+        return (f"the brief's --asl floor {preset.asl[0]:.1f}s is under the footage's "
+                f"{carved[0]:.1f}s carve floor, so nothing splits a window to manufacture "
+                f"a shot that short. Raise --asl LO to at least {carved[0]:.1f}s in the "
+                f"brief, or re-scan with `--win-min {preset.asl[0]:g}`. (The CEILING is "
+                f"not checked: span merge joins adjacent windows, so a longer shot is "
+                f"always reachable.)")
     return (f"preset {preset.name!r} wants shots from {preset.asl[0]:.1f}s, but the "
             f"footage was carved with a {carved[0]:.1f}s floor, so nothing splits a "
             f"window to manufacture one shorter than {carved[0]:.1f}s on demand (the "
