@@ -15,6 +15,9 @@ file is the short "what changed for someone who installs it" list.
 - **A README for the public repository**: what a run looks like stage by stage,
   the requirements, the install, and the honest limits (two real shoots, macOS
   only, music rights are yours).
+- **`setup.sh` fetches the YOLO weights.** `verify-runtime` requires them and names
+  `bash setup.sh` as the remedy, but setup never downloaded them — so on a fresh
+  clone the first run stopped at step 0 with a remedy that could not fix it.
 
 ## 0.22.0 — 2026-10-19
 
