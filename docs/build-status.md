@@ -12,6 +12,7 @@ _Last updated: 2026-10-19._
 
 ## Done
 
+- **Named fonts (2026-10-19, 0.21.1)** — branch `fix/named-fonts`, no design. S19: `FONT_NAMES` → tuples of candidate files (variable first); `fonts.static_instance` + `TITLE_WEIGHT` 400, applied in `build_filterchain` before `cover_glyphs`; `_static` pins wght at 400 too; real-drawtext proof on the installed Montserrat.
 - **Title icons (2026-10-19, 0.21.0)** — branch `fix/title-icons`, no design. S13: `fonts.missing_glyphs` / `cover_glyphs` / `_merge_icons` (variable fonts pinned at their default instance, CFF bases refused with the remedy, merged fonts cached by request hash), wired into `titles.build_filterchain` and `titles check`; `ICON_FONT` = Noto Emoji (`setup.sh` cask); a `make_ttf` conftest fixture builds synthetic fonts; a real-drawtext proof shows the merged icon drawing ink where the bare font drew its .notdef box.
 - **Cast review (2026-10-19, 0.20.2)** — branch `fix/cast-review`, no design. S12: `intake._review_card` (whole-pixel nearest-neighbour enlargement to `CARD_LONG_SIDE` 480, captioned) and `nameable` (`MIN_NAMEABLE_PX` 96) in `cast_candidates.json`; the skill asks per nameable card and once for the rest. Measured on the run's cache: the descriptor does not separate the two heroes (0.13 between them vs 0.25 within one) — recorded on the identity row, no threshold moved.
 - **Run records (2026-10-19, 0.20.1)** — branch `fix/run-records`, no design. S10: `runlayout.VIDEO_EXTS` + `refuse_project_dir_holding_footage`, called by `project_init`; skill names `<footage>/montage`. S11: `edl_to_reel._cut_summary` always in the note (reason first when given), `deliver._since_last` compares EDL digests with the previous attestation; the router's episodes page passes `--changelog` at `--from-geometry`.
@@ -7095,7 +7096,7 @@ _Last updated: 2026-10-19._
 
 ## Next action
 
-> **2026-10-19: the second run's rows S1–S13 and S18 are fixed (0.15.2–0.21.0).** Open: S19 (P1, found by the S13 review — three named title fonts cannot resolve, and a variable font renders Thin) and P2 S14–S17. The user re-runs `bash setup.sh` (it now installs `font-noto-emoji`), updates the plugin and pushes before the next run. Every blockquote below this one is history.
+> **2026-10-19: the second run's rows S1–S13 and S18 are fixed (0.15.2–0.21.0).** S19 (found by the S13 review) is fixed in 0.21.1. Open: P2 S14–S17. The user re-runs `bash setup.sh` (it now installs `font-noto-emoji`), updates the plugin and pushes before the next run. Every blockquote below this one is history.
 
 > **2026-10-13: the next action is the second real run, not a slice.** The user
 > updates the installed plugin (`claude plugin update video-grid@video-grid` and a

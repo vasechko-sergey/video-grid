@@ -10,6 +10,14 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.21.1 — 2026-10-19
+
+- **The named title fonts resolve again.** Montserrat, Inter and Oswald pointed at
+  `*-Regular.ttf` files the brew casks no longer install, so naming one failed with a
+  remedy that could not fix it. They now find the variable fonts the casks do install,
+  and a variable font is drawn at Regular weight — drawtext alone draws its default
+  instance, which for Montserrat is Thin.
+
 ## 0.21.0 — 2026-10-19
 
 - **Titles can carry icons.** A character the title font lacks (📍, 🗓, …) is drawn
