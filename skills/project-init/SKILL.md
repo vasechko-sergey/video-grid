@@ -35,9 +35,12 @@ guessing a path.
 
 3. Run the deterministic writer (never hand-write project.json):
    ```bash
-   "$VG" scripts.project_init --purpose <p> --quality <q> --project-dir <dir>
+   "$VG" scripts.project_init --purpose <p> --quality <q> --project-dir <footage>/montage
    # custom aspect: --purpose custom --canvas 4:5 ; explicit: --delivery exact:1080x1920
    ```
+   `--project-dir` is the RUN directory, `<footage>/montage` — never the footage
+   folder itself, which intake scans for clips (the tool refuses a directory that
+   holds the video files; the second real run wrote `project.json` there first).
 4. Read back the resolved `{canvas, delivery}` from the printed `project.json` and confirm with the user before any episodes are processed.
 
 ## Ask, don't guess
