@@ -60,6 +60,13 @@ motion. A span stays within **one clip**, its indices must be **adjacent**, and 
 **cannot cross a scene cut** — the build refuses that, naming the cut (split into two
 episodes there). `start_offset` still applies, moving the merged in-point later.
 
+**Plan to the shot-length band the build log names** — `length band: the brief asks
+…` when `SPEC.asl` is set, else the mood preset's. A window is only 1–4 s, so a shot
+inside a 6–10 s band IS a span; size every span to the whole action, not to the
+window grid. The build says so when the cut's ASL falls outside the band — re-plan
+before CP2 rather than show it (the second real run's first plan cut longboard rides
+into 13 pieces of 3.3 s and was rejected).
+
 **Launcher and references.** Run every pipeline step through the repo's launcher
 `bin/vg`, never a bare `python`, and resolve every `references/…` read the same
 way. `setup.sh` records the runtime's location at

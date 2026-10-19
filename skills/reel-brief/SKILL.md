@@ -45,7 +45,12 @@ Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
 2. **Ask one question at a time** — do not batch. Cover: reel count · platform ·
    target length (seconds) · mood · hook (the opening) · music (a track / "auto" /
    "none") + `music.mode` (local / free / any — default free, the safe distribution
-   lane) · style-lean (classic / balanced / trend) · on-screen text · ending · cast.
+   lane) · style-lean (classic / balanced / trend) · shot length · on-screen text ·
+   ending · cast. **Shot length** is its own question, asked in the genre's terms
+   (quick cuts 1–3 s · medium 3–6 s · whole actions 6–10 s) and recorded with
+   `--asl LO,HI`: it outranks the mood preset's band, which is a default nobody chose.
+   Style-lean is HOW the cut feels (classic vs trend), never how long a shot is — do not
+   describe either option as "long takes".
    `hook` and `ending` describe **shots** for the editor; `--text` is the **literal
    words** the reel shows (the titles stage drafts exactly them) — ask for the
    exact wording, never record a description of it. When the reel has more than one
@@ -63,7 +68,7 @@ Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
          --length 30 --mood "…" --hook "…" \
          [--reel-count 1] [--music …] [--music-mode free] [--style-lean balanced] \
          [--platform …] [--text …] [--ending …] [--cast NAME]... \
-         [--cast-share equal | --cast-share NAME=WEIGHT ...] [--notes …] \
+         [--cast-share equal | --cast-share NAME=WEIGHT ...] [--asl LO,HI] [--notes …] \
          --out-dir <run>/reels/<reel>
 
    It validates the fields and writes `SPEC.json` + `SPEC.md`. A `ValueError` names
