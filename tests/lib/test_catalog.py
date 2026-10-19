@@ -73,7 +73,7 @@ class _FakeResp:
 
 def _mock_urlopen(monkeypatch, body):
     monkeypatch.setattr(catalog.urllib.request, "urlopen",
-                        lambda req, timeout=0: _FakeResp(_json.dumps(body)))
+                        lambda req, timeout=0, context=None: _FakeResp(_json.dumps(body)))
 
 
 def test_search_itunes_parses(monkeypatch):
@@ -209,3 +209,35 @@ def test_candidate_from_dict_rejects_a_non_object_top_level(d, name):
     assert "re-run music-source" in msg                  # the remedy
     for bad in ("has no attribute", "not iterable", "not subscriptable", "indices must be"):
         assert bad not in msg                            # not a laundered low-level exception
+
+
+def test_every_request_verifies_against_certifi_not_the_interpreters_store(monkeypatch, tmp_path):
+    """The second real run (retro 2026-10-16 S3): a python.org interpreter ships no CA
+    bundle until its 'Install Certificates' script is run, so every Deezer request failed
+    CERTIFICATE_VERIFY_FAILED and the agent prefixed every music command with
+    SSL_CERT_FILE. Both transports must carry a context built on certifi's bundle."""
+    import certifi
+    import ssl
+    built, seen = [], []
+    real = ssl.create_default_context
+
+    def spy(*a, **kw):
+        built.append(kw.get("cafile"))
+        return real(*a, **kw)
+
+    monkeypatch.setattr(catalog.ssl, "create_default_context", spy)
+
+    class _Stream(_FakeResp):                    # copyfileobj reads in sized chunks
+        def read(self, n=-1):
+            body, self._body = self._body, b""
+            return body
+
+    def fake(req, timeout=0, context=None):
+        seen.append(context)
+        return _Stream(_json.dumps({"results": []}))
+
+    monkeypatch.setattr(catalog.urllib.request, "urlopen", fake)
+    catalog._get_json("https://example.invalid/x")
+    catalog.http_download("https://example.invalid/y", tmp_path / "y.bin")
+    assert built == [certifi.where(), certifi.where()]
+    assert len(seen) == 2 and all(isinstance(c, ssl.SSLContext) for c in seen)
