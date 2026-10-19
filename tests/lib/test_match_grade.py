@@ -197,7 +197,7 @@ def test_write_match_rewrites_the_edl_and_writes_md(tmp_path, monkeypatch, crop_
                       # verbatim as derived from the RECORDED project path (relative
                       # here, like geo.edl), never resolve()d
                       "regions_at": "REGIONS.json",
-                      "authored": 2, "skipped": {}}
+                      "authored": 2, "skipped": {}, "toe_lifts": []}
     back = EDL.from_json(edl_path)                     # the EDL was rewritten in place
     assert back.tone_target == target
     # attested-run Task 2: match_grade now routes its rewrite through edl.write_edl,
@@ -725,3 +725,38 @@ def test_the_json_twin_carries_the_mood_displacement(tmp_path, monkeypatch, crop
     report = matchgrade.MatchReport.from_json(tmp_path / "MATCH.json")
     assert (report.mood, report.bias_source) == ("nostalgic", "the nostalgic preset")
     assert report.bias == moodpreset.resolve("nostalgic").tone_bias
+
+
+# --- second real run S17: a lifted toe is said out loud ---
+
+def test_report_md_warns_about_a_lifted_toe_and_names_the_pin():
+    target = (60.0, 100.0, 210.0)
+    decisions = [matchgrade.ToneDecision(0, "author", "authored", measured=(38.0, 90.0, 200.0),
+                                         tone_src=(38.0, 90.0, 200.0), tone_dst=target),
+                 matchgrade.ToneDecision(1, "author", "authored", measured=(55.0, 95.0, 205.0),
+                                         tone_src=(55.0, 95.0, 205.0), tone_dst=target)]
+    md = match_grade._report_md(["hook.mp4", "b.mp4"], target, decisions, eps=4.0)
+    assert md.count("**toe-lift**") == 1
+    line = next(x for x in md.splitlines() if "**toe-lift**" in x)
+    assert "episode 0" in line and "hook.mp4" in line and "38 → 60" in line
+    assert "tone_dst" in line and "tone_src" in line
+
+
+def test_report_md_is_silent_when_no_toe_is_lifted():
+    target = (20.0, 110.0, 210.0)
+    decisions = [matchgrade.ToneDecision(0, "author", "authored", measured=(10.0, 100.0, 150.0),
+                                         tone_src=(10.0, 100.0, 150.0), tone_dst=target)]
+    assert "toe-lift" not in match_grade._report_md(["a.mp4"], target, decisions, eps=4.0)
+
+
+def test_write_match_reports_a_lifted_toe_in_its_status_and_its_log(
+        tmp_path, monkeypatch, crop_anchor_rows, capsys):
+    dark, ok1, ok2 = (20.0, 90.0, 200.0), (60.0, 100.0, 210.0), (62.0, 104.0, 212.0)
+    by = {"dark.mp4": dark, "b.mp4": ok1, "c.mp4": ok2}
+    monkeypatch.setattr(match_grade, "measure_crop",
+                        lambda md, src, route, **k: (by[src], crop_anchor_rows(by[src])))
+    geometry_path, _ = _write_geometry(tmp_path, _ep("dark.mp4"), _ep("b.mp4"), _ep("c.mp4"))
+    status = match_grade.write_match(geometry_path)
+    assert status["toe_lifts"] == [{"index": 0, "source": "dark.mp4", "from": 20.0, "to": 60.0}]
+    err = capsys.readouterr().err
+    assert "toe-lift" in err and "dark.mp4" in err and "20 → 60" in err

@@ -40,9 +40,6 @@ Rows S1–S17 come from the second real run — evidence and measurements in
 | | Item | Size | Source |
 |---|------|------|--------|
 | ○ | **S14 · Judge and reviewer prompts are filled by hand** — `episode_qc pack`/`reel-review` leave placeholders; the agent wrote two fill scripts. | S | [retro 2](retro/2026-10-16-second-real-run.md) S14 |
-| ○ | **S15 · `reel_brief` accepts any platform string** — "Instagram Reels" stored, `edit_plan` judged against the generic zone. | S | [retro 2](retro/2026-10-16-second-real-run.md) S15 |
-| ○ | **S16 · Two small refusals** — `crop_aspect "1:1"` refused (only `[1, 1]`). (The `music_find --out-dir` half is fixed in 0.20.0.) | S | [retro 2](retro/2026-10-16-second-real-run.md) S16 |
-| ○ | **S17 · The conductor lifts an intentional silhouette** — the backlit hook measured p5 38, authored toward the reel's 60; caught only because the agent ran `probe grade`, then froze it with an identity pair. | S | [retro 2](retro/2026-10-16-second-real-run.md) S17 |
 
 ## Still waiting on a run
 

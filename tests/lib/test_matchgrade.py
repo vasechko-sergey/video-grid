@@ -356,3 +356,28 @@ def test_montage_status_survives_a_match_json_with_corrupt_regions(tmp_path):
     state, why = montage._match_grade_state(tmp_path)
     assert state == "stale"
     assert "MATCH.json" in why
+
+
+# --- second real run S17: a lifted toe is said out loud ---
+
+def _authored(i, src, dst):
+    return matchgrade.ToneDecision(i, "author", "authored", measured=src,
+                                   tone_src=src, tone_dst=dst)
+
+
+def test_toe_lifts_names_an_authored_pair_that_raises_the_shadows_past_the_bar():
+    """Retro 2026-10-16 S17: the backlit hook measured p5 38 and was authored toward the
+    reel's 60 — a silhouette lifted into grey, caught only because the agent ran
+    `probe grade`. The lift itself is on the decision; nothing said it."""
+    bar = matchgrade.TOE_LIFT_WARN
+    decisions = [
+        _authored(0, (38.0, 90.0, 200.0), (60.0, 100.0, 210.0)),             # +22: named
+        _authored(1, (40.0, 90.0, 200.0), (40.0 + bar, 100.0, 210.0)),       # exactly the bar
+        _authored(2, (80.0, 120.0, 220.0), (60.0, 100.0, 210.0)),            # crushed, not lifted
+        matchgrade.ToneDecision(3, "skip", "within-eps", measured=(10.0, 90.0, 200.0)),
+    ]
+    assert matchgrade.toe_lifts(decisions) == [(0, 38.0, 60.0)]
+
+
+def test_the_toe_lift_bar_is_fifteen_luma_units():
+    assert matchgrade.TOE_LIFT_WARN == 15.0

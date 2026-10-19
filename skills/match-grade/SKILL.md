@@ -142,6 +142,14 @@ guessing a path.
    The stage does not refuse. Either accept a consistency-only grade, or choose a
    mood that pulls inward (`moody`, `nostalgic`) instead of one that asks for
    more highlight headroom than the footage has.
+
+   **`toe-lift` names an episode whose shadows the pair raises by more than 15
+   luma** (also printed to stderr, and in the status JSON's `toe_lifts`). The
+   conductor cannot tell an underexposed shot from one that is dark on purpose —
+   the second real run lifted a backlit silhouette from p5 38 to 60. Look at it
+   with `probe grade --geometry`; if the dark is the point, pin the episode with
+   an identity pair (`tone_dst` equal to its `tone_src` in `EDL.json`), which the
+   conductor then leaves alone as `hand-authored` unless `--force`.
 4. **Nothing further to apply.** Unlike pacing, there is no second
    `edit_plan build` pass here — `write_match` already rewrote `EDL.json`.
    The next stage (`assemble-draft`/`edl_to_reel`) reads the enriched EDL

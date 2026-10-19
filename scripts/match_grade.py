@@ -12,6 +12,7 @@ matchgrade owns the decisions; this driver owns the ffmpeg measuring
 here."""
 import argparse
 import json
+import sys
 from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -219,7 +220,10 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
     elif mood is not None:
         head += "\n\nNo mood matched the brief — the target is the plain median."
     lines = [head, "",
-             f"{n_auth}/{len(decisions)} episodes authored a tone pair.", "",
+             f"{n_auth}/{len(decisions)} episodes authored a tone pair.", ""]
+    for i, lo, hi in matchgrade.toe_lifts(decisions):
+        lines += [_toe_lift_line(i, sources[i], lo, hi), ""]
+    lines += [
              "| # | source | measured (p5/p50/p95) | max Δ | action · reason |",
              "|---|--------|-----------------------|:-----:|-----------------|"]
     for src, d in zip(sources, decisions):
@@ -244,6 +248,17 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
             lines.append(f"| {d.index} | {r['anchor']} | {r['name']} | {r['of']} "
                          f"| {r['fraction'] * 100:.2f}% | {r['value']:.0f} | {fb} |")
     return "\n".join(lines) + "\n"
+
+
+def _toe_lift_line(index: int, source: str, lo: float, hi: float) -> str:
+    """One warning per lifted toe — the same sentence in MATCH.md and the log, because
+    the log is what the agent reads in the moment and MATCH.md what a human reads at the
+    checkpoint (retro 2026-10-16 S17)."""
+    return (f"> **toe-lift** — episode {index} ({source}): shadows lifted p5 {lo:.0f} → "
+            f"{hi:.0f}, more than {matchgrade.TOE_LIFT_WARN:g} luma. If the dark is the "
+            f"point (a silhouette, a backlit hook), look at it with `probe grade`, then pin "
+            f"it: set its tone_dst equal to its tone_src in EDL.json — match-grade leaves "
+            f"an authored pair alone unless --force.")
 
 
 def _find_regions(geo: ReelGeometry) -> Declared:
@@ -337,6 +352,10 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
         # §2.1 distinction — and a claim that lives only in prose cannot be checked,
         # which is the reason this twin exists at all.
         regions=declared.state, regions_at=declared.detail).write(json_path)
+    sources = [e.source for e in edl.episodes]
+    lifts = matchgrade.toe_lifts(decisions)
+    for i, lo, hi in lifts:
+        print(_toe_lift_line(i, sources[i], lo, hi).removeprefix("> "), file=sys.stderr)
     skipped = Counter(d.reason for d in decisions if d.action == "skip")
     return {"status": "written", "edl": geo.edl, "md": str(md_path),
             "json": str(json_path),
@@ -345,7 +364,9 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
             "bias_source": bias_source, "bias_scale": k,
             "regions": declared.state, "regions_at": declared.detail,
             "authored": sum(1 for d in decisions if d.action == "author"),
-            "skipped": dict(skipped)}
+            "skipped": dict(skipped),
+            "toe_lifts": [{"index": i, "source": sources[i], "from": lo, "to": hi}
+                          for i, lo, hi in lifts]}
 
 
 def build_parser() -> argparse.ArgumentParser:

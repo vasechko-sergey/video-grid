@@ -3,6 +3,7 @@ margin table for one platform (canvas fractions); the SAFE region is the rectang
 [left, 1-right] x [top, 1-bottom]. The subject (projected via lib.geometry) must sit
 inside it. Advisory — check_reel reports it, never blocks on it. New platforms are
 new table entries, not new code (mirrors ExportProfile)."""
+import re
 from dataclasses import dataclass
 
 from scripts.lib.geometry import marks_at_times, extent_at_times
@@ -40,13 +41,33 @@ SAFE_ZONES: dict[str, SafeZone] = {
     "reels":   SafeZone(top=0.14, bottom=0.16, left=0.04, right=0.11),
     "shorts":  SafeZone(top=0.10, bottom=0.14, left=0.04, right=0.11),   # youtube
 }
+# Keys are in `_key`'s normal form. The multi-word ones are the apps' own names for
+# the format — "Instagram Reels" was stored as typed on the second real run and judged
+# against the generic zone (retro 2026-10-16 S15).
 _ALIASES = {"instagram": "reels", "ig": "reels", "reel": "reels",
-            "youtube": "shorts", "yt": "shorts"}
+            "instagram reels": "reels", "instagram reel": "reels",
+            "ig reels": "reels", "ig reel": "reels",
+            "youtube": "shorts", "yt": "shorts",
+            "youtube shorts": "shorts", "yt shorts": "shorts",
+            "tik tok": "tiktok"}
+
+
+def _key(platform: str) -> str:
+    """The one normalization every lookup here shares: case, surrounding whitespace,
+    and any run of spaces, hyphens or underscores folded to one space — so
+    "Instagram-Reels" and "  instagram   reels " are the same label."""
+    return re.sub(r"[\s_-]+", " ", (platform or "").strip().lower()).strip()
+
+
+def labels() -> tuple[str, ...]:
+    """Every label that resolves to a zone of its own — the zone names, then the
+    aliases — for a refusal that has to say what it would have accepted."""
+    return tuple(SAFE_ZONES) + tuple(_ALIASES)
 
 
 def safe_zone_for(platform: str) -> SafeZone:
     """Resolve a free-text platform label to its zone; unknown/empty → generic."""
-    key = (platform or "").strip().lower()
+    key = _key(platform)
     key = _ALIASES.get(key, key)
     return SAFE_ZONES.get(key, SAFE_ZONES["generic"])
 
@@ -58,7 +79,7 @@ def zone_name(platform: str) -> str:
     "yt"/"youtube" onto `shorts`, so a message that echoes the caller's own string
     names one table while quoting another's margins. A refusal with no waiver should
     say which table it applied."""
-    key = (platform or "").strip().lower()
+    key = _key(platform)
     key = _ALIASES.get(key, key)
     return key if key in SAFE_ZONES else "generic"
 
@@ -72,7 +93,7 @@ def known(platform: str) -> bool:
     and attested, while the reel is checked against a table it never asked for.
     Callers that want to SAY something (edit_plan's platform log) ask here first.
     Same normalization as `safe_zone_for`, so the two can never disagree."""
-    key = (platform or "").strip().lower()
+    key = _key(platform)
     return _ALIASES.get(key, key) in SAFE_ZONES
 
 

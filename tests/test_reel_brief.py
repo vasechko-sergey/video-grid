@@ -165,3 +165,28 @@ def test_the_cli_records_a_wish_for_known_tracks(tmp_path, monkeypatch):
     with pytest.raises(SystemExit):
         reel_brief.main()
     assert Spec.from_json(tmp_path / "SPEC.json").music_known is True
+
+
+# --- second real run S15: an unknown platform is refused at the brief ---
+
+def test_the_brief_stores_the_zone_a_platform_label_resolves_to(tmp_path):
+    """Retro 2026-10-16 S15: "Instagram Reels" was stored as typed and judged against the
+    generic zone. The brief now stores the zone's own name, so SPEC.md, the EDL and the
+    attestation all say which table applies."""
+    spec = build_spec(_project(tmp_path), length_s=30, mood="calm", hook="h",
+                      platform="Instagram Reels")
+    assert spec.platform == "reels"
+
+
+def test_the_brief_leaves_an_unset_platform_unset(tmp_path):
+    spec = build_spec(_project(tmp_path), length_s=30, mood="calm", hook="h")
+    assert spec.platform == ""
+
+
+def test_the_brief_refuses_a_platform_no_zone_answers_to(tmp_path):
+    with pytest.raises(ValueError) as e:
+        build_spec(_project(tmp_path), length_s=30, mood="calm", hook="h",
+                   platform="facebook")
+    msg = str(e.value)
+    assert "'facebook'" in msg and "generic zone" in msg
+    assert "reels" in msg and "tiktok" in msg and "shorts" in msg

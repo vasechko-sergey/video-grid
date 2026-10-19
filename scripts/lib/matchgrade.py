@@ -199,6 +199,23 @@ def plan(profiles: list[Profile], has_tone: list[bool], target: Profile,
     return out
 
 
+TOE_LIFT_WARN = 15.0   # luma units. A first cut, not a measurement: the one case on
+                       # record is the second real run's backlit hook, lifted p5 38 → 60
+                       # (+22) — a silhouette turned grey, caught only because the agent
+                       # ran `probe grade` (retro 2026-10-16 S17). Below the bar a lifted
+                       # toe is an ordinary exposure match.
+
+
+def toe_lifts(decisions: list[ToneDecision]) -> list[tuple[int, float, float]]:
+    """(index, p5 from, p5 to) for every AUTHORED pair that raises the shadows by more
+    than TOE_LIFT_WARN. The conductor cannot tell an underexposed shot from a dark one
+    on purpose — both read as a low p5 — so it does not refuse; it says so, and the
+    remedy (pin the episode with an identity pair, which the conductor then leaves
+    alone as hand-authored) stays the author's call."""
+    return [(d.index, d.tone_src[0], d.tone_dst[0]) for d in decisions
+            if d.action == "author" and d.tone_dst[0] - d.tone_src[0] > TOE_LIFT_WARN]
+
+
 def _triple(v, what: str) -> Profile:
     """A JSON list of three numbers back into a Profile, refusing anything else by name."""
     if not (isinstance(v, (list, tuple)) and len(v) == 3

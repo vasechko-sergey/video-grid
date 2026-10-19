@@ -12,6 +12,7 @@ VarietyReport from moodpreset, ConstraintReport from constraints — none of
 models/manifest/project/footage/moodpreset/constraints import edl, so no cycle.
 """
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -180,6 +181,16 @@ class EDLEpisode:
             self.hero = tuple(self.hero)
         if isinstance(self.crop_aspect, list):
             self.crop_aspect = tuple(self.crop_aspect)
+        elif isinstance(self.crop_aspect, str) and ":" in self.crop_aspect:
+            # "W:H", the way `project_init --canvas` takes it — "1:1" was refused on
+            # the second real run, only [1, 1] was legal (retro 2026-10-16 S16).
+            m = re.fullmatch(r"\s*(\d+)\s*:\s*(\d+)\s*", self.crop_aspect)
+            if not m or not all(int(v) > 0 for v in m.groups()):
+                raise ValueError(
+                    f"EDLEpisode.crop_aspect {self.crop_aspect!r} is not a ratio — write "
+                    f"'W:H' with two positive integers (\"1:1\", \"4:5\"), [W, H], "
+                    f"'canvas' or 'source'")
+            self.crop_aspect = tuple(int(v) for v in m.groups())
         if isinstance(self.rect, list):
             self.rect = tuple(self.rect)
         if isinstance(self.tone_src, list):
