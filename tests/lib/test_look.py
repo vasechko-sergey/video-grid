@@ -149,3 +149,8 @@ def test_a_tail_of_zero_emits_only_the_fade_in():
 def test_a_head_and_tail_that_meet_are_refused():
     with pytest.raises(ValueError, match="overlap"):
         fade_args(0.8, 1.0, fade_in=0.4)
+
+
+def test_a_long_close_fits_a_reel_that_opens_on_picture():
+    # the old rule (2 * fade > dur) refused this; only the ends that render count
+    assert fade_args(0.8, 1.2, fade_in=0.0) == ["fade=t=out:st=0.400:d=0.800"]

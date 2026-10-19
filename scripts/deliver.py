@@ -119,13 +119,15 @@ def _title_times(items: tuple[Title, ...], i: int, dur: float,
     head = fade if fade_in is None else fade_in
     lo, hi = float(head), float(dur) - float(fade)
     t = items[i]
+    ramps = (f"{fade:g}s bookend fade" if head == fade
+             else f"bookend fades ({head:g}s in, {fade:g}s out)")
     if hi - lo <= 0:
-        return 0.0, (), (f"the {fade:g}s bookend fade covers the whole {dur:g}s reel, so "
-                         f"there is no frame outside a ramp to measure")
+        return 0.0, (), (f"the {ramps} cover{'s' if head == fade else ''} the whole "
+                         f"{dur:g}s reel, so there is no frame outside a ramp to measure")
     w_lo, w_hi = max(t.start, lo), min(t.start + t.dur, hi)
     if w_hi - w_lo <= 0:
         return 0.0, (), (f"the title's window [{t.start:g}, {t.start + t.dur:g}] lies "
-                         f"entirely inside the {fade:g}s bookend fade, where a correctly "
+                         f"entirely inside the {ramps}, where a correctly "
                          f"rendered title is drawn too faint to measure")
     covered = [(it.start, it.start + it.dur) for it in items]
     grid = [lo + (hi - lo) * (k + 0.5) / _WITNESS_GRID for k in range(_WITNESS_GRID)]
@@ -157,8 +159,8 @@ def _verify_look(master: str, out: str, look: LookSpec | None,
     compare two different moments as if they were one. `d_fps` (the DELIVERED file's
     own rate) is also what sizes the fade-out's quantization slack in
     `lookcheck.evaluate` — passed through even when a fade is not declared, since it
-    costs nothing to compute and `evaluate` itself only ever reads it when `fade` is
-    truthy.
+    costs nothing to compute and `evaluate` itself only ever reads it when a fade end
+    is declared.
 
     Titles do not share those samples. A title occupies a band and a window nothing
     else here does, so each gets its own in-window frame plus a pool of title-free

@@ -191,6 +191,37 @@ def test_deliver_cli_passes_platform(monkeypatch, tmp_path):
     assert seen.get("platform") == "tiktok"
 
 
+def test_deliver_cli_passes_the_opening_fade_apart(monkeypatch, tmp_path):
+    from scripts.lib.look import LookSpec
+    seen = {}
+    monkeypatch.setattr(deliver, "deliver",
+                        lambda *a, **k: seen.update(k) or "out/REEL_v1.mp4")
+    rep = tmp_path / "r.json"
+    rep.write_text('{"checks": {}, "episode_count": 0, "fail_reasons": []}')
+    monkeypatch.setattr(sys, "argv",
+                        ["deliver", "m.mp4", "--out-dir", str(tmp_path),
+                         "--scratch-dir", str(tmp_path / "scratch"),
+                         "--report", str(rep), "--fade", "0.8", "--fade-in", "0"])
+    deliver.main()
+    assert seen["look"] == LookSpec(fade=0.8, fade_in=0.0)
+
+
+def test_a_look_with_only_an_opening_fade_still_gets_the_reels_duration(tmp_path, monkeypatch):
+    """has_fade, not .fade: an opening-only look still needs the reel's duration for the
+    overlap check — reading .fade passed dur=0 and fade_args refused the reel."""
+    from scripts.lib.look import LookSpec
+    _fake_encode(monkeypatch)
+    master, rep = _bound(tmp_path)
+    probed = []
+    real = deliver.assembly.probe_duration
+    monkeypatch.setattr(deliver.assembly, "probe_duration",
+                        lambda p: probed.append(p) or (10.0 if p == master else real(p)))
+    monkeypatch.setattr(deliver, "_verify_look", lambda *a, **k: [])
+    deliver.deliver(master, REEL_H264, str(tmp_path / "out"), "", rep,
+                    scratch_dir=str(tmp_path / "s"), look=LookSpec(fade=0.0, fade_in=0.5))
+    assert master in probed
+
+
 def test_deliver_refuses_a_report_with_no_master_digest(tmp_path, monkeypatch):
     _fake_encode(monkeypatch)
     master = tmp_path / "m.mp4"

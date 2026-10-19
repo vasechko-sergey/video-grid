@@ -224,6 +224,12 @@ def test_an_opening_and_closing_fade_that_meet_are_refused(tmp_path):
         mix.mix(_ms(tmp_path), str(tmp_path / "out"), 2.0, fade=1.5, fade_in=0.6)
 
 
+def test_a_long_close_fits_a_reel_whose_sound_opens_without_a_fade(tmp_path, monkeypatch):
+    # the old rule (dur < 2 * fade) refused this; the opening is only ANTICLICK long
+    monkeypatch.setattr(mix.proc, "run", lambda cmd, **k: _R(stderr=_loudnorm_stderr()))
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 1.6, fade=1.5, fade_in=0.0)
+
+
 def test_a_custom_fade_reaches_both_ends(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(mix.proc, "run",

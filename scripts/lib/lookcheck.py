@@ -307,10 +307,10 @@ def evaluate(mid_master: list[np.ndarray], mid_delivered: list[np.ndarray],
 
     `mid_*` are paired frames from the reel's interior. `first_*`/`last_*` are the
     frames at t=0 and the delivery's own last decodable frame respectively, needed
-    only when a fade was declared — the fade is a BOOKEND (`look.fade_args` emits
-    both `fade=t=in` and `fade=t=out`), so both ends must be supplied together or
-    not at all; see `_fade_edge`. `fps` is the DELIVERED file's own frame rate,
-    needed only alongside `fade`: it sizes how much of the fade-out's ramp the last
+    only for the fade end each one proves — `first_*` when an opening fade is
+    declared, `last_*` when a closing one is (`look.fade_args` emits each end only
+    when it is non-zero); see `_fade_edge`. `fps` is the DELIVERED file's own frame
+    rate, needed whenever a fade end is declared: it sizes how much of the fade-out's ramp the last
     decodable frame can still be short of (`FADE_OUT_RESIDUAL_MARGIN`) — fade-in's
     t=0 needs no such slack, since it is frame-exact regardless of fps.
 

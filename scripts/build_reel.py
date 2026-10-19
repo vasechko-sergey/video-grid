@@ -20,6 +20,7 @@ from scripts import check_reel, color_measure, deliver, mix, probe, process_epis
 from scripts.lib import (assembly, color, color_fidelity, episode_qc as qc_lib,
                          gates as gates_lib, reel_orchestration)
 from scripts.lib.models import ReelManifest, MusicSpec, REEL_H264
+from scripts.lib.outro import OutroFit
 
 
 def _log(msg: str) -> None:
@@ -178,7 +179,8 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                             if want else None)
                 # The look's opening and closing fades reach the sound as they reach the
                 # picture. No look → mix keeps its own default; a look with fade=0 → the
-                # author asked for no bookend at all (design 2026-08-13 §5).
+                # author asked for no bookend (design 2026-08-13 §5) — mix still floors
+                # the opening at its anti-click ramp.
                 fade_kw = ({} if rm.look is None
                            else {"fade": rm.look.tail, "fade_in": rm.look.head})
                 if outro_fixed:
@@ -186,7 +188,8 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                     # `line + fade`: its fade is the one that starts on the bar line. The
                     # second real run's REEL_v5 was handed the look's 0.8 instead of the
                     # fit's 1.5 and held full level 0.7s past the line (retro 2026-10-16 S18).
-                    fade_kw = {"fade_in": mix._FADE, **fade_kw, "fade": float(rm.outro["fade"])}
+                    fade_kw = {"fade_in": mix._FADE, **fade_kw,
+                               "fade": OutroFit.from_dict(rm.outro).fade}
                 audio = mix.mix(music, work_dir, check_reel._probe_dur(master),
                                 segments=segments, ambient=rm.ambient, sfx=rm.sfx, **fade_kw)
                 continue                             # need_assemble stays False — clips unchanged, no re-assemble

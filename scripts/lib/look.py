@@ -29,7 +29,7 @@ def _num(v: object) -> bool:
 
 @dataclass
 class LookSpec:
-    """The reel's finish. Both fields are 0 at their identity, and 0 means the
+    """The reel's finish. Every number is 0 at its identity, and 0 means the
     filter is NOT EMITTED — the same convention color.white_balance uses, so a
     LookSpec() renders exactly what this repo rendered before looks existed.
 
