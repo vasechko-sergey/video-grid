@@ -1,3 +1,4 @@
+import os
 import json
 import shutil
 import threading
@@ -1237,15 +1238,37 @@ def test_a_candidate_is_nameable_only_when_its_crop_can_be_recognised(tmp_path):
     assert intake.MIN_NAMEABLE_PX == 96
 
 
-def test_every_candidate_gets_a_card_enlarged_by_whole_pixels(tmp_path):
+def test_every_candidate_gets_its_own_card_enlarged_by_whole_pixels(tmp_path):
     from scripts.lib.intake_cache import CastEntry
-    small = np.full((100, 50, 3), 120, "uint8")
-    big = np.full((600, 300, 3), 60, "uint8")
+    small = np.full((100, 50, 3), 120, "uint8")          # x5 -> 250x500
+    big = np.full((600, 400, 3), 60, "uint8")            # past 480: never enlarged
+    speck = np.full((30, 40, 3), 200, "uint8")           # not nameable — still carded
     entries = [CastEntry("a.mp4", 1, 0.9, _desc(1.0), presence=9.0, crop_rgb=small),
-               CastEntry("b.mp4", 1, 0.8, _desc(0.0, 1.0), presence=1.0, crop_rgb=big)]
+               CastEntry("b.mp4", 1, 0.8, _desc(0.0, 1.0), presence=5.0, crop_rgb=big),
+               CastEntry("c.mp4", 1, 0.7, _desc(0.0, 0.0, 1.0), presence=1.0, crop_rgb=speck)]
     by_source = {m["source"]: m for m in intake.save_cast_candidates(entries, str(tmp_path))}
-    s, b = _Img.open(by_source["a.mp4"]["card"]), _Img.open(by_source["b.mp4"]["card"])
-    assert s.width >= 50 * 5                          # x5: 100 px tall -> 500, past 480
-    assert b.width == 300                             # a large crop is never enlarged
-    assert by_source["a.mp4"]["card"].endswith("card_0.jpg") or \
-        by_source["a.mp4"]["card"].endswith("card_1.jpg")
+    cards = [by_source[s]["card"] for s in ("a.mp4", "b.mp4", "c.mp4")]
+    assert len(set(cards)) == 3 and all(os.path.exists(c) for c in cards)
+    s, b = _Img.open(cards[0]), _Img.open(cards[1])
+    bar = s.height - 500
+    assert s.width == intake.CARD_MIN_W and bar > 0       # 250 wide crop, padded canvas
+    assert b.size == (400, 600 + bar)
+
+
+def test_the_nameable_bar_is_inclusive_at_96(tmp_path):
+    from scripts.lib.intake_cache import CastEntry
+    at = np.full((96, 40, 3), 200, "uint8")
+    under = np.full((95, 40, 3), 90, "uint8")
+    entries = [CastEntry("a.mp4", 1, 0.9, _desc(1.0), presence=9.0, crop_rgb=at),
+               CastEntry("b.mp4", 1, 0.8, _desc(0.0, 1.0), presence=1.0, crop_rgb=under)]
+    by_source = {m["source"]: m for m in intake.save_cast_candidates(entries, str(tmp_path))}
+    assert (by_source["a.mp4"]["nameable"], by_source["b.mp4"]["nameable"]) == (True, False)
+
+
+def test_a_card_enlarges_by_nearest_neighbour_never_smoothing(tmp_path):
+    crop = _Img.fromarray(np.array([[[0, 0, 0], [255, 255, 255]]], "uint8"))   # 2x1
+    card = _Img.open(intake._review_card(crop, tmp_path / "c.png", "#0 · x"))
+    row = np.asarray(card.convert("L"))[-1]
+    k = 480 // 2
+    left = (card.width - 2 * k) // 2
+    assert set(row[left:left + k].tolist()) == {0} and set(row[left + k:left + 2 * k].tolist()) == {255}

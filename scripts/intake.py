@@ -55,6 +55,7 @@ MIN_NAMEABLE_PX = 96     # a candidate whose crop's long side is under this is s
                          # candidates for 2 people, 10 asked about singly — retro 2026-10-16 S12)
 CARD_LONG_SIDE = 480     # a review card enlarges its crop by WHOLE pixels until its long side
                          # reaches this, so a small crop is legible and nothing is invented
+CARD_MIN_W = 360         # the card's narrowest canvas, so its caption is never cut
 _VIDEO_EXTS = runlayout.VIDEO_EXTS          # one list: intake scans it, project_init refuses on it
 DEFAULT_JOBS = 2          # 3 parallel full-clip passes pin every P-core (3x libx264 proxy
                           # alone is ~400s of CPU) and thermally throttle a laptop; 2 is the
@@ -399,8 +400,8 @@ def save_cast_candidates(entries: list[CastEntry], out_dir: str, max_cast: int =
         with Image.open(dest) as im:
             crop_w, crop_h = im.size
             card = _review_card(im, Path(out_dir) / "cast_review" / f"card_{i}.jpg",
-                                f"#{i} · {Path(e.source).name} · {e.presence:.0f}s on screen "
-                                f"· {crop_w}x{crop_h}px")
+                                f"#{i} · {e.presence:.0f}s on screen · {crop_w}x{crop_h}px "
+                                f"· {Path(e.source).name}")
         manifest.append({"id": i, "source": e.source, "conf": round(float(e.conf), 3),
                          "presence": round(float(e.presence), 2),
                          "crop": dest, "crop_px": [crop_w, crop_h],
@@ -419,10 +420,17 @@ def _review_card(crop: Image.Image, dest: Path, label: str) -> str:
     long_side = max(crop.size)
     k = max(1, math.ceil(CARD_LONG_SIDE / long_side)) if long_side < CARD_LONG_SIDE else 1
     big = crop.convert("RGB").resize((crop.width * k, crop.height * k), Image.NEAREST)
-    bar = 28
-    card = Image.new("RGB", (big.width, big.height + bar), (24, 24, 24))
-    card.paste(big, (0, bar))
-    ImageDraw.Draw(card).text((6, 7), label, fill=(240, 220, 120))
+    # A person is tall and narrow: an enlarged hero crop can be ~240 px wide, which cut
+    # the one-line caption mid-word. Two lines on a canvas at least CARD_MIN_W wide, the
+    # crop centred under them.
+    lines = label.split(" · ", 1)
+    bar = 14 * len(lines) + 10
+    width = max(big.width, CARD_MIN_W)
+    card = Image.new("RGB", (width, big.height + bar), (24, 24, 24))
+    card.paste(big, ((width - big.width) // 2, bar))
+    draw = ImageDraw.Draw(card)
+    for j, line in enumerate(lines):
+        draw.text((6, 5 + 14 * j), line, fill=(240, 220, 120))
     dest.parent.mkdir(parents=True, exist_ok=True)
     card.save(dest, quality=90)
     return str(dest)
