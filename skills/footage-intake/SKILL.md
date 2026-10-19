@@ -104,12 +104,19 @@ guessing a path.
    show a small one**: on the 2026-06 run seven of fifteen candidates were
    under 5000 px total and three were about 13x13, and the operator was asked
    to name them anyway. A candidate too small to identify is a candidate to
-   skip, not to guess at; nothing upscales it, because an interpolated 13x12
-   crop looks like evidence and is not. Candidates are
-   **presence-ranked** — clustered into real identities (a person re-ID
-   embedding, not a colour/clothing feature) and sorted by on-screen seconds
-   across all clips, most-visible first — so each entry is one real person, not
-   one track, and entry 0 is normally the easiest to recognize. **Ask the human
+   skip, not to guess at; nothing interpolates it, because a smoothed 13x12
+   crop looks like evidence and is not. **Show each candidate's `card`**
+   (`cast_review/card_{i}.jpg`: the crop enlarged by whole pixels, captioned)
+   **one per question** for every entry with `nameable: true`, and ask about all
+   the `nameable: false` ones (long side under 96 px) in ONE question — "skip
+   these N background figures?" — never one by one: the second real run asked
+   ten such questions in a row. Candidates are **presence-ranked** — clustered
+   by a person re-ID embedding and sorted by on-screen seconds, most-visible
+   first — but on small or distant figures the clustering is NOT identity: on
+   the second run one person surfaced as two entries and the other as three,
+   and the man's and the woman's descriptors sat closer together (cosine 0.13)
+   than the man's own front and back (0.25). Expect the same person on several
+   cards; the human's answer is the identity, not the cluster. **Ask the human
    who each hero is** — any domain (family, athletes, friends, a vlogger); name
    the people you recognize and skip the rest. If the reel is scenery or the
    footage has no people (empty manifest), skip this step cleanly. Never name a
