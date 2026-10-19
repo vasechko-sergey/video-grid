@@ -60,7 +60,7 @@ def _expected_native_dims(sample_clip):
     """What draft SHOULD render for the (9, 16) canvas + native delivery _project()
     writes: fit the aspect into the SOURCE's own real, independently-probed pixels
     (the same don't-upscale fit layout.resolve uses for a native canvas — lib/
-    layout.py:62), then run that real magnitude through Delivery. native has no
+    layout.py's resolve), then run that real magnitude through Delivery. native has no
     size of its own, so hardcoding an expected pixel count here would be as wrong
     as the bug this test exists to catch; this derives it instead."""
     src_w, src_h = _dims(sample_clip)

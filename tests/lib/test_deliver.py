@@ -376,10 +376,10 @@ def test_title_band_pads_the_extent_and_clamps_to_the_frame():
     assert lo < top * 1920 and hi > bottom * 1920      # padded on BOTH sides
     assert 0 <= lo < hi <= 1920
     # the clamps, at both ends. A big enough font pushes the padded top negative
-    # (pad 0.6*3/18 = 0.100 of h against the reels zone's 0.08 top margin), and a
+    # (pad 0.6*3/18 = 0.100 of h against the generic zone's 0.08 top margin), and a
     # staircase pushes the padded bottom past the frame.
     big_top = Title("hi", 0.0, 1.0, pos="top", scale=3.0)
-    assert deliver._title_band(big_top, 1920, "reels")[0] == 0
+    assert deliver._title_band(big_top, 1920, "")[0] == 0
     stair = Title("a\nb\nc\nd", 0.0, 4.0, pos="bottom", reveal="stair", reveal_step=0.4)
     assert deliver._title_band(stair, 1920, "reels")[1] == 1920
 

@@ -1,4 +1,4 @@
-"""Titles: on-screen text (hook / ending / captions) rendered into the reel at
+"""Titles: on-screen text (the brief's literal words) rendered into the reel at
 deliver (design docs/specs/2026-07-13-titles-design.md, §5.16). A hard config-spec —
 Title/Titles validate-and-raise in __post_init__, JSON round-trip, markdown preview —
 like edl.py's EDL / spec.py's Spec. build_filterchain (Task 2) is the drawtext chain

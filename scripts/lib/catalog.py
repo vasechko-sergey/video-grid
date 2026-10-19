@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import urllib.error
@@ -15,6 +16,8 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+
+import certifi
 
 SOURCES = ("jamendo", "ccmixter", "youtube", "itunes", "deezer")
 
@@ -105,12 +108,27 @@ def _free_source() -> str:
     return "jamendo" if _jamendo_client_id() else "ccmixter"
 
 
+def _ssl_context() -> ssl.SSLContext:
+    """Verify against certifi's CA bundle AND the interpreter's own store.
+
+    A python.org interpreter ships with NO usable store until its "Install
+    Certificates" script is run, and urllib then fails every HTTPS request with
+    CERTIFICATE_VERIFY_FAILED — the second real run lost its first Deezer search to it
+    and then prefixed every music command with SSL_CERT_FILE (retro 2026-10-16 S3).
+    certifi is what requests (already a dependency) verifies with. The default store
+    is loaded on top, not instead: a cafile makes create_default_context skip it, and
+    it is what honours SSL_CERT_FILE / a TLS-intercepting proxy's own CA."""
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    ctx.load_default_certs()
+    return ctx
+
+
 def _get_json(url: str) -> dict | list:
     """GET a URL → parsed JSON (dict or list). Raises ValueError on any transport/parse
     error (fail loud — the driver surfaces it; never a silent empty shortlist)."""
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     try:
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT, context=_ssl_context()) as resp:
             return json.loads(resp.read().decode("utf-8", "replace"))
     except (urllib.error.URLError, ValueError, TimeoutError) as e:
         raise ValueError(f"music sourcing: request to {url} failed ({e}) — "
@@ -122,7 +140,8 @@ def http_download(url: str, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     try:
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp, open(dest, "wb") as f:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT, context=_ssl_context()) as resp, \
+                open(dest, "wb") as f:
             shutil.copyfileobj(resp, f)
     except (urllib.error.URLError, TimeoutError) as e:
         raise ValueError(f"music sourcing: download of {url} failed ({e})") from e

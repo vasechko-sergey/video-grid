@@ -47,7 +47,7 @@ def build_draft(edl_path: str, project_path: str, footage_root: str, work_dir: s
     # cfg.canvas is an ASPECT (PURPOSE_CANVAS maps reel -> (9, 16)), never pixels.
     # Spending it directly rendered an 8x16 draft (design 2026-08-12 §1.3): scale=9:16
     # force_divisible_by=2 rounds the 9 down to 8. Resolve real pixels the way the
-    # rest of the engine does it (lib/layout.py:62): fit the aspect into the first
+    # rest of the engine does it (lib/layout.py's resolve): fit the aspect into the first
     # segment's own probed size (geometry.crop_for is the same don't-upscale fit
     # layout.resolve uses for a native canvas), THEN hand that real magnitude to
     # Delivery. native is the trap — it has no size of its own, so Delivery.dims()

@@ -46,6 +46,9 @@ Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
    target length (seconds) · mood · hook (the opening) · music (a track / "auto" /
    "none") + `music.mode` (local / free / any — default free, the safe distribution
    lane) · style-lean (classic / balanced / trend) · on-screen text · ending · cast.
+   `hook` and `ending` describe **shots** for the editor; `--text` is the **literal
+   words** the reel shows (the titles stage drafts exactly them) — ask for the
+   exact wording, never record a description of it.
    Prefer the user's free text ("without music" → `--music none`; "any source" →
    `--music-mode any`).
 3. **HARD-GATE.** Do not write until **mood + canvas + length + hook** are locked.

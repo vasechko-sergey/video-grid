@@ -46,7 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--project", required=True, help="project.json — canvas source (from project-init)")
     b.add_argument("--length", type=float, required=True, help="target reel length, seconds")
     b.add_argument("--mood", required=True, help="the reel's mood (gate)")
-    b.add_argument("--hook", required=True, help="the opening hook intent (gate)")
+    b.add_argument("--hook", required=True, help="the opening shot — a note for the editor, never shown on screen (gate)")
     b.add_argument("--reel-count", type=int, default=1,
                    help="how many reels (default 1). Anything above 1 is REFUSED — "
                         "multi-reel fan-out is not built; run the conveyor once per reel")
@@ -54,8 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--music-mode", default="free", help="local / free (default) / any")
     b.add_argument("--style-lean", default="balanced", help="classic / balanced (default) / trend")
     b.add_argument("--platform", default="", help="free label (reel/tiktok/youtube/…)")
-    b.add_argument("--text", default="", help="on-screen text intent")
-    b.add_argument("--ending", default="", help="ending intent")
+    b.add_argument("--text", default="", help="the literal words the reel shows on screen (a real newline makes two lines); empty = no text. Never a description of them — titles draft exactly this")
+    b.add_argument("--ending", default="", help="the closing shot — a note for the editor, never shown on screen")
     b.add_argument("--cast", action="append", default=None, help="a cast name (repeatable)")
     b.add_argument("--notes", default="", help="free text recorded in SPEC.json")
     b.add_argument("--tone-bias", default=None,

@@ -117,7 +117,7 @@ titles, fonts, the beat tracker — each a question the docs did not answer.
 
 **S1 · A 9:16 reel from 1080p footage ships at 1080×1922.** `Delivery.dims`
 derives the output height from the integer crop: the 9:16 crop of a 1080-tall
-source is 607 px wide (607.5 rounded), and `1080 × 1080 / 607 = 1921.6` evens to
+source is 607 px wide (607.5 truncated), and `1080 × 1080 / 607 = 1921.6` evens to
 **1922**. Every `fill` episode came out 1080×1922 while the one `fit` episode came
 out 1080×1920, and all five deliveries are 1080×1922. Run 1's 4K source divided
 exactly (1215 × 2160 → 1920), which is why it never showed.
