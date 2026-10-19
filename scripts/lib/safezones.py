@@ -34,7 +34,10 @@ class SafeZone:
 SAFE_ZONES: dict[str, SafeZone] = {
     "generic": SafeZone(top=0.08, bottom=0.12, left=0.05, right=0.05),   # == titles presets
     "tiktok":  SafeZone(top=0.08, bottom=0.18, left=0.04, right=0.12),   # tall caption + right rail
-    "reels":   SafeZone(top=0.08, bottom=0.16, left=0.04, right=0.11),   # instagram
+    # instagram. top 0.14: the published Reels guidance keeps the top 14% clear (13%
+    # measured off ad previews); at 0.08 a top title sat in the header on the second
+    # real run (retro 2026-10-16 S4). The sources disagree on the bottom (23-35%).
+    "reels":   SafeZone(top=0.14, bottom=0.16, left=0.04, right=0.11),
     "shorts":  SafeZone(top=0.10, bottom=0.14, left=0.04, right=0.11),   # youtube
 }
 _ALIASES = {"instagram": "reels", "ig": "reels", "reel": "reels",

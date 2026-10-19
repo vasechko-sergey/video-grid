@@ -168,7 +168,7 @@ def test_y_exprs_platform_zone_pushes_the_bottom_title_up():
     # reels reserves 0.16 of the bottom vs the generic 0.12 → the bottom y moves up
     assert titles.y_exprs("reel")["bottom"] == "h-th-h*0.16"
     assert titles.y_exprs("reel")["bottom"] != titles.y_exprs("")["bottom"]
-    assert titles.y_exprs("reel")["top"] == titles.y_exprs("")["top"]   # top zone equal
+    assert titles.y_exprs("reel")["top"] == "h*0.14"   # clears the header (retro 2026-10-16 S4)
 
 
 @pytest.mark.parametrize("d,name", [([], "list"), ([1, 2], "list"), ("str", "str"), (42, "int"),
@@ -405,7 +405,7 @@ def test_ink_extent_bottom_sits_on_the_zone_edge():
 
 def test_ink_extent_top_and_center():
     top_t = Title("hi", 0.0, 1.0, pos="top")
-    assert titles_mod.ink_extent(top_t, "reels")[0] == pytest.approx(0.08)
+    assert titles_mod.ink_extent(top_t, "reels")[0] == pytest.approx(0.14)
     mid = Title("hi", 0.0, 1.0, pos="center")
     lo, hi = titles_mod.ink_extent(mid, "reels")
     assert (lo + hi) / 2 == pytest.approx(0.5)

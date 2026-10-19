@@ -98,3 +98,14 @@ def test_known_rejects_a_label_that_silently_falls_back_to_generic(label):
     # brief never asked for while the EDL records the label as authored.
     assert safezones.known(label) is False
     assert safezones.safe_zone_for(label) == safezones.SAFE_ZONES["generic"]
+
+
+def test_a_reels_top_title_clears_the_apps_header():
+    """The second real run (retro 2026-10-16 S4): `pos: top` on Reels laid the title at
+    y 151–357 of 1922 — inside the header chrome — and all four reviews flagged it. The
+    published Reels guidance keeps the top 14% clear (13% where measured off ad
+    previews); the table said 8%."""
+    from scripts.lib import titles
+    zone = safezones.safe_zone_for("reels")
+    assert zone.top == 0.14
+    assert titles.y_exprs("reels")["top"] == "h*0.14"
