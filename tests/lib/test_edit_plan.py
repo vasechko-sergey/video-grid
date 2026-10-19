@@ -1877,3 +1877,48 @@ def test_the_briefs_shot_length_band_outranks_the_presets_and_is_said_out_loud(t
     err = capsys.readouterr().err
     assert "length band: the brief asks 6.0–10.0s" in err
     assert f"ASL {v.asl:.2f}s is under the brief's 6.0–10.0s band" in err
+
+
+def test_a_brief_band_on_an_unmatched_mood_is_still_reconciled(tmp_path):
+    # the balanced exemption is for a skipped brief; a brief that set --asl decided
+    fp, sp, pp = _write_inputs(tmp_path, _plain_selection(),
+                               footage=replace(_footage(), band=(1.2, 4.0)))
+    spec_path = _write_spec(tmp_path, asl=(0.6, 3.0))          # mood "unspecified"
+    res = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path), spec=spec_path)
+    assert res["status"] == "stop_and_report" and res["finding"]["reason"] == "length-band"
+
+
+@pytest.mark.parametrize("lo_off,hi_off,said", [(-0.5, -0.1, "over the brief's"),
+                                                (-0.5, 0.0, ""),        # hi == ASL: inclusive
+                                                (0.0, 40.0, ""),        # lo == ASL: inclusive
+                                                (0.1, 40.0, "under the brief's")])
+def test_the_out_of_band_line_names_the_side_and_is_silent_in_band(tmp_path, capsys,
+                                                                    lo_off, hi_off, said):
+    eps = edit_plan.build_edl(_footage(), _plain_selection()).episodes
+    asl = sum(e.play_dur() for e in eps) / len(eps)
+    fp, sp, pp = _write_inputs(tmp_path, _plain_selection())
+    spec_path = _write_spec(tmp_path, asl=(asl + lo_off, asl + hi_off))
+    edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path), spec=spec_path)
+    err = capsys.readouterr().err
+    if said:
+        assert said in err
+    else:
+        assert "is under the" not in err and "is over the" not in err
+
+
+def test_a_preset_band_is_information_not_an_order(tmp_path, capsys, monkeypatch):
+    """Only a band the brief chose earns "re-plan"; a preset band is a default nobody
+    chose, and the balanced fallback's is resolve()'s artifact — silent."""
+    fp, sp, pp = _write_inputs(tmp_path, _plain_selection())
+    edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path))                     # balanced
+    err = capsys.readouterr().err
+    assert "re-plan" not in err and "band —" not in err
+    # a preset whose band the cut cannot be inside ("brooding" routes to the one
+    # patched preset — see test_write_edit_plan_refuses_a_preset_floor_under_the_carved_floor)
+    slow = moodpreset.MoodPreset("slow", mood.MoodVector(0.5, 0.5, 0.5),
+                                 {"close": 0.3, "medium": 0.4, "wide": 0.3}, (20.0, 30.0))
+    monkeypatch.setattr(moodpreset, "PRESETS", (slow,))
+    edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path),
+                              spec=_write_spec(tmp_path, mood="brooding"))
+    err = capsys.readouterr().err
+    assert "re-plan" not in err and "is under the slow preset's 20.0–30.0s band" in err

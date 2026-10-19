@@ -328,3 +328,12 @@ def test_a_variety_report_names_where_its_asl_band_came_from():
     with pytest.raises(ValueError, match="asl_from"):
         moodpreset.VarietyReport(**{**plain.to_dict(), "asl_band": (2.0, 4.0),
                                     "gaps": (), "asl_from": "elsewhere"})
+
+
+def test_a_brief_band_below_the_carve_floor_is_refused_in_the_briefs_own_words():
+    p = moodpreset.resolve("nostalgic")
+    import dataclasses
+    msg = moodpreset.reconcile_band(dataclasses.replace(p, asl=(0.6, 3.0)), (1.2, 4.0),
+                                    asl_from="brief")
+    assert "the brief's --asl floor 0.6s" in msg and "--asl" in msg
+    assert "preset 'nostalgic'" not in msg and "drop --spec" not in msg

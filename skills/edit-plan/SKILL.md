@@ -60,8 +60,9 @@ motion. A span stays within **one clip**, its indices must be **adjacent**, and 
 **cannot cross a scene cut** — the build refuses that, naming the cut (split into two
 episodes there). `start_offset` still applies, moving the merged in-point later.
 
-**Plan to the shot-length band the build log names** — `length band: the brief asks
-…` when `SPEC.asl` is set, else the mood preset's. A window is only 1–4 s, so a shot
+**Plan to the brief's shot-length band** — `SPEC.md`'s **Shot length** line
+(`SPEC.asl`) before the first build; the build log's `length band: the brief asks …`
+confirms it. With no brief band, the mood preset's is a default nobody chose. A window is only 1–4 s, so a shot
 inside a 6–10 s band IS a span; size every span to the whole action, not to the
 window grid. The build says so when the cut's ASL falls outside the band — re-plan
 before CP2 rather than show it (the second real run's first plan cut longboard rides

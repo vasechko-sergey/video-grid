@@ -257,7 +257,8 @@ def evaluate(available: dict[str, int], used: dict[str, int], asl: float,
                          unmeasured=unmeasured, asl_from=asl_from)
 
 
-def reconcile_band(preset: MoodPreset, carved: tuple | None) -> str | None:
+def reconcile_band(preset: MoodPreset, carved: tuple | None,
+                   asl_from: str = "preset") -> str | None:
     """The preset's asl band against the band the footage was CARVED with.
     None = compatible, or uncheckable; a string = the refusal's problem text.
 
@@ -280,6 +281,15 @@ def reconcile_band(preset: MoodPreset, carved: tuple | None) -> str | None:
         return None
     if preset.asl[0] >= carved[0]:
         return None
+    if asl_from == "brief":
+        # The band is the brief's own (SPEC.asl, retro 2026-10-16 S5) — name it, and
+        # offer the remedies that apply to a band somebody chose.
+        return (f"the brief's --asl floor {preset.asl[0]:.1f}s is under the footage's "
+                f"{carved[0]:.1f}s carve floor, so nothing splits a window to manufacture "
+                f"a shot that short. Raise --asl LO to at least {carved[0]:.1f}s in the "
+                f"brief, or re-scan with `--win-min {preset.asl[0]:g}`. (The CEILING is "
+                f"not checked: span merge joins adjacent windows, so a longer shot is "
+                f"always reachable.)")
     return (f"preset {preset.name!r} wants shots from {preset.asl[0]:.1f}s, but the "
             f"footage was carved with a {carved[0]:.1f}s floor, so nothing splits a "
             f"window to manufacture one shorter than {carved[0]:.1f}s on demand (the "

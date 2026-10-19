@@ -675,11 +675,12 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     reconciled against the preset's `asl` FLOOR right after constraints and before the
     variety gate — only the floor, never the ceiling, since edit_plan's own span merge
     can always reach a taller shot but nothing splits a window into a shorter one. A
-    preset floor below the carved floor stops here with its own reason `length-band`
+    floor below the carved floor stops here with its own reason `length-band`
     (`episode_idx: null`, like `variety-gap` and `constraint-violation`: it judges the
-    whole cut, not one episode). The `balanced` fallback is exempt exactly as `look`
-    is (`preset.name == "balanced"`): a skipped or unmatched brief has no taste to
-    hold the cut to, so this check never reconciles or refuses for it. A FOOTAGE.json
+    whole cut, not one episode). The band is `SPEC.asl` when the brief set one (retro
+    2026-10-16 S5), else the preset's. The `balanced` fallback is exempt exactly as
+    `look` is (`preset.name == "balanced"`) — unless the brief set `asl`: a skipped or
+    unmatched brief has no taste to hold the cut to, but a brief band is a decision. A FOOTAGE.json
     written before this slice carries no recorded band; the check reports
     `not-checked` rather than a silent pass.
 
@@ -780,7 +781,7 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     # and `tone_bias`; nothing analogous was ever written for `asl`, which is how this
     # gap survived review — final-findings.md I-1).
     band_problem = (None if preset.name == "balanced" and asl_from != "brief"
-                    else moodpreset.reconcile_band(preset, footage.band))
+                    else moodpreset.reconcile_band(preset, footage.band, asl_from))
     if asl_from == "brief":
         carved = ("its carve band is not recorded (FOOTAGE.json predates 2026-09-03)"
                   if footage.band is None else
@@ -806,12 +807,18 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
                             "problems": [band_problem]}}
     v = edl.variety
     lo, hi = v.asl_band
+    side = "under" if v.asl < lo else "over"
     if not lo <= v.asl <= hi:
         # A report, not a gate — but said BEFORE CP2, where the operator would otherwise
-        # find it by watching the draft (retro 2026-10-16 S5).
-        _log(f"ASL {v.asl:.2f}s is {'under' if v.asl < lo else 'over'} the "
-             f"{'brief' if v.asl_from == 'brief' else 'preset ' + repr(v.preset)}'s "
-             f"{lo:.1f}–{hi:.1f}s band — re-plan the spans before CP2, or say why not")
+        # find it by watching the draft (retro 2026-10-16 S5). Only a band the BRIEF
+        # chose earns an instruction; a preset band is a default nobody chose (first-cut
+        # guesses, per moodpreset), and balanced's is resolve()'s artifact — silent.
+        if v.asl_from == "brief":
+            _log(f"ASL {v.asl:.2f}s is {side} the brief's {lo:.1f}–{hi:.1f}s band — "
+                 f"re-plan the spans before CP2, or say why not")
+        elif v.preset != "balanced":
+            _log(f"ASL {v.asl:.2f}s is {side} the {v.preset} preset's {lo:.1f}–{hi:.1f}s "
+                 f"band — a default nobody chose; the brief's --asl is what sets one")
     _log("variety: preset {} — footage offers {}{}".format(
         v.preset, ", ".join(f"{s} {v.available[s]}" for s in SHOT_TYPES),
         f" ({v.unmeasured} with no detected subject)" if v.unmeasured else ""))
