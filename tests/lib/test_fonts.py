@@ -184,6 +184,8 @@ def test_a_name_resolves_to_the_variable_font_the_cask_installs(tmp_path, monkey
     assert fonts.resolve_font("Montserrat") == str(lib / "Montserrat[wght].ttf")
     (lib / "Oswald-Regular.ttf").write_text("x")                 # an older static install
     assert fonts.resolve_font("Oswald") == str(lib / "Oswald-Regular.ttf")
+    (lib / "Oswald[wght].ttf").write_text("x")                   # both: the cask's wins
+    assert fonts.resolve_font("Oswald") == str(lib / "Oswald[wght].ttf")
 
 
 def test_a_variable_font_is_drawn_at_regular_weight_not_its_default(tmp_path, make_ttf):
@@ -196,3 +198,13 @@ def test_a_variable_font_is_drawn_at_regular_weight_not_its_default(tmp_path, ma
     assert "fvar" not in f and f["OS/2"].usWeightClass == fonts.TITLE_WEIGHT == 400
     static = make_ttf(tmp_path / "s.ttf", [ord("A")])
     assert fonts.static_instance(static, str(tmp_path / "w")) == static
+
+
+def test_a_pinned_copy_is_rebuilt_when_the_font_changes_in_place(tmp_path, make_ttf):
+    import os
+    var = make_ttf(tmp_path / "var.ttf", [ord("A")], variable=True, default_wght=100)
+    a = fonts.static_instance(var, str(tmp_path / "w"))
+    make_ttf(tmp_path / "var.ttf", [ord("A"), ord("B")], variable=True, default_wght=100)
+    os.utime(var, ns=(1, 1))                       # a different mtime, whatever the clock says
+    b = fonts.static_instance(var, str(tmp_path / "w"))
+    assert a != b and fonts.missing_glyphs(b, "B") == []

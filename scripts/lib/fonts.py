@@ -120,8 +120,8 @@ def static_instance(font_path: str, work_dir: str) -> str:
     if "fvar" not in font:
         return font_path
     st = os.stat(font_path)
-    key = hashlib.sha1(f"{TITLE_WEIGHT}|{font_path}|{st.st_size}|{st.st_mtime_ns}"
-                       .encode()).hexdigest()[:12]
+    key = hashlib.sha1(f"{_MERGE_VERSION}|{TITLE_WEIGHT}|{font_path}|{st.st_size}|"
+                       f"{st.st_mtime_ns}".encode()).hexdigest()[:12]
     out = Path(work_dir) / f"{Path(font_path).stem}-w{TITLE_WEIGHT}-{key}.ttf"
     if out.exists():
         return str(out)

@@ -143,8 +143,9 @@ def test_a_variable_title_font_renders_regular_not_thin(tmp_path):
         var = fonts.resolve_font("Montserrat")
     except ValueError:
         pytest.skip("Montserrat is not installed (bash setup.sh installs it)")
-    pinned = fonts.static_instance(var, str(tmp_path / "w"))
-    if pinned == var:
+    from fontTools.ttLib import TTFont
+    if "fvar" not in TTFont(var):
         pytest.skip("the installed Montserrat is a static file — nothing to pin")
+    pinned = fonts.static_instance(var, str(tmp_path / "w"))
     thin, regular = _ink(var, "HELLO", tmp_path, "thin"), _ink(pinned, "HELLO", tmp_path, "reg")
     assert regular > 1.5 * thin, (thin, regular)

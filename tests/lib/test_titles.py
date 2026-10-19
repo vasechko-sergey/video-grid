@@ -612,3 +612,18 @@ def test_glyph_a_variable_title_font_reaches_drawtext_pinned_at_regular(tmp_path
                            str(tmp_path / "w"), resolve=lambda name: var)
     used = vf.split("fontfile='", 1)[1].split("'", 1)[0]
     assert used != var and "fvar" not in TTFont(used)
+
+
+def test_glyph_reveal_layers_are_measured_on_the_pinned_font(tmp_path, make_ttf,
+                                                             real_glyph_cover):
+    """Measuring the variable file's default instance (Thin) instead of the pinned copy
+    shifts word-reveal offsets by 1-2.5% (S19 review)."""
+    var = make_ttf(tmp_path / "var.ttf", [ord(c) for c in "Hi yo"], variable=True,
+                   default_wght=100)
+    seen = []
+    def measure(font, text):
+        seen.append(font)
+        return (10.0 * len(text), 0.0)
+    build_filterchain(Titles(items=(Title("Hi yo", 0.0, 3.0, pos="top", reveal="word"),)),
+                      str(tmp_path / "w"), resolve=lambda name: var, measure=measure)
+    assert seen and var not in seen
