@@ -241,3 +241,20 @@ def test_every_request_verifies_against_certifi_not_the_interpreters_store(monke
     catalog.http_download("https://example.invalid/y", tmp_path / "y.bin")
     assert built == [certifi.where(), certifi.where()]
     assert len(seen) == 2 and all(isinstance(c, ssl.SSLContext) for c in seen)
+
+
+def test_the_default_store_still_loads_on_top_of_certifi(monkeypatch):
+    """A cafile makes create_default_context skip the default store, and that store is
+    what honours SSL_CERT_FILE — a proxy's own CA, and run 2's own workaround, would have
+    stopped working. Both must be in the context."""
+    calls = []
+
+    class _Ctx:
+        def load_default_certs(self, *a):
+            calls.append("default")
+
+    monkeypatch.setattr(catalog.ssl, "create_default_context",
+                        lambda **kw: calls.append(("certifi", kw.get("cafile"))) or _Ctx())
+    catalog._ssl_context()
+    import certifi
+    assert calls == [("certifi", certifi.where()), "default"]

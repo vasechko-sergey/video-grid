@@ -109,14 +109,18 @@ def _free_source() -> str:
 
 
 def _ssl_context() -> ssl.SSLContext:
-    """Verify against certifi's CA bundle, never the interpreter's own store.
+    """Verify against certifi's CA bundle AND the interpreter's own store.
 
     A python.org interpreter ships with NO usable store until its "Install
     Certificates" script is run, and urllib then fails every HTTPS request with
     CERTIFICATE_VERIFY_FAILED — the second real run lost its first Deezer search to it
     and then prefixed every music command with SSL_CERT_FILE (retro 2026-10-16 S3).
-    certifi is what requests (already a dependency) verifies with."""
-    return ssl.create_default_context(cafile=certifi.where())
+    certifi is what requests (already a dependency) verifies with. The default store
+    is loaded on top, not instead: a cafile makes create_default_context skip it, and
+    it is what honours SSL_CERT_FILE / a TLS-intercepting proxy's own CA."""
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    ctx.load_default_certs()
+    return ctx
 
 
 def _get_json(url: str) -> dict | list:
