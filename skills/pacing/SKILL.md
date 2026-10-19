@@ -90,7 +90,8 @@ guessing a path.
    the advisory `brief_length` check not-checked instead of comparing the reel
    against the brief. `edit_plan build` logs the platform it resolved on every run —
    read that line to confirm the second pass kept it. Also pass `--music` (the SAME
-   `MUSIC.json` step 3 analysed): it fits the reel's *end* to a bar line —
+   `MUSIC.json` step 3 analysed): it fits the reel's *end* to a bar line (or, with
+   no bar grid, to a beat under a longer fade) —
    `edit_plan`'s own outro ladder, distinct from this skill's cut-grid fit — by
    moving only the last episode, after this pass binds every slot. Omitting it
    leaves the reel ending wherever the footage happens to; see the **edit-plan**

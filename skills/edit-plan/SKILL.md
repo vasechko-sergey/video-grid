@@ -171,8 +171,11 @@ guessing a path.
    music resolves on a detected downbeat with a vocal-free half-second after it,
    instead of stopping mid-phrase wherever the footage happened to end. `--music`
    with no `--pacing` is a no-op — the fit needs the bound episode list, never a
-   slot. Read `EDL.md`'s **Music outro** section (or the `outro:` log line) for
-   which of three rungs won:
+   slot. A window with no bar grid (most calm tracks — 26 of 32 on the second real
+   run) does not stop the fit: it falls back to the **beat** grid under a 1.5 s fade
+   (`OutroFit.grid == "beat"`, named in the report), so the music still starts to fall
+   on a line of its own grid. Read `EDL.md`'s **Music outro** section (or the `outro:`
+   log line) for which of three rungs won:
    - **`gap`** — a bar line has enough vocal-free space after it for the reel's own
      fade; the ending is clean. Nothing to do.
    - **`no-gap`** — no line had room at the normal fade, so the fit fell back to the
@@ -185,15 +188,16 @@ guessing a path.
      WHICH of five causes it was (`OutroFit.cause`) instead of one reading for all
      five — the exact collapse this field replaced (design 2026-09-07 §3). Each
      has its own remedy:
-     - **`no-bars`** — the analysed music window carries no bar grid, so the fit
-       never ran; re-analyse the window or pick a track with a detectable bar grid.
+     - **`no-bars`** — only on an EDL written before 2026-10-19, when a window with
+       no bar grid stopped the fit; re-run `edit_plan build --pacing --music` and it
+       falls back to the beats.
      - **`ramped-closer`** — the closing episode carries a ramp, whose played
        length is not its source length, so the fit is skipped rather than
        guessed; move the ramp off the last episode.
      - **`closer-not-in-footage`** — the closing episode's source is not in
        `FOOTAGE.json`, so its remaining room could not be measured; re-run intake
        so the closing source is in `FOOTAGE.json`.
-     - **`no-reachable-line`** — the fit ran and no bar line within one bar of the
+     - **`no-reachable-line`** — the fit ran and no line of its grid within one bar of the
        cut's own length was one the closing shot could reach. Only this cause's
        log line names the grow/shrink room it had to work with — a shot with more
        `room_after` (a longer take, or moving the outro to a different episode),

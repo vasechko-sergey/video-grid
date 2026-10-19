@@ -34,7 +34,6 @@ Rows S1–S17 come from the second real run — evidence and measurements in
 
 | | Item | Size | Source |
 |---|------|------|--------|
-| ○ | **S7 · Without a bar grid the music ends mid-phrase** — the outro fit stays `unchanged`; by the agent's count 6 of 32 calm candidates had a bar grid. Needs a fallback ending, not a track swap (the swap cost 64 min). | S | [retro 2](retro/2026-10-16-second-real-run.md) S7 |
 | ○ | **S8 · The music search finds niche tracks, not known ones** — "again", the operator said after the run. Mood-string queries, mood-only ranking; Deezer `rank` and YouTube views unused; the brief never asks "known/trending or atmospheric" ("any" became only the licence lane). Also: no preview of the exact window that will play, and the agent re-raised rights the brief had settled. | M | [retro 2](retro/2026-10-16-second-real-run.md) S8 |
 | ○ | **S10 · `project.json` written into the footage folder** — the `project-init` skill says `--project-dir <dir>` without `<footage>/montage`, and `project_init` lacks the refusal `intake`/`draft`/`edl_to_reel` carry. | S | [retro 2](retro/2026-10-16-second-real-run.md) S10 |
 | ○ | **S11 · `VERSIONS.md` cannot tell versions apart** — all five lines `delivered from EDL.json`; `edl_to_reel --changelog` exists and no skill mentions it. | S | [retro 2](retro/2026-10-16-second-real-run.md) S11 |
