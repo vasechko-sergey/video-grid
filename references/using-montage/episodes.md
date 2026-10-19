@@ -11,16 +11,16 @@ segments those routes were measured against — cutting them again would be
 waste on top of a lie about which pixels were tracked). `--out-dir` must
 be the SAME episodes dir `--stop-after-geometry` wrote into. Writes
 `<run>/reels/<reel>/episodes/EPISODES.json` (a serialized `ReelManifest`)
-beside the `ep{i}.mp4` clips it names. **On every re-cut, pass
-`--changelog "<what changed and why>"` here** (e.g. "ending: Sergei's silhouette instead
-of the stranger's wave") — this is the step that records the version note, and
-`--from-episodes` refuses the flag. The note leads the delivered `VERSIONS.md` line,
-before the cut's own facts (episodes · length · music) and whether the EDL changed since
-the last delivery; without it the second real run's five lines read the same — the same artifact
+beside the `ep{i}.mp4` clips it names — the same artifact
 `--stop-after-episodes` used to write directly, before the geometry split;
 do not fall back to that flag here, since a plain
 `edl_to_reel`/`--stop-after-episodes` run on the same reel dirs wipes
-`build/` and takes the frozen routes with it. It
+`build/` and takes the frozen routes with it. **On every re-cut, pass `--changelog "<what changed and why>"` here** (e.g.
+"ending: Sergei's silhouette instead of the stranger's wave") — this is the step that
+records the version note, and `--from-episodes` refuses the flag. The reason leads the
+delivered `VERSIONS.md` line; the cut's facts (episodes · length · music) and whether
+the EDL changed since the last delivery follow either way, but only the reason says
+WHY this version exists. It
 **refuses** a cut that changed since the geometry was frozen (a moved
 window, source or ramp) and a build dir that was wiped since — both name
 the remedy (`--stop-after-geometry` again, or restore the EDL). A

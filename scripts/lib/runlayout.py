@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 RUN_DIRNAME = "montage"       # <footage_root>/montage — see the skills and the README
-VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi"}   # what intake scans for, and so what
+VIDEO_EXTS = frozenset({".mp4", ".mov", ".m4v", ".avi"})   # what intake scans for, and so what
                                                 # marks a directory as footage
 
 DEFAULT_REEL = "main"         # a run has one reel unless the user names a variant

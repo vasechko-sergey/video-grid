@@ -72,9 +72,10 @@ def _since_last(out_dir: str, n: int, container: str, run_provenance: dict | Non
     if n < 2 or not now or not provenance.attest_path(prev).is_file():
         return ""
     try:
-        before = provenance.Attestation.from_json(provenance.attest_path(prev)).edl.get("digest")
-    except (OSError, ValueError):
+        edl = provenance.Attestation.from_json(provenance.attest_path(prev)).edl
+    except (OSError, ValueError, TypeError):
         return ""
+    before = edl.get("digest") if isinstance(edl, dict) else None
     if not before:
         return ""
     return f" · same EDL as v{n - 1}" if before == now else f" · EDL changed since v{n - 1}"

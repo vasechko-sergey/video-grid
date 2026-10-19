@@ -721,8 +721,10 @@ def build_parser() -> argparse.ArgumentParser:
                          f"--from-episodes (phase 2 renders nothing)")
     ap.add_argument("--changelog", default="",
                     help="version-log note for this delivery — the REASON for the version "
-                         "(e.g. 'regraded ep1'), not a path; defaults to 'delivered from <EDL>'; "
-                         "refused with --from-episodes (already baked into EPISODES.json)")
+                         "(e.g. 'regraded ep1'), not a path. It leads the VERSIONS.md line, "
+                         "before the cut's own facts (episodes · length · music), which are "
+                         "always written; refused with --from-episodes (already baked into "
+                         "EPISODES.json) — pass it at --from-geometry")
     phase = ap.add_mutually_exclusive_group()
     phase.add_argument("--stop-after-episodes", action="store_true",
                        help="render every episode, write EPISODES.json, and stop — the "

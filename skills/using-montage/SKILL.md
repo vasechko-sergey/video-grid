@@ -341,7 +341,8 @@ guessing a path.
     ```bash
     "$VG" scripts.edl_to_reel --from-geometry <run>/reels/<reel>/episodes/GEOMETRY.json \
       --project <run>/project.json --work-dir <run>/reels/<reel>/build \
-      --out-dir <run>/reels/<reel>/episodes [--music <run>/reels/<reel>/MUSIC.json]
+      --out-dir <run>/reels/<reel>/episodes [--music <run>/reels/<reel>/MUSIC.json] \
+      [--changelog "<what changed and why>"]   # on every re-cut — the version note
     ```
 
     Stops: `grade-damage`. Before running it, read
