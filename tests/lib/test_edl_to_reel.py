@@ -957,7 +957,12 @@ def test_the_changelog_is_a_reason_not_the_log_path(tmp_path, monkeypatch):
     seen = _wire(monkeypatch)
     edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
                             str(tmp_path / "w"), str(tmp_path / "out"))
-    assert seen["rm"].changelog == "delivered from EDL.json"
+    # retro 2026-10-16 S11: five identical "delivered from EDL.json" lines could not
+    # tell one version from the next — the note now states what this cut IS
+    edl = EDL.from_json(_edl_file(tmp_path))
+    n = len(edl.episodes)
+    total = sum(e.play_dur() for e in edl.episodes)
+    assert seen["rm"].changelog == f"{n} episodes · {total:.1f}s · no music"
     assert "VERSIONS.md" not in seen["rm"].changelog
 
 
@@ -965,7 +970,8 @@ def test_an_explicit_changelog_wins(tmp_path, monkeypatch):
     seen = _wire(monkeypatch)
     edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
                             str(tmp_path / "w"), str(tmp_path / "out"), changelog="regraded ep1")
-    assert seen["rm"].changelog == "regraded ep1"
+    assert seen["rm"].changelog.startswith("regraded ep1 — ")      # the reason, then the facts
+    assert "episodes ·" in seen["rm"].changelog
 
 
 # --- Task 6: the two-phase edl_to_reel and the gate -------------------------------

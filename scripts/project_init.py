@@ -7,7 +7,7 @@ Custom aspect: --purpose custom --canvas 4:5 ; explicit delivery: --delivery exa
 import argparse
 from pathlib import Path
 
-from scripts.lib import provenance
+from scripts.lib import provenance, runlayout
 from scripts.lib.project import resolve_project
 
 
@@ -19,7 +19,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--canvas", default=None, help="explicit W:H (required for --purpose custom)")
     ap.add_argument("--delivery", default=None, help="explicit delivery spec (overrides --quality)")
     ap.add_argument("--notes", default="", help="free text recorded in project.json")
-    ap.add_argument("--project-dir", required=True, help="dir to write project.json into")
+    ap.add_argument("--project-dir", required=True,
+                    help="the run directory, <footage>/montage — refused when it holds the "
+                         "video files themselves")
     return ap
 
 
@@ -34,6 +36,7 @@ def main() -> None:
         canvas = None
     cfg = resolve_project(a.purpose, quality=a.quality, canvas=canvas,
                           delivery=a.delivery, notes=a.notes)
+    runlayout.refuse_project_dir_holding_footage(a.project_dir, "project_init --project-dir")
     Path(a.project_dir).mkdir(parents=True, exist_ok=True)
     out = Path(a.project_dir) / "project.json"
     # The run's START stamp: edl_to_reel compares the engine against this and refuses a

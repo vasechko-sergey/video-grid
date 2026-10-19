@@ -202,3 +202,15 @@ def test_project_config_without_provenance_emits_no_key(tmp_path):
     cfg = ProjectConfig(purpose="reel", canvas=(9, 16), delivery="native")
     assert "provenance" not in cfg.to_dict()
     assert cfg.provenance == {}
+
+
+def test_project_init_refuses_the_footage_folder(tmp_path, monkeypatch):
+    """retro 2026-10-16 S10: the run began with /video-grid:project-init, whose skill
+    said only --project-dir <dir>, and project.json landed beside the clips."""
+    from scripts import project_init
+    (tmp_path / "clip.mov").write_bytes(b"x")
+    monkeypatch.setattr("sys.argv", ["project_init", "--purpose", "reel",
+                                     "--project-dir", str(tmp_path)])
+    with pytest.raises(ValueError, match=str(tmp_path / "montage")):
+        project_init.main()
+    assert not (tmp_path / "project.json").exists()

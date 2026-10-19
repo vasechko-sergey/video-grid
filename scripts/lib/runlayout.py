@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 RUN_DIRNAME = "montage"       # <footage_root>/montage — see the skills and the README
+VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi"}   # what intake scans for, and so what
+                                                # marks a directory as footage
 
 DEFAULT_REEL = "main"         # a run has one reel unless the user names a variant
 
@@ -192,3 +194,24 @@ def refuse_output_in_footage(footage_root: str, out_dir: str, what: str) -> None
         f"clips, and any .mp4 landing there is taken as footage by the next scan "
         f"(draft.mp4 already did, and went unnoticed). Point it at "
         f"{root / RUN_DIRNAME} instead.")
+
+
+def refuse_project_dir_holding_footage(project_dir: str, what: str) -> None:
+    """Raise when `project_dir` itself holds video files — it is the footage folder, and
+    the run belongs in `<it>/montage`.
+
+    Only the directory's own files count (intake's flat iterdir): the run dir keeps its
+    renders deeper, under reels/<reel>/, so it passes however much it has rendered. The
+    second real run began with /video-grid:project-init, whose skill said only
+    --project-dir <dir>, and project.json landed beside the clips (retro 2026-10-16 S10).
+    """
+    d = Path(project_dir)
+    if not d.is_dir():
+        return
+    clips = [p for p in d.iterdir() if p.is_file() and p.suffix.lower() in VIDEO_EXTS]
+    if not clips:
+        return
+    raise ValueError(
+        f"{what}: {d.resolve()} holds {len(clips)} video file(s) — it is the footage "
+        f"folder, which intake scans for source clips, not the run directory. Point it "
+        f"at {d.resolve() / RUN_DIRNAME} instead.")

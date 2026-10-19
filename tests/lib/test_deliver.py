@@ -561,3 +561,20 @@ def test_verify_look_decodes_only_the_ends_a_look_declares(tmp_path, monkeypatch
     assert ("frames", (0.0,)) not in seen and ("last",) in seen
     ev = next(k for tag, *rest in seen if tag == "eval" for k in rest)
     assert (ev["fade"], ev["fade_in"]) == (0.8, 0.0)
+
+
+def test_the_version_log_says_whether_the_cut_changed_since_the_last_delivery(tmp_path, monkeypatch):
+    """retro 2026-10-16 S11: all five lines of the second run's VERSIONS.md were the same
+    words. Comparing this delivery's EDL digest with the previous attestation's says
+    whether a version is a re-cut or a re-render of the same cut."""
+    _fake_encode(monkeypatch)
+    master, rep = _bound(tmp_path)
+    out_dir = str(tmp_path / "out")
+    for k, digest in enumerate(("e1", "e1", "e2"), 1):
+        deliver.deliver(master, REEL_H264, out_dir, f"note {k}", rep,
+                        scratch_dir=str(tmp_path / "s"),
+                        run_provenance={"edl": {"digest": digest, "state": "intact"}})
+    lines = (Path(out_dir) / "VERSIONS.md").read_text().splitlines()
+    assert lines[-3].endswith("note 1")
+    assert lines[-2].endswith("note 2 · same EDL as v1")
+    assert lines[-1].endswith("note 3 · EDL changed since v2")
