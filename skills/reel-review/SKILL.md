@@ -108,9 +108,9 @@ Announce on entry: **"Using reel-review to judge the reel against the brief."**
    The report defaults to `build/reel/reel_report.json`, and `pack` refuses it
    when the reel's attestation names a different one — `build/` keeps only the
    LAST render's report, and a later render that stopped rewrites it. Review the
-   reel the report passed, or re-deliver this one. `report_bound: false` in the
-   result means the reel has no attestation at all: say so at CP3 — an
-   unattested reel was not delivered by `deliver`.
+   reel the report passed, or re-deliver and review the new `REEL_v{n+1}`. `report_bound: false` in the
+   result means the reel has no attestation at all: say so at CP3 — `deliver`
+   did not attest it (its look gate refused it, or it was encoded by hand).
 
 2. **Dispatch the reviewer subagent** (Task tool, `general-purpose`) with the
    contents of `build/_review/reviewer_prompt.md`, verbatim. Never fill or edit

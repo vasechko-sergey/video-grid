@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -239,6 +240,7 @@ def test_pack_writes_the_stills_and_a_filled_prompt(tmp_path, monkeypatch):
     assert all(Path(p).is_file() for p in res["stills"])
     text = (review / "reviewer_prompt.md").read_text()
     assert "{" + "SPEC}" not in text and "mood: calm" in text and '"mood": "calm"' in text
+    assert "Stated intent" not in text            # nothing said, nothing added
     assert "| 0 | a.mp4 |" in text and '"overall": true' in text
     assert "Track: Allah Las — Polar Onion" in text and "from 49s" in text
     assert "Verdict: fits at bar." in text
@@ -326,3 +328,25 @@ def test_pack_refuses_a_corrupt_report_with_a_remedy(tmp_path, monkeypatch):
     (reel_dir / "build" / "reel" / "reel_report.json").write_text("{")
     with pytest.raises(ValueError, match="re-deliver"):
         reel_review.pack(str(reel), str(reel_dir))
+
+
+def test_pack_adds_a_stated_intent_beside_the_brief(tmp_path, monkeypatch):
+    _fake_media(monkeypatch)
+    reel_dir, reel, _ = _run(tmp_path)
+    text = Path(reel_review.pack(str(reel), str(reel_dir), intent="more waves")["prompt"]
+                ).read_text()
+    assert "mood: calm" in text and "Stated intent, in the user's words: more waves" in text
+
+
+def test_the_cli_forwards_the_stated_intent(tmp_path, monkeypatch, capsys):
+    """The CLI is the skill's only path for the user's words; dropping the flag there
+    would lose them without a sound."""
+    _fake_media(monkeypatch)
+    reel_dir, reel, _ = _run(tmp_path, spec=False)
+    monkeypatch.setattr(sys, "argv", ["reel_review", "pack", "--reel", str(reel),
+                                      "--reel-dir", str(reel_dir), "--intent", "calm surf"])
+    with pytest.raises(SystemExit) as e:
+        reel_review.main()
+    assert e.value.code == 0
+    prompt = json.loads(capsys.readouterr().out)["prompt"]
+    assert "Stated intent, in the user's words: calm surf" in Path(prompt).read_text()

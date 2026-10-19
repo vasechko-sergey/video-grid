@@ -123,8 +123,8 @@ def _report_bound(reel: str, report: dict, at: Path) -> bool:
             f"attestation names report {named[:12]}, this one is "
             f"{provenance.digest_obj(report)[:12]}. build/ keeps only the last render's "
             f"report: review the reel that report passed (`montage status` names the "
-            f"newest delivery), or re-deliver this one (`edl_to_reel --from-episodes`) "
-            f"to get its report back")
+            f"newest delivery), or re-deliver (`edl_to_reel --from-episodes`) and review "
+            f"the new REEL_v{{n+1}} it writes")
     return True
 
 
@@ -197,8 +197,9 @@ def pack(reel: str, reel_dir: str, *, report: str | None = None, intent: str = "
     try:
         report_obj = json.loads(rep.read_text())
     except json.JSONDecodeError as e:
-        raise ValueError(f"{rep} is not valid JSON ({e}) — re-deliver the reel "
-                         f"(`edl_to_reel --from-episodes`) to write its report again") from e
+        raise ValueError(f"{rep} is not valid JSON ({e}) — re-deliver "
+                         f"(`edl_to_reel --from-episodes`) and review the new "
+                         f"REEL_v{{n+1}} it writes") from e
     bound = _report_bound(reel, report_obj, rep)
     edl_md = lay.reel_dir / "EDL.md"
     if not edl_md.is_file():
