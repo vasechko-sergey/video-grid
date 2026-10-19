@@ -94,6 +94,12 @@ class Spec:
         if not isinstance(self.music_known, bool):
             raise ValueError(f"Spec.music_known must be true or false — did the brief ask "
                              f"for a known track? Got {self.music_known!r}")
+        if self.music_known and self.music_mode != "any":
+            raise ValueError(
+                f"Spec.music_known asks for a known track, but music_mode is "
+                f"{self.music_mode!r}: the free (Creative-Commons) and local lanes have no "
+                f"catalog of hits to search. Pass --music-mode any with --music-known, or "
+                f"drop --music-known")
         if self.asl is not None:
             if not (isinstance(self.asl, (tuple, list)) and len(self.asl) == 2
                     and all(isinstance(v, (int, float)) and not isinstance(v, bool)

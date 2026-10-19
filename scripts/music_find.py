@@ -64,6 +64,12 @@ def build_shortlist(mode: str, mood_text: str, out_dir: str, *, n: int = 8,
             row["distance"] = round(score, 4)
             row["fit"] = round(1.0 / (1.0 + score), 4)
         rows.append(row)
+    if popular and not any(r["popularity"] is not None for r in rows):
+        # the free lane and iTunes carry no popularity — say so rather than label a fit
+        # order "sorted by popularity" over a column of dashes
+        _log(f"music-source: --popular asked, but this {mode}/{cat or 'default'} search "
+             f"carries no popularity number — the list stays in mood-fit order")
+        popular = False
     if popular:
         # most popular first; the mood fit stays in every row so the agent can weigh both
         rows.sort(key=lambda r: -(r["popularity"] if r["popularity"] is not None else -1.0))
@@ -104,7 +110,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--mode", required=True, choices=("free", "any"),
                     help="rights lane (free = CC; any = incl. copyrighted via yt-dlp)")
     g = ap.add_mutually_exclusive_group(required=True)
-    g.add_argument("--spec", help="SPEC.json — reads its mood field")
+    g.add_argument("--spec", help="SPEC.json — reads its mood, and music_known "
+                                  "(which implies --popular)")
     g.add_argument("--mood", help="mood text directly (e.g. 'energetic')")
     ap.add_argument("--query", help="override the catalog search query (default: the mood text)")
     ap.add_argument("--n", type=int, default=8, help="candidate count (default 8)")

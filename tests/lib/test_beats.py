@@ -263,3 +263,16 @@ def test_preview_cuts_exactly_the_analysed_window(tmp_path, monkeypatch):
     assert out == str(tmp_path / "p.mp3") and cmd[-1] == out
     assert cmd[cmd.index("-ss") + 1] == "49.000" and cmd[cmd.index("-t") + 1] == "45.600"
     assert "-vn" in cmd and cmd.index("-i") < cmd.index("-ss")
+
+
+def test_the_cli_previews_the_window_it_analysed(tmp_path, monkeypatch):
+    ms = MusicSpec("t.webm", 49.0, 45.6, 117.0, (0.0, 0.5), (0.3,), 2.0)
+    monkeypatch.setattr(beats, "analyze", lambda track, start, dur: ms)
+    monkeypatch.setattr(beats.vocals, "vocal_spans", lambda track: ())
+    got = []
+    monkeypatch.setattr(beats, "write_preview", lambda *a: got.append(a) or a[-1])
+    monkeypatch.setattr("sys.argv", ["beats", "t.webm", "--start-offset", "10", "--out",
+                                     str(tmp_path / "M.json"), "--preview",
+                                     str(tmp_path / "p.mp3")])
+    beats.main()
+    assert got == [("t.webm", 49.0, 45.6, str(tmp_path / "p.mp3"))]   # the analysed window

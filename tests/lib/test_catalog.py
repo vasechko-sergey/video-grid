@@ -287,3 +287,9 @@ def test_popularity_rides_the_dict_only_when_known():
     assert Candidate.from_dict(c.to_dict()) == c
     plain = Candidate("T", "A", "deezer", "A - T", "unknown (any lane)", None)
     assert "popularity" not in plain.to_dict()
+
+
+def test_a_deezer_row_without_a_preview_does_not_abort_the_search(monkeypatch):
+    _mock_urlopen(monkeypatch, {"data": [
+        {"title": "NoClip", "artist": {"name": "A"}, "preview": ""}]})
+    assert catalog._search_deezer("x", 5)[0].preview_url is None

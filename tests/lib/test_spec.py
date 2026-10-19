@@ -276,8 +276,15 @@ def test_asl_refuses_a_band_it_cannot_hold(bad):
 
 
 def test_music_known_is_a_yes_no_answer():
-    s = Spec(**GOOD, music_known=True)
+    s = Spec(**GOOD, music_mode="any", music_known=True)
     assert Spec.from_dict(s.to_dict()) == s and Spec(**GOOD).music_known is False
-    assert "- **Music:** auto (mode: free, known tracks)" in s.to_markdown()
+    assert "- **Music:** auto (mode: any, known tracks)" in s.to_markdown()
     with pytest.raises(ValueError, match="music_known"):
         Spec(**GOOD, music_known="yes")
+
+
+def test_known_tracks_need_the_any_lane():
+    # the free (CC) and local lanes have no catalog of hits to search
+    with pytest.raises(ValueError, match="--music-mode any"):
+        Spec(**GOOD, music_known=True)
+    assert Spec(**GOOD, music_mode="any", music_known=True).music_known is True

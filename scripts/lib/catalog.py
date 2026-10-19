@@ -192,7 +192,7 @@ def _search_deezer(query: str, n: int, popular: bool = False) -> list[Candidate]
             continue
         out.append(Candidate(title=title, artist=artist, source="deezer",
                              ref=f"{artist} - {title}", license="unknown (any lane)",
-                             preview_url=r.get("preview"),
+                             preview_url=r.get("preview") or None,   # "" = no clip
                              popularity=_num_or_none(r.get("rank"))))
     return out
 
