@@ -147,14 +147,16 @@ def test_fill_out_dims_match_todays_delivery_on_a_non_golden_canvas():
 
 
 SIZED = (Delivery("short_edge", 1080), Delivery("long_edge", 1920))
-SOURCES = ((1920, 1080), (1280, 720), (3840, 2160), (2704, 1520))
+# 1280x720, 3840x2160 and 2704x1520 divide exactly (405, 1215, 855) and pass either way —
+# kept as controls; 1920x1080 (607) and 2688x1512 (850) are the ones that discriminate.
+SOURCES = ((1920, 1080), (2688, 1512), (1280, 720), (3840, 2160), (2704, 1520))
 
 
 @pytest.mark.parametrize("delivery", SIZED, ids=lambda d: d.mode)
 @pytest.mark.parametrize("src", SOURCES, ids=lambda s: f"{s[0]}x{s[1]}")
 def test_a_sized_delivery_of_a_fill_crop_is_exactly_the_canvas_aspect(src, delivery):
     """The second real run shipped 1080x1922 (retro 2026-10-16 S1): the 9:16 crop of a
-    1080-tall source is 607 px wide (607.5 rounded), and sizing the output from that
+    1080-tall source is 607 px wide (607.5 truncated), and sizing the output from that
     integer crop gives 1080 * 1080 / 607 = 1921.6 -> 1922. A sized delivery asks for a
     shape, so it takes the shape from the declared aspect, never from the rounding."""
     rl = layout.resolve(LayoutSpec(mode="fill"), CANVAS, src, delivery)
@@ -176,3 +178,12 @@ def test_fill_and_fit_agree_on_the_output_size_of_one_canvas(canvas, delivery):
     if canvas[0] * src[1] <= canvas[1] * src[0]:
         fit = layout.resolve(LayoutSpec(mode="fit", crop_aspect="source"), canvas, src, delivery)
         assert (fit.out_w, fit.out_h) == want
+
+
+@pytest.mark.parametrize("delivery", SIZED, ids=lambda d: d.mode)
+def test_a_scaled_fill_crop_keeps_the_canvas_aspect_too(delivery):
+    """crop_scale 0.9 of a 1080-tall source is 972 tall and 546 wide (546.75 truncated):
+    sized from that crop, short_edge 1080 would come out 1080x1922 again."""
+    rl = layout.resolve(LayoutSpec(mode="fill", crop_scale=0.9), CANVAS, (1920, 1080), delivery)
+    assert (rl.crop_w, rl.crop_h) == (546, 972)
+    assert (rl.out_w, rl.out_h) == (1080, 1920)

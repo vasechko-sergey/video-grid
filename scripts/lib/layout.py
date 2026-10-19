@@ -59,7 +59,7 @@ def resolve(spec: LayoutSpec, canvas: tuple[int, int], src: tuple[int, int],
         if delivery.mode in ("short_edge", "long_edge"):
             # ...except that a SIZED delivery asks for a shape, and the integer crop
             # is only the nearest pixel to it: the 9:16 crop of a 1080-tall source is
-            # 607 wide (607.5 rounded), and 1080 * 1080 / 607 evens to 1922 — the
+            # 607 wide (607.5 truncated), and 1080 * 1080 / 607 evens to 1922 — the
             # second real run shipped 1080x1922 (retro 2026-10-16 S1). The squash
             # onto the canvas absorbs the half pixel, exactly as it absorbs a native
             # canvas's evening. Native keeps the crop: it promises no scaling.

@@ -15,7 +15,7 @@ file is the short "what changed for someone who installs it" list.
 The second real run's four P0 rows (retro 2026-10-16):
 
 - A 9:16 reel from 1080p footage is delivered at **1080×1920**, not 1080×1922 —
-  a sized delivery takes the canvas aspect, not the rounded crop.
+  a sized delivery takes the canvas aspect, not the truncated integer crop.
 - `titles build` drafts only the brief's on-screen text; it no longer puts the
   hook/ending notes (file names included) on screen.
 - Music sourcing verifies HTTPS against certifi, so a python.org interpreter no
