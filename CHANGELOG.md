@@ -20,7 +20,8 @@ The second real run's four P0 rows (retro 2026-10-16):
   hook/ending notes (file names included) on screen.
 - Music sourcing verifies HTTPS against certifi, so a python.org interpreter no
   longer fails every Deezer request.
-- Reels titles keep the top 14% clear of the app header (was 8%).
+- The Reels safe zone keeps the top 14% clear of the app header (was 8%) — for
+  titles, and for `check_reel`'s advisory subject safe-zone check.
 
 ## 0.15.1 — 2026-10-13
 

@@ -157,7 +157,7 @@ reel-review builds **no fixer** — each `route` names a stage that already exis
 | `pacing` | pacing SKILL then `edit_plan build --pacing` | cuts drift off the energy spine |
 | `music` | music-match / music-source SKILL | mood mismatch / wrong track |
 | `reprocess` | process_episode on one episode (grade/layout redo) | one episode reads wrong vs the reel |
-| `titles` | titles SKILL | hook/ending wants on-screen text |
+| `titles` | reel-brief `--text` (the literal words), then titles SKILL | the reel wants on-screen text, or its titles are mistimed/misplaced |
 | `match-grade` | match-grade SKILL then `edl_to_reel` | one episode reads as a different grade from the rest |
 | `none` | — (note only) | an observation to record, no action |
 | `outro-length-chosen` | pacing SKILL — grow or re-cut the closing episode, then re-apply | a mechanical stop, not an editorial finding: the reel loop refused to absorb a within-band shortfall because the outro fit CHOSE this reel's length as `line + fade`; it will not silently move the fade off the bar line |

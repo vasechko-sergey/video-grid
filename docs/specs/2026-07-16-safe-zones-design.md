@@ -108,6 +108,11 @@ class SafeZone:
         return self.left <= fx <= 1.0 - self.right and self.top <= fy <= 1.0 - self.bottom
 ```
 
+> **Amended 2026-10-19 (retro 2026-10-16 S4).** `reels` top is now **0.14**, not the
+> 0.08 below: at 0.08 a top title sat under the Reels header on the second real run,
+> and the published guidance keeps the top 14% clear (13% measured off ad
+> previews). The bottom stays 0.16 — the sources disagree (23–35%).
+
 ```python
 SAFE_ZONES: dict[str, SafeZone] = {
     "generic": SafeZone(top=0.08, bottom=0.12, left=0.05, right=0.05),   # == titles presets
