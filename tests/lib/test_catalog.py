@@ -258,3 +258,38 @@ def test_the_default_store_still_loads_on_top_of_certifi(monkeypatch):
     catalog._ssl_context()
     import certifi
     assert calls == [("certifi", certifi.where()), "default"]
+
+
+# --- retro 2026-10-16 S8: popularity is a signal the catalogs already return ---------
+
+def test_deezer_carries_its_rank_and_can_order_by_it(monkeypatch):
+    seen = []
+    monkeypatch.setattr(catalog, "_get_json", lambda url: (seen.append(url), {"data": [
+        {"title": "Hit", "artist": {"name": "A"}, "preview": "http://p", "rank": 912345}]})[1])
+    c = catalog._search_deezer("surf", 5, popular=True)[0]
+    assert c.popularity == 912345.0
+    assert "order=RANKING" in seen[0]
+    catalog._search_deezer("surf", 5)
+    assert "order=" not in seen[1]
+
+
+def test_youtube_carries_its_view_count(monkeypatch):
+    line = _json.dumps({"title": "T", "webpage_url": "https://y/1", "channel": "C",
+                       "view_count": 1200000})
+    monkeypatch.setattr(catalog.subprocess, "run",
+                        lambda *a, **k: type("R", (), {"returncode": 0, "stdout": line,
+                                                       "stderr": ""})())
+    assert catalog._search_youtube("x", 1)[0].popularity == 1200000.0
+
+
+def test_popularity_rides_the_dict_only_when_known():
+    c = Candidate("T", "A", "deezer", "A - T", "unknown (any lane)", None, popularity=5.0)
+    assert Candidate.from_dict(c.to_dict()) == c
+    plain = Candidate("T", "A", "deezer", "A - T", "unknown (any lane)", None)
+    assert "popularity" not in plain.to_dict()
+
+
+def test_a_deezer_row_without_a_preview_does_not_abort_the_search(monkeypatch):
+    _mock_urlopen(monkeypatch, {"data": [
+        {"title": "NoClip", "artist": {"name": "A"}, "preview": ""}]})
+    assert catalog._search_deezer("x", 5)[0].preview_url is None

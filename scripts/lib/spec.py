@@ -40,6 +40,11 @@ class Spec:
     # longboard rides into 13 pieces of 3.3 s; the operator rejected it at CP2 — "rides
     # of 2 seconds again" — and wanted whole rides of up to 10 s (retro 2026-10-16 S5).
     asl: tuple | None = None
+    # The brief asked for a KNOWN track (a hit, a trend) rather than any track that fits
+    # the mood. music_mode is the licence lane only; the second run's "any" was read as
+    # rights and the search returned niche artists (retro 2026-10-16 S8). music_find
+    # reads it as --popular.
+    music_known: bool = False
 
     def __post_init__(self) -> None:
         if not (isinstance(self.canvas, (tuple, list)) and len(self.canvas) == 2
@@ -86,6 +91,15 @@ class Spec:
                     f"take the mood preset's own. Got {self.tone_bias!r}. Write [0, 0, 0] "
                     f"to keep the mood and leave the colour alone")
             self.tone_bias = tuple(float(v) for v in self.tone_bias)
+        if not isinstance(self.music_known, bool):
+            raise ValueError(f"Spec.music_known must be true or false — did the brief ask "
+                             f"for a known track? Got {self.music_known!r}")
+        if self.music_known and self.music_mode != "any":
+            raise ValueError(
+                f"Spec.music_known asks for a known track, but music_mode is "
+                f"{self.music_mode!r}: the free (Creative-Commons) and local lanes have no "
+                f"catalog of hits to search. Pass --music-mode any with --music-known, or "
+                f"drop --music-known")
         if self.asl is not None:
             if not (isinstance(self.asl, (tuple, list)) and len(self.asl) == 2
                     and all(isinstance(v, (int, float)) and not isinstance(v, bool)
@@ -127,7 +141,7 @@ class Spec:
             platform=opt("platform", ""), text=opt("text", ""),
             ending=opt("ending", ""), cast=opt("cast", ()), notes=opt("notes", ""),
             tone_bias=d.get("tone_bias"), cast_share=d.get("cast_share"),
-            asl=d.get("asl"))
+            asl=d.get("asl"), music_known=opt("music_known", False))
 
     def to_dict(self) -> dict:
         return {"canvas": list(self.canvas), "length_s": self.length_s,
@@ -138,7 +152,8 @@ class Spec:
                 "notes": self.notes,
                 "tone_bias": None if self.tone_bias is None else list(self.tone_bias),
                 "cast_share": None if self.cast_share is None else dict(self.cast_share),
-                "asl": None if self.asl is None else list(self.asl)}
+                "asl": None if self.asl is None else list(self.asl),
+                "music_known": self.music_known}
 
     @classmethod
     def from_json(cls, path: str | Path) -> "Spec":
@@ -172,7 +187,8 @@ class Spec:
             f"- **Mood:** {self.mood}",
             f"- **Tone bias:** {tone_bias}",
             f"- **Hook:** {self.hook}",
-            f"- **Music:** {self.music} (mode: {self.music_mode})",
+            f"- **Music:** {self.music} (mode: {self.music_mode}"
+            f"{', known tracks' if self.music_known else ''})",
             f"- **Style-lean:** {self.style_lean}",
             f"- **Platform:** {self.platform or '–'}",
             f"- **Cast:** {cast}",

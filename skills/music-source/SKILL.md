@@ -37,9 +37,12 @@ user makes the final call (the §4.1 music checkpoint stays human-influenced).
 
 Announce on entry: **"Using music-source to source and shortlist the reel's track by mood."**
 
-1. **Recon.** Read `SPEC.json` (note `mood`, `length_s`, `music_mode`). Confirm the lane
-   with the user — and for `any`, confirm they accept the copyright/rights responsibility
-   before sourcing.
+1. **Recon.** Read `SPEC.json` (note `mood`, `length_s`, `music_mode`, `music_known`).
+   The brief's `music_mode` IS the user's answer on rights: state the lane once when you
+   present the shortlist and never re-ask it later or attach it as a caveat to every
+   pick (the second real run's operator: "the music limits were asked at the start and I
+   answered"). With no brief, confirm the lane — and for `any`, the rights
+   responsibility — before sourcing.
 
 **Launcher and references.** Run every pipeline step through the repo's launcher
 `bin/vg`, never a bare `python`, and resolve every `references/…` read the same
@@ -60,18 +63,27 @@ guessing a path.
    `"$VG" scripts.music_find --mode <free|any> --spec <run>/reels/<reel>/SPEC.json --out-dir <run>/reels/<reel>`
    (or `--mood "energetic"`; add `--catalog itunes` / `--n 12` / `--query "..."` to steer).
    It writes `<run>/reels/<reel>/MUSIC_SHORTLIST.md` + `.json`.
+   - **Known tracks.** `SPEC.music_known` (or `--popular`) searches Deezer by its own
+     ranking and sorts the list by popularity, the mood fit still shown per row. Query
+     with genre and mood words ("surf rock summer", "chill indie"), not with niche
+     artist names — a name query returns that artist's catalogue, never the hits around
+     it. When the brief wants known music and the list is all deep cuts, say so.
    - An **unrecognized mood** is not an error — it logs and ranks by drive (energy+pace);
      say so when you present the list.
    - **No candidates / no network / yt-dlp missing** fail loud — fix and re-run.
 3. **Present** the top few `MUSIC_SHORTLIST.md` rows (rank · title · artist · source · fit ·
-   axes · license). The user picks one — or asks to hear previews and picks by ear.
+   popularity · axes · license). The user picks one — or asks to hear previews and picks
+   by ear: fetch the candidates and send each one's `beats --preview` (step 5's command
+   with `--preview <run>/music/previews/<name>.mp3`) — the exact window that will play,
+   not the catalog's 30 s clip from elsewhere in the song.
 4. **Fetch** the pick:
    `"$VG" scripts.music_fetch --mode <free|any> --from-shortlist <run>/reels/<reel>/MUSIC_SHORTLIST.json --pick <row> --cache-dir <run>/music/cache --date $(date +%F)`
    — prints the cached file path.
 5. **Lock** it into `MUSIC.json`:
    `"$VG" scripts.beats <cached-file> --auto-start --duration <length_s> --out <run>/reels/<reel>/MUSIC.json`
    — start-offset intelligence starts the reel on the strongest fragment, in a vocal
-   pause. Pass `<run>/reels/<reel>/MUSIC.json` on to edit-plan.
+   pause. Add `--preview <run>/music/previews/<name>.mp3` to also write that window as
+   an mp3 for the user. Pass `<run>/reels/<reel>/MUSIC.json` on to edit-plan.
 
 **Explicit track already chosen?** When `SPEC.music` is a track name (not `auto`), skip
 Find/Present — `"$VG" scripts.music_fetch --mode <free|any> --track "<name>"
@@ -84,4 +96,4 @@ fetch — Lock it directly.
 - **A local folder** the user already has → **music-match** (the `local` lane), not this.
 - **Writing `MUSIC.json`** → `beats --auto-start` (step 5), not this skill.
 - **Trend-sound presence** in the ranking → deferred with 5.4 trend-scan; sourcing ranks
-  by mood only.
+  by mood, or by the catalog's own popularity with `--popular`.

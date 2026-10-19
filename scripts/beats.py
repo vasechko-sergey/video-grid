@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from scripts.lib import mood, offset, outro, vocals
+from scripts.lib import ffbin, mood, offset, outro, proc, vocals
 from scripts.lib.models import MusicSpec
 
 _HOP = offset.HOP                                     # kept as a module name for analyze() below
@@ -164,6 +164,17 @@ def mood_features(track: str) -> mood.MoodVector:
                            pace=mood.norm01(tempo, *mood.PACE_BPM))
 
 
+def write_preview(track: str, start: float, duration: float, out: str) -> str:
+    """The analysed window as an mp3 — exactly what will play under the reel, so the
+    user listens to that and not to a catalog's own 30 s clip from somewhere else in the
+    song. The second real run's operator asked "where is the preview?" and the agent cut
+    the excerpts by hand (retro 2026-10-16 S8). Audio seeks after -i like every cut here."""
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    proc.run([ffbin.ffmpeg(), "-y", "-i", track, "-ss", f"{start:.3f}", "-t", f"{duration:.3f}",
+              "-vn", "-c:a", "libmp3lame", "-q:a", "4", out])
+    return out
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="analyse a track → MUSIC.json (tempo + beats + energy)")
     ap.add_argument("track", help="the audio file to analyse")
@@ -175,6 +186,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--duration", type=float, default=None,
                     help="window length, seconds (default: the whole track)")
     ap.add_argument("--out", required=True, help="MUSIC.json output path")
+    ap.add_argument("--preview", default=None,
+                    help="also write the analysed window as an mp3 here — exactly what will "
+                         "play under the reel, for the user to listen to before choosing")
     return ap
 
 
@@ -196,6 +210,8 @@ def main() -> None:
                                            ms.start_offset, ms.duration))
     Path(a.out).write_text(json.dumps(ms.to_dict(), indent=2))
     print(a.out)
+    if a.preview:
+        print(write_preview(a.track, ms.start_offset, ms.duration, a.preview))
 
 
 if __name__ == "__main__":

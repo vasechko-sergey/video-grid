@@ -34,7 +34,6 @@ Rows S1–S17 come from the second real run — evidence and measurements in
 
 | | Item | Size | Source |
 |---|------|------|--------|
-| ○ | **S8 · The music search finds niche tracks, not known ones** — "again", the operator said after the run. Mood-string queries, mood-only ranking; Deezer `rank` and YouTube views unused; the brief never asks "known/trending or atmospheric" ("any" became only the licence lane). Also: no preview of the exact window that will play, and the agent re-raised rights the brief had settled. | M | [retro 2](retro/2026-10-16-second-real-run.md) S8 |
 | ○ | **S10 · `project.json` written into the footage folder** — the `project-init` skill says `--project-dir <dir>` without `<footage>/montage`, and `project_init` lacks the refusal `intake`/`draft`/`edl_to_reel` carry. | S | [retro 2](retro/2026-10-16-second-real-run.md) S10 |
 | ○ | **S11 · `VERSIONS.md` cannot tell versions apart** — all five lines `delivered from EDL.json`; `edl_to_reel --changelog` exists and no skill mentions it. | S | [retro 2](retro/2026-10-16-second-real-run.md) S11 |
 | ○ | **S12 · Cast naming costs 15 questions for 2 people** — 15 candidates (one hero in 2 clusters, the other in 3, 10 background figures of 43–88 px), a sheet too small to recognise anyone; the agent wrote its own card renderer. Ties to the identity-threshold row below. | M | [retro 2](retro/2026-10-16-second-real-run.md) S12 |
@@ -46,7 +45,7 @@ Rows S1–S17 come from the second real run — evidence and measurements in
 |---|------|------|--------|
 | ○ | **S14 · Judge and reviewer prompts are filled by hand** — `episode_qc pack`/`reel-review` leave placeholders; the agent wrote two fill scripts. | S | [retro 2](retro/2026-10-16-second-real-run.md) S14 |
 | ○ | **S15 · `reel_brief` accepts any platform string** — "Instagram Reels" stored, `edit_plan` judged against the generic zone. | S | [retro 2](retro/2026-10-16-second-real-run.md) S15 |
-| ○ | **S16 · Two small refusals** — `crop_aspect "1:1"` refused (only `[1, 1]`); `music_find --out-dir` does not create its directory. | S | [retro 2](retro/2026-10-16-second-real-run.md) S16 |
+| ○ | **S16 · Two small refusals** — `crop_aspect "1:1"` refused (only `[1, 1]`). (The `music_find --out-dir` half is fixed in 0.20.0.) | S | [retro 2](retro/2026-10-16-second-real-run.md) S16 |
 | ○ | **S17 · The conductor lifts an intentional silhouette** — the backlit hook measured p5 38, authored toward the reel's 60; caught only because the agent ran `probe grade`, then froze it with an identity pair. | S | [retro 2](retro/2026-10-16-second-real-run.md) S17 |
 
 ## Still waiting on a run

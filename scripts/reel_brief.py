@@ -17,7 +17,7 @@ def build_spec(project_path: str, *, length_s: float, mood: str, hook: str,
                style_lean: str = "balanced", platform: str = "", text: str = "",
                ending: str = "", cast: tuple = (), notes: str = "",
                tone_bias: tuple | None = None, cast_share: dict | None = None,
-               asl: tuple | None = None) -> Spec:
+               asl: tuple | None = None, music_known: bool = False) -> Spec:
     """Read canvas from project.json (fail-loud if absent — reel-brief FOLLOWS
     project-init), then construct+validate a Spec. The project is the single source
     of aspect; build_spec never sources canvas itself."""
@@ -26,7 +26,7 @@ def build_spec(project_path: str, *, length_s: float, mood: str, hook: str,
                 reel_count=reel_count, music=music, music_mode=music_mode,
                 style_lean=style_lean, platform=platform, text=text,
                 ending=ending, cast=tuple(cast), notes=notes, tone_bias=tone_bias,
-                cast_share=cast_share, asl=asl)
+                cast_share=cast_share, asl=asl, music_known=music_known)
 
 
 def parse_cast_share(values: list[str] | None, cast: tuple) -> dict | None:
@@ -77,7 +77,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="how many reels (default 1). Anything above 1 is REFUSED — "
                         "multi-reel fan-out is not built; run the conveyor once per reel")
     b.add_argument("--music", default="auto", help="track name / 'auto' / 'none'")
-    b.add_argument("--music-mode", default="free", help="local / free (default) / any")
+    b.add_argument("--music-mode", default="free", help="local / free (default) / any — "
+                   "the LICENCE lane only")
+    b.add_argument("--music-known", action="store_true",
+                   help="the brief wants a known track (a hit, a trend), not just one that "
+                        "fits the mood — music_find then searches and sorts by popularity")
     b.add_argument("--style-lean", default="balanced", help="classic / balanced (default) / trend")
     b.add_argument("--platform", default="", help="free label (reel/tiktok/youtube/…)")
     b.add_argument("--text", default="", help="the literal words the reel shows on screen (a real newline makes two lines); empty = no text. Never a description of them — titles draft exactly this")
@@ -114,7 +118,8 @@ def main() -> None:
                       ending=a.ending, cast=tuple(a.cast or ()), notes=a.notes,
                       tone_bias=tone_bias,
                       cast_share=parse_cast_share(a.cast_share, tuple(a.cast or ())),
-                      asl=tuple(float(v) for v in a.asl.split(",")) if a.asl else None)
+                      asl=tuple(float(v) for v in a.asl.split(",")) if a.asl else None,
+                      music_known=a.music_known)
     result = write_reel_brief(spec, a.out_dir)
     print(json.dumps(result, indent=2))
     raise SystemExit(0)

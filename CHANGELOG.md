@@ -10,6 +10,17 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.20.0 — 2026-10-19
+
+- **Known music when the brief asks for it.** `reel_brief --music-known` records the
+  wish in `SPEC.music_known`; `music_find --popular` (implied by it) searches Deezer by
+  its own ranking and sorts the shortlist by popularity, which now has its own column.
+  The second real run's "any" was read as the licence lane and returned niche artists.
+- **`beats --preview PATH`** writes the analysed window as an mp3 — exactly what will
+  play under the reel, for the user to listen to before choosing.
+- `music_find --out-dir` creates the directory; the music-source skill no longer
+  re-asks the rights question the brief already answered.
+
 ## 0.19.0 — 2026-10-19
 
 - **Music with no bar grid still ends on its own grid.** When the analysed window

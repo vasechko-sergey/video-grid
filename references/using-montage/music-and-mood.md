@@ -25,9 +25,11 @@ If instead the brief has a **mood but no chosen track**:
   `beats --auto-start`.
 - no local folder (`music_mode` is `free` or `any`) -> invoke
   **music-source** instead — it discovers and ranks candidates from the
-  internet (`free` = CC catalogs; `any` is opt-in/copyright-gray — confirm
-  with the user first) into the same shortlist shape, the user picks, and it
-  downloads then runs `beats --auto-start`.
+  internet (`free` = CC catalogs; `any` is opt-in/copyright-gray — the brief's
+  `music_mode` is the user's answer, so confirm only when there is no brief, and
+  never re-ask it) into the same shortlist shape, the user picks, and it
+  downloads then runs `beats --auto-start`. `SPEC.music_known` (a known track
+  wanted) makes it search and sort by popularity.
 Either way, `MUSIC.json` feeds **pacing** next (step 8), and the EDL references it
 (`selection.json`'s `music` field) for the audio mux. On "no music" / "без
 музыки", leave it unset — the reel is silent, pacing is skipped (a valid path).
