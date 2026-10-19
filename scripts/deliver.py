@@ -105,15 +105,19 @@ def _title_band(t: Title, h: int, platform: str) -> tuple[int, int]:
 
 
 def _title_times(items: tuple[Title, ...], i: int, dur: float,
-                 fade: float) -> tuple[float, tuple[float, ...], str]:
+                 fade: float, fade_in: float | None = None) -> tuple[float, tuple[float, ...], str]:
     """(in-window time, witness times, skip reason) for item `i`.
 
     Both ends are clamped into [fade, dur - fade] because BOTH break inside a ramp, in
     opposite directions and for different reasons (design 2026-08-19 §4): a title
     sampled at alpha 0.10 has almost no ink left to find, and a witness faded toward
     black makes |d_in - d_out| large with no title involved at all — a false fail and a
-    false pass respectively, and a no-waiver gate can afford neither."""
-    lo, hi = float(fade), float(dur) - float(fade)
+    false pass respectively, and a no-waiver gate can afford neither.
+
+    `fade` is the closing ramp and, unless `fade_in` sets it apart, the opening one: a
+    reel that opens on picture has no opening ramp to clamp out of (retro 2026-10-16 S6)."""
+    head = fade if fade_in is None else fade_in
+    lo, hi = float(head), float(dur) - float(fade)
     t = items[i]
     if hi - lo <= 0:
         return 0.0, (), (f"the {fade:g}s bookend fade covers the whole {dur:g}s reel, so "
@@ -165,23 +169,25 @@ def _verify_look(master: str, out: str, look: LookSpec | None,
     costs exactly what it cost before this gate existed.
     """
     vig = look.vignette if look is not None else 0.0
-    fade = look.fade if look is not None else 0.0
-    if not (vig or fade or titles is not None):
+    fade = look.tail if look is not None else 0.0
+    head = look.head if look is not None else 0.0
+    if not (vig or fade or head or titles is not None):
         return []
     out_dur = assembly.probe_duration(out)
     ts = [out_dur * f for f in (0.25, 0.5, 0.75)]
     m_si, d_si = assembly.probe_stream(master), assembly.probe_stream(out)
     m_fps, d_fps = m_si.fps, d_si.fps
     first_m = first_d = last_m = last_d = None
-    if fade:
+    if head:
         first_m = assembly.frames_rgb(master, [0.0], m_fps)[0]
         first_d = assembly.frames_rgb(out, [0.0], d_fps)[0]
+    if fade:
         last_m = assembly.last_frame_rgb(master, m_fps)
         last_d = assembly.last_frame_rgb(out, d_fps)
     probes: list[lookcheck.TitleProbe] = []
     if titles is not None:
         items = Titles.from_json(titles).items
-        plan = [_title_times(items, i, out_dur, fade) for i in range(len(items))]
+        plan = [_title_times(items, i, out_dur, fade, head) for i in range(len(items))]
         extra = sorted({t for t_in, ws, why in plan if not why for t in (t_in, *ws)})
         m_extra = dict(zip(extra, assembly.frames_rgb(master, extra, m_fps))) if extra else {}
         d_extra = dict(zip(extra, assembly.frames_rgb(out, extra, d_fps))) if extra else {}
@@ -198,7 +204,8 @@ def _verify_look(master: str, out: str, look: LookSpec | None,
     return lookcheck.evaluate(assembly.frames_rgb(master, ts, m_fps),
                               assembly.frames_rgb(out, ts, d_fps),
                               first_m, first_d, last_m, last_d,
-                              vignette=vig, fade=fade, fps=d_fps, titles=probes)
+                              vignette=vig, fade=fade, fade_in=head, fps=d_fps,
+                              titles=probes)
 
 
 def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
@@ -303,7 +310,7 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     title_chain = ""
     if titles is not None:
         title_chain = build_filterchain(Titles.from_json(titles), scratch_dir, platform=platform)
-    dur = assembly.probe_duration(master) if (look is not None and look.fade) else 0.0
+    dur = assembly.probe_duration(master) if (look is not None and look.has_fade) else 0.0
     parts = look_lib.chain(look, dur, title_chain)
     mask_in: list[str] = []
     graph: list[str] = []
@@ -387,7 +394,11 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--vignette", type=float, default=0.0,
                     help="corner darkening 0..0.6 (0 = off) — the reel's plateau vignette")
     ap.add_argument("--fade", type=float, default=0.0,
-                    help="bookend fade seconds per end 0..2.0 (0 = off)")
+                    help="closing fade seconds 0..2.0 (0 = off) — and the opening one, "
+                         "unless --fade-in")
+    ap.add_argument("--fade-in", type=float, default=None,
+                    help="opening fade seconds 0..2.0 when it differs from --fade "
+                         "(0 = the reel opens on picture)")
     return ap
 
 
@@ -396,7 +407,7 @@ def main() -> None:
     report = ReelReport.from_dict(json.loads(Path(a.report).read_text()))
     out = deliver(a.master, ExportProfile(), a.out_dir, a.changelog, report,
                   scratch_dir=a.scratch_dir, titles=a.titles, platform=a.platform,
-                  look=LookSpec(vignette=a.vignette, fade=a.fade))
+                  look=LookSpec(vignette=a.vignette, fade=a.fade, fade_in=a.fade_in))
     print(out)
 
 

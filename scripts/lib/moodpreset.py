@@ -73,22 +73,26 @@ class MoodPreset:
 # Hand-tuned FIRST CUT. No footage has been cut against these numbers, so they live
 # in this one place and are declared as guesses — the same honesty intake's
 # CLUSTER_COS and MAX_CAST carry. Calibrate on the first real run that uses them.
+# fade_in=0.0 on every row: the reel opens on picture, not black — the first frame
+# is the hook a swiping viewer judges, and the second real run's `nostalgic` hook
+# faded in from black under one shared fade (retro 2026-10-16 S6). The closing
+# fade stays the preset's taste.
 PRESETS: tuple[MoodPreset, ...] = (
     MoodPreset("fun", mood.MoodVector(0.74, 0.84, 0.72),
                {"close": 0.35, "medium": 0.40, "wide": 0.25}, (1.2, 2.5),
-               look=LookSpec(vignette=0.00, fade=0.3),
+               look=LookSpec(vignette=0.00, fade=0.3, fade_in=0.0),
                tone_bias=(10.0, 18.0, 8.0)),        # brighter and airier
     MoodPreset("epic", mood.MoodVector(0.80, 0.55, 0.55),
                {"close": 0.25, "medium": 0.35, "wide": 0.40}, (1.5, 3.5),
-               look=LookSpec(vignette=0.30, fade=0.8),
+               look=LookSpec(vignette=0.30, fade=0.8, fade_in=0.0),
                tone_bias=(-16.0, 0.0, 16.0)),       # wider contrast, both ends
     MoodPreset("moody", mood.MoodVector(0.48, 0.22, 0.42),
                {"close": 0.30, "medium": 0.35, "wide": 0.35}, (2.5, 5.0),
-               look=LookSpec(vignette=0.40, fade=1.0),
+               look=LookSpec(vignette=0.40, fade=1.0, fade_in=0.0),
                tone_bias=(-18.0, -16.0, -8.0)),     # darker and crushed, low key
     MoodPreset("nostalgic", mood.MoodVector(0.32, 0.45, 0.34),
                {"close": 0.35, "medium": 0.40, "wide": 0.25}, (2.0, 4.0),
-               look=LookSpec(vignette=0.25, fade=0.8),
+               look=LookSpec(vignette=0.25, fade=0.8, fade_in=0.0),
                tone_bias=(20.0, 0.0, -18.0)),       # faded: lifted blacks, pulled highs
 )
 

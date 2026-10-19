@@ -501,3 +501,32 @@ def test_the_next_delivery_after_a_kill_reuses_the_version_and_clears_the_partia
                           scratch_dir=str(tmp_path / "scratch"))
     assert out.endswith("REEL_v1.mp4")                 # the killed version is retried
     assert not (tmp_path / ".REEL_v1.part.mp4").exists()
+
+
+def test_title_times_does_not_clamp_an_opening_that_has_no_fade():
+    """retro 2026-10-16 S6: a reel that opens on picture has no fade-in ramp, so a title
+    at the very start is sampled where it sits, not pushed past a ramp that is not there."""
+    items = (Title("hook", 0.0, 1.0, pos="top"), Title("later", 20.0, 2.0, pos="top"))
+    t_in, witnesses, skipped = deliver._title_times(items, 0, dur=34.0, fade=1.0, fade_in=0.0)
+    assert skipped == "" and t_in == 0.5
+    assert all(w <= 33.0 for w in witnesses)          # the closing ramp still clamps
+
+
+def test_verify_look_decodes_only_the_ends_a_look_declares(tmp_path, monkeypatch):
+    import numpy as np
+    from scripts.lib.look import LookSpec
+    # an opening of 0 needs no first frame: decoding it would cost a seek for nothing
+    seen = []
+    monkeypatch.setattr(deliver.assembly, "probe_duration", lambda p: 10.0)
+    monkeypatch.setattr(deliver.assembly, "probe_stream",
+                        lambda p: SimpleNamespace(w=100, h=200, fps=30.0))
+    monkeypatch.setattr(deliver.assembly, "frames_rgb",
+                        lambda p, ts, fps: (seen.append(("frames", tuple(ts))),
+                                            [np.zeros((200, 100, 3), np.uint8)] * len(ts))[1])
+    monkeypatch.setattr(deliver.assembly, "last_frame_rgb",
+                        lambda p, fps: (seen.append(("last",)), np.zeros((200, 100, 3), np.uint8))[1])
+    monkeypatch.setattr(deliver.lookcheck, "evaluate", lambda *a, **k: (seen.append(("eval", k)), [])[1])
+    deliver._verify_look("m.mp4", "d.mp4", LookSpec(fade=0.8, fade_in=0.0), None, "")
+    assert ("frames", (0.0,)) not in seen and ("last",) in seen
+    ev = next(k for tag, *rest in seen if tag == "eval" for k in rest)
+    assert (ev["fade"], ev["fade_in"]) == (0.8, 0.0)

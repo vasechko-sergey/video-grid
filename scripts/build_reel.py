@@ -176,10 +176,17 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                 want = rm.ambient or rm.sfx
                 segments = ([(e.manifest["segment"], e.manifest["target_dur"]) for e in rm.episodes]
                             if want else None)
-                # A look's fade is the ONE number both bookends use. No look → mix keeps
-                # its own default; a look with fade=0 → the author asked for no bookend at
-                # all, in the picture and in the sound (design 2026-08-13 §5).
-                fade_kw = {} if rm.look is None else {"fade": rm.look.fade}
+                # The look's opening and closing fades reach the sound as they reach the
+                # picture. No look → mix keeps its own default; a look with fade=0 → the
+                # author asked for no bookend at all (design 2026-08-13 §5).
+                fade_kw = ({} if rm.look is None
+                           else {"fade": rm.look.tail, "fade_in": rm.look.head})
+                if outro_fixed:
+                    # ...except the music's close when the outro fit CHOSE this length as
+                    # `line + fade`: its fade is the one that starts on the bar line. The
+                    # second real run's REEL_v5 was handed the look's 0.8 instead of the
+                    # fit's 1.5 and held full level 0.7s past the line (retro 2026-10-16 S18).
+                    fade_kw = {"fade_in": mix._FADE, **fade_kw, "fade": float(rm.outro["fade"])}
                 audio = mix.mix(music, work_dir, check_reel._probe_dur(master),
                                 segments=segments, ambient=rm.ambient, sfx=rm.sfx, **fade_kw)
                 continue                             # need_assemble stays False — clips unchanged, no re-assemble

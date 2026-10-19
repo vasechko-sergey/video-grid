@@ -303,6 +303,25 @@ def test_the_bookend_fade_blacks_both_ends_and_not_the_middle(
         f"fixture is already dark, so the assertions above prove nothing")
 
 
+def test_a_look_that_opens_on_picture_keeps_its_first_frame_and_still_closes_to_black(
+        tmp_path, sample_clip, need_filter):
+    """retro 2026-10-16 S6: the second real run's hook opened on a black frame because
+    one fade served both ends. fade_in=0 must leave the first frame exactly as the
+    un-faded control, still black the last, and pass deliver's own look gate — which
+    checks only the end that is declared."""
+    need_filter("fade")
+    out = _deliver(tmp_path / "open", sample_clip, look=LookSpec(fade=0.5, fade_in=0.0))
+    plain = _deliver(tmp_path / "plain", sample_clip, look=None)
+    frames, unfaded = _all_gray(out), _all_gray(plain)
+    assert abs(frames[0].mean() - unfaded[0].mean()) < 1.0, (
+        f"first frame {frames[0].mean():.3f} against un-faded {unfaded[0].mean():.3f}")
+    assert unfaded[0].mean() > 40.0                     # the control is not already dark
+    assert frames[-1].mean() < 12.0, f"last frame is {frames[-1].mean():.3f}, not black"
+    attest = json.loads(Path(out).with_suffix(".attest.json").read_text())
+    checks = {c["check"]: c["status"] for c in attest["look_checks"]}
+    assert checks == {"fade-out": "pass"}
+
+
 def test_no_look_delivers_a_byte_identical_file(tmp_path, sample_clip, need_filter):
     """design §9 row 3. The off path must not have moved at all.
 

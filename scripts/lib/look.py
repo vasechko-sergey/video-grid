@@ -40,7 +40,12 @@ class LookSpec:
     changes neither half of a brief-less run — filling it would either impose a
     picture fade nobody asked for or, at fade=0, switch off mix's audio bookend."""
     vignette: float = 0.0    # corner darkening as a fraction, 0 = off
-    fade: float = 0.0        # bookend fade seconds per end, 0 = off
+    fade: float = 0.0        # closing fade seconds (and the opening one, unless fade_in), 0 = off
+    # The OPENING fade, apart from the closing one. None = the same as `fade`, which is
+    # what every LookSpec meant before the field existed — so an old EDL.json renders
+    # unchanged. The second real run's hook opened on black under one shared `fade`
+    # and all four reviews flagged it (retro 2026-10-16 S6).
+    fade_in: float | None = None
 
     def __post_init__(self) -> None:
         if not _num(self.vignette) or not 0.0 <= self.vignette <= LOOK_VIGNETTE_MAX:
@@ -53,7 +58,36 @@ class LookSpec:
                 f"LookSpec.fade must be a number of seconds in [0, {LOOK_FADE_MAX}] — it is "
                 f"the bookend fade at EACH end (0 = no fade), and a 2s bookend already needs "
                 f"a 4s reel. Got {self.fade!r}")
+        if self.fade_in is not None and (not _num(self.fade_in)
+                                         or not 0.0 <= self.fade_in <= LOOK_FADE_MAX):
+            raise ValueError(
+                f"LookSpec.fade_in must be None (= the same as fade) or a number of seconds "
+                f"in [0, {LOOK_FADE_MAX}] — the OPENING fade (0 = the reel opens on "
+                f"picture). Got {self.fade_in!r}")
         self.vignette, self.fade = float(self.vignette), float(self.fade)
+        if self.fade_in is not None:
+            self.fade_in = float(self.fade_in)
+
+    @property
+    def head(self) -> float:
+        """The opening fade's seconds."""
+        return self.fade if self.fade_in is None else self.fade_in
+
+    @property
+    def tail(self) -> float:
+        """The closing fade's seconds."""
+        return self.fade
+
+    @property
+    def has_fade(self) -> bool:
+        return self.head > 0.0 or self.tail > 0.0
+
+    def describe(self) -> str:
+        """One line for EDL.md and the edit_plan log. The opening is named apart only
+        when it differs, so a look written before fade_in reads exactly as it did."""
+        fades = (f"fade {self.tail:.2f}s" if self.head == self.tail
+                 else f"fade in {self.head:.2f}s · out {self.tail:.2f}s")
+        return f"vignette {self.vignette:.2f} · {fades}"
 
     @property
     def has_vignette(self) -> bool:
@@ -62,14 +96,18 @@ class LookSpec:
         return self.vignette > 0.0
 
     def to_dict(self) -> dict:
-        return {"vignette": self.vignette, "fade": self.fade}
+        d = {"vignette": self.vignette, "fade": self.fade}
+        if self.fade_in is not None:       # absent when unauthored: old files stay byte-identical
+            d["fade_in"] = self.fade_in
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "LookSpec":
         if not isinstance(d, dict):
             raise ValueError(f"look must be an object with vignette/fade fields, got "
                              f"{type(d).__name__} — see the edit-plan skill for the shape")
-        return cls(vignette=d.get("vignette", 0.0), fade=d.get("fade", 0.0))
+        return cls(vignette=d.get("vignette", 0.0), fade=d.get("fade", 0.0),
+                   fade_in=d.get("fade_in"))
 
 
 def mask_expr(vignette: float) -> str:
@@ -94,28 +132,37 @@ def mask_expr(vignette: float) -> str:
             f"a='{ramp};255*{vignette:.4f}*ld(1)*ld(1)*(3-2*ld(1))'")
 
 
-def fade_args(fade: float, dur: float) -> list[str]:
-    """The bookend pair, or [] at 0. Refuses a fade that would meet itself in the
-    middle — two overlapping ramps multiply into a reel that never reaches full
-    brightness, which looks like a broken encode rather than a style."""
+def fade_args(fade: float, dur: float, fade_in: float | None = None) -> list[str]:
+    """The fade pair, or [] at 0. `fade` is the closing fade and — unless `fade_in` sets
+    the opening one apart — the opening fade too; each end is emitted only when it is
+    non-zero. Refuses ends that would meet in the middle — two overlapping ramps
+    multiply into a reel that never reaches full brightness, which looks like a broken
+    encode rather than a style."""
+    head = fade if fade_in is None else fade_in
     # Type check BEFORE the zero shortcut: False == 0 in Python, so an `if fade == 0`
     # placed first would accept a bool and return [] instead of refusing it. color.py's
     # black_point/shadow_red/dip all order these two the same way, for the same reason.
-    if not _num(fade) or not 0.0 <= fade <= LOOK_FADE_MAX:
-        raise ValueError(
-            f"fade_args needs a fade in [0, {LOOK_FADE_MAX}] seconds — the same band "
-            f"LookSpec enforces, re-checked here because this function is public and a "
-            f"direct caller does not go through the dataclass. Got {fade!r}")
-    if fade == 0:
+    for name, v in (("fade", fade), ("fade_in", head)):
+        if not _num(v) or not 0.0 <= v <= LOOK_FADE_MAX:
+            raise ValueError(
+                f"fade_args needs {name} in [0, {LOOK_FADE_MAX}] seconds — the same band "
+                f"LookSpec enforces, re-checked here because this function is public and a "
+                f"direct caller does not go through the dataclass. Got {v!r}")
+    if fade == 0 and head == 0:
         return []
     if not _num(dur) or dur <= 0:
         raise ValueError(f"fade_args needs a positive reel duration, got {dur!r}")
-    if 2 * fade > dur:
+    if head + fade > dur:
         raise ValueError(
-            f"a {fade}s fade at each end of a {dur}s reel would overlap in the middle — "
-            f"lower EDL.look.fade to at most {dur / 2:.2f}s or cut a longer reel")
-    return [f"fade=t=in:st=0:d={fade:.3f}",
-            f"fade=t=out:st={dur - fade:.3f}:d={fade:.3f}"]
+            f"a {head}s opening fade and a {fade}s closing fade on a {dur}s reel would "
+            f"overlap in the middle — lower EDL.look's fades to at most {dur:.2f}s together "
+            f"or cut a longer reel")
+    out = []
+    if head > 0:
+        out.append(f"fade=t=in:st=0:d={head:.3f}")
+    if fade > 0:
+        out.append(f"fade=t=out:st={dur - fade:.3f}:d={fade:.3f}")
+    return out
 
 
 def chain(spec: "LookSpec | None", dur: float, titles: str = "") -> list[str]:
@@ -135,5 +182,5 @@ def chain(spec: "LookSpec | None", dur: float, titles: str = "") -> list[str]:
     if titles:
         parts.append(titles)
     if spec is not None:
-        parts.extend(fade_args(spec.fade, dur))
+        parts.extend(fade_args(spec.fade, dur, fade_in=spec.fade_in))
     return parts

@@ -1112,7 +1112,7 @@ def _look_selection():
 def test_an_unauthored_look_comes_from_the_preset():
     edl = edit_plan.build_edl(_footage(), _look_selection(), preset=moodpreset.resolve("moody"),
                               look=moodpreset.resolve("moody").look, aspect=(9, 16))
-    assert edl.look == LookSpec(vignette=0.40, fade=1.0)
+    assert edl.look == LookSpec(vignette=0.40, fade=1.0, fade_in=0.0)
 
 
 def test_selection_json_overrides_the_preset():
@@ -1179,7 +1179,7 @@ def test_write_edit_plan_fills_the_look_from_a_matched_preset(tmp_path):
     result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path), spec=spec_path)
     assert result["status"] == "written"
     edl = EDL.from_json(str(tmp_path / "EDL.json"))
-    assert edl.look == LookSpec(vignette=0.40, fade=1.0)
+    assert edl.look == LookSpec(vignette=0.40, fade=1.0, fade_in=0.0)
 
 
 # --- outro fit: edit_plan applies the pure ladder to the last episode (design

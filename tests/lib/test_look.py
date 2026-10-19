@@ -110,3 +110,42 @@ def test_chain_does_not_carry_the_overlay():
 
 def test_fade_ceiling_is_two_seconds():
     assert LOOK_FADE_MAX == 2.0
+
+
+# --- the head fade is its own number (retro 2026-10-16 S6) ---------------------------
+# The second real run's hook opened on a black frame: one `fade` served the picture's
+# head, its tail and the audio, and all four reviews flagged it.
+
+def test_the_head_fade_defaults_to_the_tail_and_can_be_set_apart():
+    assert (LookSpec(fade=0.8).head, LookSpec(fade=0.8).tail) == (0.8, 0.8)
+    s = LookSpec(fade=0.8, fade_in=0.0)
+    assert (s.head, s.tail) == (0.0, 0.8)
+    assert s.has_fade and LookSpec(fade_in=0.4).has_fade and not LookSpec().has_fade
+
+
+def test_fade_in_rides_the_dict_only_when_authored():
+    # an EDL.json written before the field must round-trip byte-identically
+    assert LookSpec(vignette=0.25, fade=0.8).to_dict() == {"vignette": 0.25, "fade": 0.8}
+    assert LookSpec(fade=0.8, fade_in=0.0).to_dict() == {"vignette": 0.0, "fade": 0.8,
+                                                         "fade_in": 0.0}
+    assert LookSpec.from_dict({"fade": 0.8, "fade_in": 0.2}) == LookSpec(fade=0.8, fade_in=0.2)
+    assert LookSpec.from_dict({"fade": 0.8}).fade_in is None
+
+
+@pytest.mark.parametrize("f", [-0.1, True, LOOK_FADE_MAX + 0.1, "0.3", float("nan")])
+def test_fade_in_refuses_out_of_band(f):
+    with pytest.raises(ValueError, match="fade_in"):
+        LookSpec(fade_in=f)
+
+
+def test_a_head_of_zero_emits_only_the_fade_out():
+    assert chain(LookSpec(fade=0.8, fade_in=0.0), 10.0) == ["fade=t=out:st=9.200:d=0.800"]
+
+
+def test_a_tail_of_zero_emits_only_the_fade_in():
+    assert chain(LookSpec(fade=0.0, fade_in=0.5), 10.0) == ["fade=t=in:st=0:d=0.500"]
+
+
+def test_a_head_and_tail_that_meet_are_refused():
+    with pytest.raises(ValueError, match="overlap"):
+        fade_args(0.8, 1.0, fade_in=0.4)

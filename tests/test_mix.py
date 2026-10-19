@@ -195,12 +195,33 @@ def test_the_fade_runs_on_the_mixed_stem_before_loudnorm(tmp_path, monkeypatch):
     assert mix_i < fade_i < norm_i     # ambient is ducked, THEN faded, THEN normalized
 
 
-def test_the_fade_is_a_parameter_and_zero_emits_none(tmp_path, monkeypatch):
+def test_the_fade_is_a_parameter_and_zero_leaves_only_the_anti_click(tmp_path, monkeypatch):
+    # fade=0 is "no bookend". The opening still gets ANTICLICK seconds: the music is
+    # cut mid-track at its start_offset, and a hard start is a click, not a style.
     calls = []
     monkeypatch.setattr(mix.proc, "run",
                         lambda cmd, **k: (calls.append(cmd), _R(stderr=_loudnorm_stderr()))[1])
     mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0, fade=0.0)
-    assert not any("afade" in " ".join(map(str, c)) for c in calls)
+    af = [" ".join(map(str, c)) for c in calls if "afade" in " ".join(map(str, c))]
+    assert len(af) == 1
+    assert f"afade=t=in:st=0:d={mix.ANTICLICK}" in af[0] and "afade=t=out" not in af[0]
+
+
+def test_the_opening_and_closing_fades_are_separate(tmp_path, monkeypatch):
+    """retro 2026-10-16 S6: one fade served both ends, so a reel could not open on
+    picture and still close softly."""
+    calls = []
+    monkeypatch.setattr(mix.proc, "run",
+                        lambda cmd, **k: (calls.append(cmd), _R(stderr=_loudnorm_stderr()))[1])
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0, fade=1.5, fade_in=0.0)
+    af = next(" ".join(map(str, c)) for c in calls if "afade" in " ".join(map(str, c)))
+    assert f"afade=t=in:st=0:d={mix.ANTICLICK}" in af
+    assert "afade=t=out:st=4.5:d=1.5" in af             # dur(6.0) - fade(1.5)
+
+
+def test_an_opening_and_closing_fade_that_meet_are_refused(tmp_path):
+    with pytest.raises(ValueError, match="overlap"):
+        mix.mix(_ms(tmp_path), str(tmp_path / "out"), 2.0, fade=1.5, fade_in=0.6)
 
 
 def test_a_custom_fade_reaches_both_ends(tmp_path, monkeypatch):

@@ -369,3 +369,27 @@ def test_two_titles_sharing_an_opening_line_get_distinct_check_names():
     names = [f.check for f in lookcheck.evaluate_titles(probes)]
     assert names == ["titles:0 same words", "titles:1 same words"]
     assert len(set(names)) == 2
+
+
+# --- retro 2026-10-16 S6: each end is checked only when it is declared ----------------
+
+def test_a_reel_that_opens_on_picture_is_only_checked_at_its_close():
+    mid = [_flat(100)] * 3
+    found = {f.check: f.status for f in lookcheck.evaluate(
+        mid, mid, None, None, _flat(80), _flat(0), fade=0.5, fade_in=0.0, fps=30.0)}
+    assert found == {"fade-out": "pass"}
+
+
+def test_a_reel_with_only_an_opening_fade_is_only_checked_at_its_open():
+    mid = [_flat(100)] * 3
+    found = {f.check: f.status for f in lookcheck.evaluate(
+        mid, mid, _flat(80), _flat(0), None, None, fade=0.0, fade_in=0.5, fps=30.0)}
+    assert found == {"fade-in": "pass"}
+
+
+def test_an_open_on_picture_whose_delivery_starts_black_is_not_its_business():
+    # fade_in=0 declares no opening ramp, so nothing here judges the first frame
+    mid = [_flat(100)] * 3
+    found = {f.check for f in lookcheck.evaluate(
+        mid, mid, _flat(80), _flat(0), _flat(80), _flat(0), fade=0.5, fade_in=0.0, fps=30.0)}
+    assert "fade-in" not in found
