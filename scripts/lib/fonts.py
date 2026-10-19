@@ -4,9 +4,11 @@ resolve_font. drawtext needs an explicit fontfile= — there is no reliable font
 default on macOS (design §12). Extracted from draft.py so titles need not import the
 draft-preview module."""
 import hashlib
+import os
 from pathlib import Path
 
 from fontTools.pens.boundsPen import BoundsPen
+from fontTools.pens.recordingPen import DecomposingRecordingPen
 from fontTools.pens.transformPen import TransformPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
@@ -37,6 +39,15 @@ FONT_NAMES: dict[str, str] = {
 # and drawtext renders a missing glyph as an empty box — so the agent downloaded Noto
 # Emoji and merged it by hand (retro 2026-10-16 S13). setup.sh installs it.
 ICON_FONT = "Noto Emoji"
+
+# Characters that draw nothing: variation selectors, joiners, zero-width marks, tags.
+# drawtext (HarfBuzz) lays a missing one out as nothing, so demanding a glyph for it
+# would refuse a title that renders fine — 🗓 is text-style by default, and emoji
+# pickers insert U+1F5D3 U+FE0F. Never required, never merged.
+_INVISIBLE = (set(range(0x200B, 0x2010)) | set(range(0x2060, 0x2065))
+              | set(range(0xFE00, 0xFE10)) | set(range(0xE0000, 0xE0080))
+              | set(range(0xE0100, 0xE01F0)))
+_MERGE_VERSION = 2     # bump when _merge_icons changes what it writes: it keys the cache
 
 _SYSTEM = (None, "", "system")
 
@@ -96,7 +107,8 @@ def missing_glyphs(font_path: str, text: str) -> list[str]:
     cmap = _open(font_path).getBestCmap() or {}
     out: list[str] = []
     for ch in text:
-        if not ch.isspace() and ord(ch) not in cmap and ch not in out:
+        if (not ch.isspace() and ord(ch) not in _INVISIBLE and ord(ch) not in cmap
+                and ch not in out):
             out.append(ch)
     return out
 
@@ -121,12 +133,15 @@ def cover_glyphs(font_path: str, text: str, work_dir: str,
             f"draws — drawtext would render an empty box. Remove the character or pick a "
             f"font that has it")
     cps = sorted(ord(c) for c in miss)
-    key = hashlib.sha1(f"{font_path}|{icon}|{cps}".encode()).hexdigest()[:12]
+    stamp = [(f, os.stat(f).st_size, os.stat(f).st_mtime_ns) for f in (font_path, icon)]
+    key = hashlib.sha1(f"{_MERGE_VERSION}|{stamp}|{cps}".encode()).hexdigest()[:12]
     out = Path(work_dir) / f"{Path(font_path).stem}+icons-{key}.ttf"
     if out.exists():
         return str(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    _merge_icons(font_path, icon, cps, str(out))
+    part = out.with_name(f".{out.name}.partial")    # never reuse a half-written font
+    _merge_icons(font_path, icon, cps, str(part))
+    os.replace(part, out)
     return str(out)
 
 
@@ -145,21 +160,28 @@ def _merge_icons(base_path: str, icon_path: str, cps: list[int], out_path: str) 
     order, mapping = list(base.getGlyphOrder()), dict(base.getBestCmap())
     for cp in cps:
         src = icon_cmap[cp]
-        bounds = BoundsPen(icon_gs)
-        icon_gs[src].draw(bounds)
-        if bounds.bounds is None:           # an empty glyph (a joiner, a selector)
-            x0, y0, x1, y1 = 0, 0, 1, 1
+        # Decomposed first: a composite glyph references components by name, which
+        # TTGlyphPen(None) cannot resolve — and those names mean nothing in the base.
+        rec = DecomposingRecordingPen(icon_gs)
+        icon_gs[src].draw(rec)
+        bounds = BoundsPen(None)
+        rec.replay(bounds)
+        name = f"icon_u{cp:X}"
+        pen = TTGlyphPen(None)
+        if bounds.bounds is None:           # an empty glyph draws nothing and advances 0
+            glyph = pen.glyph()
+            base["glyf"][name] = glyph
+            base["hmtx"][name] = (0, 0)
         else:
             x0, y0, x1, y1 = bounds.bounds
-        s = (cap * 1.15) / max(y1 - y0, 1)
-        pen = TTGlyphPen(None)
-        icon_gs[src].draw(TransformPen(pen, (s, 0, 0, s, -x0 * s + 0.04 * upem,
-                                             -y0 * s - 0.06 * cap)))
-        name = f"icon_u{cp:X}"
-        glyph = pen.glyph()
-        base["glyf"][name] = glyph
-        glyph.recalcBounds(base["glyf"])
-        base["hmtx"][name] = (round((x1 - x0) * s + 0.08 * upem), getattr(glyph, "xMin", 0))
+            s = (cap * 1.15) / max(y1 - y0, 1)
+            rec.replay(TransformPen(pen, (s, 0, 0, s, -x0 * s + 0.04 * upem,
+                                          -y0 * s - 0.06 * cap)))
+            glyph = pen.glyph()
+            base["glyf"][name] = glyph
+            glyph.recalcBounds(base["glyf"])
+            base["hmtx"][name] = (round((x1 - x0) * s + 0.08 * upem),
+                                  getattr(glyph, "xMin", 0))
         order.append(name)
         mapping[cp] = name
     base.setGlyphOrder(order)

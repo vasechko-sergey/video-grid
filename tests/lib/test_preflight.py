@@ -14,7 +14,7 @@ def test_registry_keys_unique_and_expected_split():
     assert [c.key for c in CHECKS if c.required] == [
         "plugin", "deps", "ffmpeg_bin", "drawtext", "vidstab", "font",
         "weights", "demucs"]
-    assert [c.key for c in CHECKS if not c.required] == ["reid"]
+    assert [c.key for c in CHECKS if not c.required] == ["reid", "icon_font"]
 
 
 def test_the_plugin_check_is_first_so_a_stale_install_is_the_first_line():

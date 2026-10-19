@@ -52,6 +52,9 @@ CHECKS: tuple[Check, ...] = (
     Check("weights", "YOLO segmentation weights present", True, "bash setup.sh"),
     Check("demucs", "demucs vocal separation (music in/out-point)", True, "bash setup.sh"),
     Check("reid", "torchreid person-re-ID (cast identity)", False, "bash setup.sh"),
+    # Advisory: only a title carrying an icon needs it, and that title is refused by name
+    # at `titles check` without it (retro 2026-10-16 S13).
+    Check("icon_font", "icon font for title icons (Noto Emoji)", False, "bash setup.sh"),
 )
 
 

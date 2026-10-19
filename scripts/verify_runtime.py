@@ -89,6 +89,13 @@ def _probe_font() -> tuple[bool, str]:
         return False, f"no usable font found (checked {len(fonts.FONT_CANDIDATES)} candidates)"
 
 
+def _probe_icon_font() -> tuple[bool, str]:
+    try:
+        return True, fonts.resolve_font(fonts.ICON_FONT)
+    except ValueError:
+        return False, f"{fonts.ICON_FONT} is not installed — a title carrying an icon is refused"
+
+
 def _probe_weights() -> tuple[bool, str]:
     path = _ROOT / MODELS[0]
     if path.exists():
@@ -173,6 +180,7 @@ _PROBES = {
     "weights": _probe_weights,
     "demucs": _probe_demucs,
     "reid": _probe_reid,
+    "icon_font": _probe_icon_font,
 }
 
 

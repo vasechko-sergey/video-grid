@@ -81,12 +81,17 @@ def _fake_resolve(name):
     return "/f.ttf"
 
 
+@pytest.fixture
+def real_glyph_cover():
+    """Opt-in: a test that requests this gets the real glyph cover (see below)."""
+
+
 @pytest.fixture(autouse=True)
 def _fake_fonts_draw_everything(monkeypatch, request):
     """Most tests here hand build_filterchain a font path that does not exist
-    (_fake_resolve). The glyph cover would open it, so it is a pass-through here — and
-    the tests that exercise the cover itself (named test_glyph_*) get the real one."""
-    if not request.node.name.startswith("test_glyph_"):
+    (_fake_resolve). The glyph cover would open it, so it is a pass-through — unless the
+    test asks for `real_glyph_cover` explicitly."""
+    if "real_glyph_cover" not in request.fixturenames:
         monkeypatch.setattr(titles_mod, "cover_glyphs", lambda font, text, work: font)
 
 
@@ -553,7 +558,7 @@ def test_check_titles_is_the_same_verdict_build_filterchain_would_give(tmp_path)
 
 
 def test_glyph_an_icon_the_title_font_lacks_is_drawn_from_the_icon_font(tmp_path, monkeypatch,
-                                                                       make_ttf):
+                                                                       make_ttf, real_glyph_cover):
     """retro 2026-10-16 S13: the brief asked for a map pin before the place; no curated
     font draws one and drawtext would render an empty box. The chain must point at a
     font that draws every character of the title."""
@@ -570,7 +575,7 @@ def test_glyph_an_icon_the_title_font_lacks_is_drawn_from_the_icon_font(tmp_path
 
 
 def test_glyph_a_character_no_font_draws_stops_the_render_by_name(tmp_path, monkeypatch,
-                                                                 make_ttf):
+                                                                 make_ttf, real_glyph_cover):
     from scripts.lib import fonts
     PIN, CAL, _ttf = 0x1F4CD, 0x1F5D3, make_ttf
     base = _ttf(tmp_path / "base.ttf", [ord("A")])
@@ -580,3 +585,17 @@ def test_glyph_a_character_no_font_draws_stops_the_render_by_name(tmp_path, monk
     ts = Titles(items=(Title(f"A {chr(CAL)}", 0.0, 2.0, pos="top"),))
     with pytest.raises(ValueError, match=chr(CAL)):
         build_filterchain(ts, str(tmp_path / "w"), resolve=lambda name: base)
+
+
+def test_glyph_titles_check_reports_icons_and_refuses_what_no_font_draws(tmp_path, monkeypatch,
+                                                                        make_ttf):
+    from scripts.lib import fonts
+    PIN, CAL = 0x1F4CD, 0x1F5D3
+    base = make_ttf(tmp_path / "base.ttf", [ord("A")])
+    icons = make_ttf(tmp_path / "icons.ttf", [PIN])
+    monkeypatch.setattr(fonts, "resolve_font",
+                        lambda name=None: icons if name == fonts.ICON_FONT else base)
+    ok = check_titles(Titles(items=(Title(f"{chr(PIN)} A", 0.0, 1.0, pos="top"),)), "reels")
+    assert ok["icons_from_icon_font"] == [chr(PIN)]
+    with pytest.raises(ValueError, match=chr(CAL)):
+        check_titles(Titles(items=(Title(f"A {chr(CAL)}", 0.0, 1.0, pos="top"),)), "reels")
