@@ -30,7 +30,7 @@ run when the reel asks for them:
 
 1. **Project.** The platform sets the aspect: 9:16 for Reels, Shorts and TikTok,
    16:9 for YouTube, 1:1, 21:9, or any custom ratio. By default the delivery keeps
-   the crop's own pixels; a smaller social size or 4K are one flag away.
+   the crop's own pixels; a smaller social size or 4K are there if you ask.
 2. **Footage intake.** Every clip is scanned once. Scene cuts are found with
    PySceneDetect, people are detected and tracked with YOLO11-seg and ByteTrack,
    camera shake is measured with vidstab, and each clip is carved into scored
@@ -52,8 +52,9 @@ run when the reel asks for them:
    track has a clear downbeat, the bars; demucs separates the vocals so the music
    can start in a pause rather than mid-word.
 7. **Pacing** *(optional)*. The cuts are fitted to the coarsest musical grid they
-   can reach (beat, half-bar, bar, two bars or phrase). When there is a bar grid,
-   the reel's length is chosen so the closing fade starts on a bar line.
+   can reach (beat, half-bar, bar, two bars or phrase). When there is a bar grid
+   and the closing shot has room, the reel's length is chosen so the closing fade
+   starts on a bar line.
 8. **Geometry and grade.** Each shot follows its subject: the tracked route drives
    a smoothed crop path that reframes 16:9 footage to 9:16. Optional per shot are
    a subject-anchored zoom, a pan, a speed ramp into slow motion, stabilization
@@ -100,8 +101,8 @@ bash setup.sh
 `setup.sh` installs everything with no opt-in flags: a Python 3.13 venv,
 `ffmpeg-full` (drawtext and vidstab), the title fonts, demucs, yt-dlp and the
 YOLO weights. The OSNet and demucs weights download the first time they are
-needed. Keep the clone where it is: the skills run its
-`bin/vg`, whose path `setup.sh` records.
+needed. Keep the clone where it is: the skills run its `bin/vg`, whose path
+`setup.sh` records.
 
 **2. The plugin**, from inside Claude Code in the clone:
 
@@ -165,5 +166,5 @@ change bumps the version in [CHANGELOG.md](CHANGELOG.md).
 AGPL-3.0, see [LICENSE](LICENSE). This licence was not a free choice:
 `ultralytics`, the YOLO11 runtime that footage intake imports on its main path, is
 AGPL-3.0. The model weights are not redistributed here: they are downloaded from
-their own publishers at install or first use. This declares a licence. It is not an audit of the transitive
-dependency tree.
+their own publishers at install or first use. This declares a licence; it is not
+an audit of the transitive dependency tree.
