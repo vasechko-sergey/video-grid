@@ -12,6 +12,7 @@ _Last updated: 2026-10-19._
 
 ## Done
 
+- **Filled prompts (2026-10-19, 0.22.0)** — branch `fix/qc-prompts`, no design. S14: `lib/prompts.py` (`body`/`tokens`/`fill`/`render`, `JUDGE_TOKENS`/`REVIEWER_TOKENS`); both templates rewritten to exact tokens; `episode_qc.judge_prompt` + `pack` writes `judge_prompt.md`; `reel_review.still_times`/`pack` + the `pack` subcommand (stills via one `frames_rgb` decode, attestation-bound report); skills episode-qc step 2 and reel-review steps 1–2 shrink to "dispatch the file verbatim".
 - **Run-2 P2 (2026-10-19, 0.21.2)** — branch `fix/run2-p2`, no design. S15: `safezones._key` (case + any run of spaces/hyphens/underscores) shared by `safe_zone_for`/`zone_name`/`known`, the apps' own names in `_ALIASES`, `labels()`; `reel_brief.build_spec` stores `zone_name(platform)` and refuses an unknown label. S16: `EDLEpisode` parses `"W:H"` into `(W, H)`, refuses a malformed ratio. S17: `matchgrade.TOE_LIFT_WARN` 15 + `toe_lifts` over the enriched EDL's pairs minus the mood's toe offset; `match_grade._toe_lift_line` in `MATCH.md`, stderr and the status's `toe_lifts`, remedy via `selection.json`. Skills: reel-brief (platform), match-grade (toe-lift).
 - **Named fonts (2026-10-19, 0.21.1)** — branch `fix/named-fonts`, no design. S19: `FONT_NAMES` → tuples of candidate files (variable first); `fonts.static_instance` + `TITLE_WEIGHT` 400, applied in `build_filterchain` before `cover_glyphs`; `_static` pins wght at 400 too; real-drawtext proof on the installed Montserrat.
 - **Title icons (2026-10-19, 0.21.0)** — branch `fix/title-icons`, no design. S13: `fonts.missing_glyphs` / `cover_glyphs` / `_merge_icons` (variable fonts pinned at their default instance, CFF bases refused with the remedy, merged fonts cached by request hash), wired into `titles.build_filterchain` and `titles check`; `ICON_FONT` = Noto Emoji (`setup.sh` cask); a `make_ttf` conftest fixture builds synthetic fonts; a real-drawtext proof shows the merged icon drawing ink where the bare font drew its .notdef box.
@@ -7097,7 +7098,7 @@ _Last updated: 2026-10-19._
 
 ## Next action
 
-> **2026-10-19: the second run's rows S1–S13 and S18 are fixed (0.15.2–0.21.0).** S19 (found by the S13 review) is fixed in 0.21.1, S15–S17 in 0.21.2. Open: P2 S14. The user re-runs `bash setup.sh` (it now installs `font-noto-emoji`), updates the plugin and pushes before the next run. Every blockquote below this one is history.
+> **2026-10-19: the second run's rows S1–S13 and S18 are fixed (0.15.2–0.21.0).** S19 (found by the S13 review) is fixed in 0.21.1, S15–S17 in 0.21.2, S14 in 0.22.0. P0–P2 are empty. The user re-runs `bash setup.sh` (it now installs `font-noto-emoji`), updates the plugin and pushes before the next run. Every blockquote below this one is history.
 
 > **2026-10-13: the next action is the second real run, not a slice.** The user
 > updates the installed plugin (`claude plugin update video-grid@video-grid` and a

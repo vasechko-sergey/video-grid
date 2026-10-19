@@ -1,7 +1,14 @@
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
 import pytest
 
 from scripts import reel_review
 from scripts.lib import provenance
+from scripts.lib.look import LookSpec
+from scripts.lib.models import ReelEpisode, ReelManifest
 from scripts.lib.review import Review
 from scripts.reel_review import build_review, write_review
 
@@ -150,3 +157,116 @@ def test_the_cli_refuses_a_reel_that_names_no_file(tmp_path, monkeypatch, capsys
                          "--reel", str(tmp_path / "nope.mp4"), "--out-dir", str(tmp_path)])
     with pytest.raises(ValueError, match="names no file"):
         reel_review.main()
+
+
+# --- second real run S14: pack grabs the stills and writes the reviewer's prompt ---
+
+def test_still_times_clamp_every_grab_out_of_the_bookend_fade():
+    look = LookSpec(fade=1.5, fade_in=0.0)
+    t = reel_review.still_times([4.0, 4.0, 4.0], 12.0, look)
+    assert t == {"hook": 0.5, "ending": 12.0 - 1.6, "mid0": 2.0, "mid1": 6.0, "mid2": 10.0}
+    short = reel_review.still_times([1.0, 10.0, 1.0], 12.0, look)
+    assert short["mid2"] == 12.0 - 1.6          # the last mid would sit in the fade-out
+
+
+def test_still_times_without_a_look_use_the_bare_margins():
+    assert reel_review.still_times([3.0], 3.0, None) == {"hook": 0.5, "ending": 2.0,
+                                                         "mid0": 1.5}
+
+
+def _run(tmp_path, *, music=True, spec=True):
+    reel_dir = tmp_path / "montage" / "reels" / "main"
+    for sub in ("episodes", "deliveries", "build/reel"):
+        (reel_dir / sub).mkdir(parents=True)
+    clips = []
+    for i in range(2):
+        c = reel_dir / "episodes" / f"ep{i}.mp4"
+        c.write_bytes(b"x")
+        clips.append(ReelEpisode(manifest={"segment": "s.mp4", "target_dur": 3.0},
+                                 clip=str(c), route=None, path="", meta=""))
+    ReelManifest(episodes=clips, target_dur=6.0).write(reel_dir / "episodes" / "EPISODES.json")
+    reel = reel_dir / "deliveries" / "REEL_v1.mp4"
+    reel.write_bytes(b"reel")
+    (reel_dir / "EDL.md").write_text("# EDL\n\n| 0 | a.mp4 |\n")
+    report = {"overall": True, "checks": {"length": {"passed": True}}}
+    (reel_dir / "build" / "reel" / "reel_report.json").write_text(json.dumps(report))
+    if spec:
+        (reel_dir / "SPEC.md").write_text("# SPEC\n\nmood: calm\n")
+        (reel_dir / "SPEC.json").write_text(json.dumps({"mood": "calm"}))
+    if music:
+        track = tmp_path / "montage" / "music" / "cache" / "t.webm"
+        track.parent.mkdir(parents=True)
+        track.write_bytes(b"a")
+        track.with_suffix(".json").write_text(json.dumps(
+            {"title": "Polar Onion", "artist": "Allah Las", "source": "youtube",
+             "source_url": "u", "license": "unknown (any lane)", "date": "2026-10-16"}))
+        (reel_dir / "MUSIC.json").write_text(json.dumps(
+            {"track": str(track), "start_offset": 49.0, "duration": 6.0, "tempo": 117.0,
+             "beats": [0.5, 1.0, 1.5], "energy": [0.1, 0.2], "energy_hz": 2.0,
+             "bars": [0.5], "vocal_spans": []}))
+        (reel_dir / "PACING.md").write_text("Verdict: fits at bar.\n")
+    return reel_dir, reel, report
+
+
+def _fake_media(monkeypatch):
+    monkeypatch.setattr(reel_review.assembly, "probe_duration",
+                        lambda p: 6.0 if "REEL" in str(p) else 3.0)
+    monkeypatch.setattr(reel_review.assembly, "probe_stream",
+                        lambda p: SimpleNamespace(fps=30.0, w=8, h=16))
+    monkeypatch.setattr(reel_review.assembly, "frames_rgb",
+                        lambda src, times, fps: [np.full((16, 8, 3), 100, np.uint8)
+                                                 for _ in times])
+
+
+def test_pack_writes_the_stills_and_a_filled_prompt(tmp_path, monkeypatch):
+    _fake_media(monkeypatch)
+    reel_dir, reel, _ = _run(tmp_path)
+    res = reel_review.pack(str(reel), str(reel_dir))
+    review = reel_dir / "build" / "_review"
+    assert res["prompt"] == str(review / "reviewer_prompt.md")
+    assert sorted(Path(p).name for p in res["stills"]) == [
+        "ending.png", "hook.png", "mid0.png", "mid1.png"]
+    assert all(Path(p).is_file() for p in res["stills"])
+    text = (review / "reviewer_prompt.md").read_text()
+    assert "{" + "SPEC}" not in text and "mood: calm" in text and '"mood": "calm"' in text
+    assert "| 0 | a.mp4 |" in text and '"overall": true' in text
+    assert "Track: Allah Las — Polar Onion" in text and "from 49s" in text
+    assert "Verdict: fits at bar." in text
+    assert f"The reel is at {reel.resolve()}." in text
+    assert str((review / "hook.png").resolve()) in text
+    assert f"Write your output to {(reel_dir / 'review_findings.json').resolve()}" in text
+
+
+def test_pack_names_a_silent_reel_and_a_missing_brief(tmp_path, monkeypatch):
+    _fake_media(monkeypatch)
+    reel_dir, reel, _ = _run(tmp_path, music=False, spec=False)
+    text = Path(reel_review.pack(str(reel), str(reel_dir))["prompt"]).read_text()
+    assert "silent reel" in text and "no SPEC" in text
+
+
+def test_pack_refuses_a_report_from_a_different_render(tmp_path, monkeypatch):
+    """The report sits in build/, which the next render rewrites; the delivery's own
+    attestation records which report passed it."""
+    _fake_media(monkeypatch)
+    reel_dir, reel, report = _run(tmp_path)
+    provenance.Attestation(reel=reel.name, reel_digest="r", master_digest="m",
+                           report_digest=provenance.digest_obj({**report, "overall": False}),
+                           overall=True).write(provenance.attest_path(reel))
+    with pytest.raises(ValueError, match="different render"):
+        reel_review.pack(str(reel), str(reel_dir))
+
+
+def test_pack_accepts_the_report_the_attestation_names(tmp_path, monkeypatch):
+    _fake_media(monkeypatch)
+    reel_dir, reel, report = _run(tmp_path)
+    provenance.Attestation(reel=reel.name, reel_digest="r", master_digest="m",
+                           report_digest=provenance.digest_obj(report),
+                           overall=True).write(provenance.attest_path(reel))
+    assert reel_review.pack(str(reel), str(reel_dir))["report_bound"] is True
+
+
+def test_pack_refuses_a_reel_dir_outside_the_run_layout(tmp_path, monkeypatch):
+    _fake_media(monkeypatch)
+    _, reel, _ = _run(tmp_path)
+    with pytest.raises(ValueError, match="reels/<reel>"):
+        reel_review.pack(str(reel), str(tmp_path))

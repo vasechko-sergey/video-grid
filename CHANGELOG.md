@@ -10,6 +10,16 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.22.0 — 2026-10-19
+
+- **The judge and reviewer prompts come filled.** `episode_qc pack` writes each
+  episode's `judge_prompt.md` beside its evidence, and the new `reel_review pack`
+  grabs the review stills (clear of the bookend fade) and writes
+  `build/_review/reviewer_prompt.md`. Dispatch either file verbatim — nothing is
+  filled by hand, and a template whose tokens and filler disagree is refused.
+- `reel_review pack` refuses a `check_reel` report that the reel's attestation
+  does not name: `build/` keeps only the last render's report.
+
 ## 0.21.2 — 2026-10-19
 
 - **A platform can be named the way the app names it.** "Instagram Reels",
