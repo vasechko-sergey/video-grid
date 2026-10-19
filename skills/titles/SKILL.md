@@ -218,6 +218,17 @@ font, or notice a title that rendered correctly but illegibly — a white `plain
 title over a white sky will report `fail`, which is honest about the pixels and
 misleading about the cause. `bold-box` carries its own background and is immune.
 
+## Icons in the text
+
+A title may carry icons (📍, 🗓, …) the title font has no glyph for: `deliver` merges
+each such glyph into a copy of the title font from the monochrome **Noto Emoji** font
+(`bash setup.sh` installs it), sized to the cap height and sat on the baseline — one
+fontfile, no extra layer. A character neither font draws is refused BY NAME, at
+`titles check` and again at render: drawtext would otherwise draw an empty box and
+nothing would notice. `titles check` lists the characters it will take from the icon
+font (`icons_from_icon_font`). Colour emoji are drawn in the title's own colour — the
+icon font is monochrome. The second real run's agent built this font by hand.
+
 ## Landmines (design §12)
 
 - `drawtext` needs an explicit `fontfile=` — there is no fontconfig default on

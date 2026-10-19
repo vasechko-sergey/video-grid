@@ -34,7 +34,6 @@ Rows S1–S17 come from the second real run — evidence and measurements in
 
 | | Item | Size | Source |
 |---|------|------|--------|
-| ○ | **S13 · Titles cannot carry an icon** — the agent downloaded Noto Emoji and merged it into Montserrat with its own fontTools script. | S | [retro 2](retro/2026-10-16-second-real-run.md) S13 |
 
 ## P2 — friction
 

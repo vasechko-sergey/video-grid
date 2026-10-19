@@ -12,6 +12,7 @@ _Last updated: 2026-10-19._
 
 ## Done
 
+- **Title icons (2026-10-19, 0.21.0)** — branch `fix/title-icons`, no design. S13: `fonts.missing_glyphs` / `cover_glyphs` / `_merge_icons` (variable fonts pinned at their default instance, CFF bases refused with the remedy, merged fonts cached by request hash), wired into `titles.build_filterchain` and `titles check`; `ICON_FONT` = Noto Emoji (`setup.sh` cask); a `make_ttf` conftest fixture builds synthetic fonts; a real-drawtext proof shows the merged icon drawing ink where the bare font drew its .notdef box.
 - **Cast review (2026-10-19, 0.20.2)** — branch `fix/cast-review`, no design. S12: `intake._review_card` (whole-pixel nearest-neighbour enlargement to `CARD_LONG_SIDE` 480, captioned) and `nameable` (`MIN_NAMEABLE_PX` 96) in `cast_candidates.json`; the skill asks per nameable card and once for the rest. Measured on the run's cache: the descriptor does not separate the two heroes (0.13 between them vs 0.25 within one) — recorded on the identity row, no threshold moved.
 - **Run records (2026-10-19, 0.20.1)** — branch `fix/run-records`, no design. S10: `runlayout.VIDEO_EXTS` + `refuse_project_dir_holding_footage`, called by `project_init`; skill names `<footage>/montage`. S11: `edl_to_reel._cut_summary` always in the note (reason first when given), `deliver._since_last` compares EDL digests with the previous attestation; the router's episodes page passes `--changelog` at `--from-geometry`.
 - **Music search (2026-10-19, 0.20.0)** — branch `fix/music-search`, no design. S8: `Candidate.popularity` (Deezer `rank`, YouTube `view_count`; omitted when None), `_search_deezer(popular=)` → `order=RANKING`, `music_find --popular` (Deezer default, sort by popularity, `sort` in the payload, a popularity column, mkdir of `--out-dir`), `Spec.music_known` + `reel_brief --music-known`, `beats.write_preview` + `--preview` (smoke-tested on a real track); music-source and reel-brief skills.
@@ -7094,7 +7095,7 @@ _Last updated: 2026-10-19._
 
 ## Next action
 
-> **2026-10-19: the run-2 P0 rows (0.15.2) and the fades (S6/S18, 0.16.0) are fixed; the next action is the rest of P1.** [backlog.md](backlog.md) P1, in order (S8 landed in 0.20.0, S7 in 0.19.0, S5 in 0.18.0, S9 in 0.17.0): the music ending and search (S7, S8). Every blockquote below this one is history.
+> **2026-10-19: every P0 and P1 row of the second run is fixed (0.15.2–0.21.0); P2 remains (S14–S17).** The user re-runs `bash setup.sh` (it now installs `font-noto-emoji`) and updates the plugin before the next run. [backlog.md](backlog.md) P1, in order (S8 landed in 0.20.0, S7 in 0.19.0, S5 in 0.18.0, S9 in 0.17.0): the music ending and search (S7, S8). Every blockquote below this one is history.
 
 > **2026-10-13: the next action is the second real run, not a slice.** The user
 > updates the installed plugin (`claude plugin update video-grid@video-grid` and a
