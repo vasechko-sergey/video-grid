@@ -249,8 +249,18 @@ if [ -z "${JAMENDO_CLIENT_ID:-}" ] && ! grep -qs '^JAMENDO_CLIENT_ID=' "$SRC_ENV
   echo "note: the free music lane uses ccMixter (no key). For Jamendo's richer CC catalog,"
   echo "  add 'JAMENDO_CLIENT_ID=...' to config/sourcing.env (get one at https://devportal.jamendo.com/)."
 fi
-# YOLO weights cached into models/ on first track.py run (ultralytics auto-download by NAME)
 mkdir -p "$SKILL_DIR/models"
+# YOLO segmentation weights. verify_runtime REQUIRES them at <clone>/yolo11n-seg.pt with
+# `bash setup.sh` as the remedy, and using-montage stops at step 0 on a failed check —
+# so they are fetched HERE, or a fresh clone's first run dead-ends on a remedy that
+# cannot fix it. Ultralytics downloads a bare model name into the CURRENT directory, so
+# the fetch runs from the clone root, and names the file the probe checks (MODELS[0]).
+# OSNet and demucs weights still download on first use: neither is a required check.
+(cd "$SKILL_DIR" && "$VENV/bin/python" -c 'from pathlib import Path
+from scripts.lib.models import MODELS
+from scripts import track
+Path(MODELS[0]).exists() or (print("fetching YOLO weights " + MODELS[0] + "..."), track.ensure_model(MODELS[0]))') \
+  || echo "WARNING: could not fetch the YOLO weights (offline?) -> verify_runtime will report them missing until 'bash setup.sh' is re-run online."
 echo "venv ready: $VENV ($("$VENV/bin/python" -V))"
 
 # Record where the runtime lives. Claude Code installs the montage skills by COPYING

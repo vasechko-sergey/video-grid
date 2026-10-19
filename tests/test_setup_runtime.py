@@ -24,3 +24,14 @@ def test_dot_venv_is_a_symlink_into_the_external_venv():
 def test_setup_records_the_runtime_root_outside_the_tree():
     assert "XDG_CONFIG_HOME" in SETUP
     assert "video-grid" in SETUP and "/root" in SETUP
+
+
+def test_setup_fetches_the_weights_verify_runtime_requires():
+    """A fresh clone has no yolo11n-seg.pt (gitignored), verify_runtime REQUIRES it at
+    the clone root with the remedy `bash setup.sh`, and using-montage stops at step 0 on
+    a failed check — so setup must fetch it, or the remedy cannot fix what it names.
+    Ultralytics downloads a bare model name into the CURRENT directory, so the fetch must
+    run from the clone root and name the same file the probe checks (MODELS[0])."""
+    i = SETUP.index("ensure_model(MODELS[0])")
+    assert 'cd "$SKILL_DIR"' in SETUP[SETUP.rfind("\n", 0, SETUP.rfind("cd ", 0, i)):i]
+    assert "from scripts.lib.models import MODELS" in SETUP
