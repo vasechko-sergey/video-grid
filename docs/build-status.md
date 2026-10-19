@@ -12,6 +12,7 @@ _Last updated: 2026-10-19._
 
 ## Done
 
+- **Fades (2026-10-19, 0.16.0)** — branch `fix/fades`, no design (an amendment note on cinematic-look). S6: `LookSpec.fade_in` (absent = `fade`), presets open on picture, `mix(fade_in=)` with a 20 ms anti-click floor, `lookcheck.evaluate(fade_in=)` / `deliver._title_times` judge and clamp each end apart, `--fade-in` on deliver and probe. S18 (found here, measured on REEL_v5): `build_reel` hands `mix` the outro fit's fade when the fit chose the length. A real-ffmpeg proof that `fade_in=0` keeps the first frame and still closes to black, mutation-checked.
 - **Run-2 P0 fixes (2026-10-19, 0.15.2)** — branch `fix/run2-p0`, no design (small fixes). S1: `layout.resolve` sizes a fill crop's `short_edge`/`long_edge` delivery from the declared aspect, so 1080p → 9:16 is 1080×1920 and fill/fit agree. S2: `build_titles` drafts only `SPEC.text`. S3: `catalog` verifies against certifi. S4: `reels` top margin 0.14. One commit per row, each test-first.
 - **Retro of the second real run (2026-10-19)** — branch `docs/retro-run-2`, docs only. [docs/retro/2026-10-16-second-real-run.md](retro/2026-10-16-second-real-run.md) reads the 2026-10-16 run (20 DJI clips, `REEL_v5` approved) against the backlog's two run-2 lists: five rows closed into the archive (two of them folded into the new S5), the other seven left open with the run's answer. 17 rows filed — 4 P0, 9 P1, 4 P2.
 - **Pre-run-2 triage (2026-10-13, 0.15.1)** — branch `chore/pre-run-2`, no design
@@ -7087,7 +7088,7 @@ _Last updated: 2026-10-19._
 
 ## Next action
 
-> **2026-10-19: the run-2 P0 rows are fixed (0.15.2); the next action is P1.** [backlog.md](backlog.md) P1, in order: shot length (S5) — the operator's first complaint — the fade (S6, every review), hero balance (S9), the music ending and search (S7, S8). Every blockquote below this one is history.
+> **2026-10-19: the run-2 P0 rows (0.15.2) and the fades (S6/S18, 0.16.0) are fixed; the next action is the rest of P1.** [backlog.md](backlog.md) P1, in order: shot length (S5) — the operator's first complaint — hero balance (S9), the music ending and search (S7, S8). Every blockquote below this one is history.
 
 > **2026-10-13: the next action is the second real run, not a slice.** The user
 > updates the installed plugin (`claude plugin update video-grid@video-grid` and a

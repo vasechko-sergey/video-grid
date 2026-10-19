@@ -218,10 +218,18 @@ backlit hook at p5 38 and authored a pair to the reel target of 60; the agent sa
 it in `probe grade` and froze the episode with an identity pair. Today that takes
 the agent noticing.
 
+**S18 · The music's close ignored the outro fit's own fade** (added 2026-10-19,
+found while fixing S6). The fit made `REEL_v5` `line + 1.5` long so the music's
+fade would start on the bar line at 44.15 s, but `build_reel` handed `mix` the
+look's 0.8: measured, the level holds at −10…−13 dB until 44.9 s and falls only
+in the last 0.8 s — 0.7 s past the line, while the agent reported the ending
+"on the bar". No review caught it.
+
 ---
 
 ## Rows this produced
 
-17 rows, filed in [../backlog.md](../backlog.md): 4 at P0, 9 at P1, 4 at P2.
+17 rows, filed in [../backlog.md](../backlog.md): 4 at P0, 9 at P1, 4 at P2 — and
+S18 after them, at P0.
 Five run-2 rows closed into the archive, two of them folded into S5; the other
 seven stay open with this run's answer recorded.

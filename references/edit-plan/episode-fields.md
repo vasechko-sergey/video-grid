@@ -1,8 +1,11 @@
 # edit-plan — every authorable episode field
 
 **The reel's finish is `"look"`, a top-level key, not a per-episode one.**
-`{"vignette": 0.0-0.6, "fade": 0.0-2.0}` — corner darkening and a bookend fade
-in seconds, applied once over the whole reel at `deliver`, never per episode.
+`{"vignette": 0.0-0.6, "fade": 0.0-2.0, "fade_in": 0.0-2.0}` — corner darkening, the
+closing fade in seconds, and (optional) the opening fade when it differs: omit
+`fade_in` and the opening equals `fade`. Every mood preset opens on picture
+(`fade_in: 0`) — the first frame is the hook, and the second real run's hook
+opened on black. Applied once over the whole reel at `deliver`, never per episode.
 Omit it and the mood's preset (`MoodPreset.look`, resolved from `SPEC.mood`
 the same way the variety gate resolves its shot-mix) decides — unless
 nothing matches: a skipped or mood-less brief leaves `EDL.look`
