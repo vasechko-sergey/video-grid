@@ -105,7 +105,9 @@ resolved `{canvas, delivery}` and the intent you parsed; confirm before moving o
 When reel-brief runs, its SPEC.md is the fuller CP1 artifact; without it, the
 resolved {canvas, delivery} is the CP1 surface.
 
-**Checkpoint 2 — EDL approval + curation:** show the user `EDL.md`. To swap
+**Checkpoint 2 — EDL approval + curation:** show the user `EDL.md`, and say its
+**Screen time** numbers out loud when the reel has more than one hero — each
+hero's seconds and share beside the brief's `cast_share`. To swap
 or re-order an episode, edit `selection.json` and re-run the build — never
 hand-edit `EDL.json`.
 **`draft.mp4` is CP2's richer artifact** — when it exists (the optional
