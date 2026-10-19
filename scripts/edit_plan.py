@@ -729,7 +729,7 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
              "zone and the title layout both use the GENERIC table")
     elif not safezones.known(plat):
         _log(f"platform: {plat!r} has no safe zone of its own (known: "
-             f"{sorted(safezones.SAFE_ZONES)}) — it is recorded on the EDL and attested, "
+             f"{', '.join(safezones.labels())}) — it is recorded on the EDL and attested, "
              "but the GENERIC zone is what check_reel will actually judge against")
     else:
         _log(f"platform: {plat} — its safe zone is what check_reel and the titles will use")

@@ -164,7 +164,8 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
                decisions: list[matchgrade.ToneDecision], eps: float, *,
                bias: tuple[float, float, float] = (0.0, 0.0, 0.0),
                bias_source: str = "", mood: str | None = None, k: float = 1.0,
-               declared: Declared = _NO_DECLARATION) -> str:
+               declared: Declared = _NO_DECLARATION,
+               lifts: list[tuple[int, float, float]] = ()) -> str:
     """The human-readable half a reviewer reads at CP-time: the target, and one row per
     episode with its measured profile (carried on the decision — no second measure), its
     distance to the target, and what was decided.
@@ -192,7 +193,10 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
     second: "graded against the whole crop because you asked for nothing" and
     "graded against the whole crop because I could not look" are different claims
     about the same pixels. The state is a FIELD, never a prefix on the detail
-    string — see Declared."""
+    string — see Declared.
+
+    `lifts` is matchgrade.toe_lifts over the pairs the enriched EDL ships, computed by
+    the caller because only it holds that EDL (retro 2026-10-16 S17)."""
     def _triple(t):
         return "/".join(f"{v:.0f}" for v in t)
     n_auth = sum(1 for d in decisions if d.action == "author")
@@ -221,8 +225,8 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
         head += "\n\nNo mood matched the brief — the target is the plain median."
     lines = [head, "",
              f"{n_auth}/{len(decisions)} episodes authored a tone pair.", ""]
-    for i, lo, hi in matchgrade.toe_lifts(decisions):
-        lines += [_toe_lift_line(i, sources[i], lo, hi), ""]
+    for i, lo, hi in lifts:
+        lines += [_toe_lift_line(i, sources[i], lo, hi, bias[0] * k), ""]
     lines += [
              "| # | source | measured (p5/p50/p95) | max Δ | action · reason |",
              "|---|--------|-----------------------|:-----:|-----------------|"]
@@ -250,15 +254,23 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
     return "\n".join(lines) + "\n"
 
 
-def _toe_lift_line(index: int, source: str, lo: float, hi: float) -> str:
+def _toe_lift_line(index: int, source: str, lo: float, hi: float, offset: float) -> str:
     """One warning per lifted toe — the same sentence in MATCH.md and the log, because
     the log is what the agent reads in the moment and MATCH.md what a human reads at the
-    checkpoint (retro 2026-10-16 S17)."""
+    checkpoint (retro 2026-10-16 S17).
+
+    The pin goes through selection.json, never EDL.json: write_match re-stamps the EDL,
+    and EDL.from_json refuses a stamped file edited afterwards (review finding 1)."""
+    bar = matchgrade.TOE_LIFT_WARN
+    why = (f"{offset:+.0f} of it the mood's, the rest more than {bar:g} luma" if offset
+           else f"more than {bar:g} luma")
     return (f"> **toe-lift** — episode {index} ({source}): shadows lifted p5 {lo:.0f} → "
-            f"{hi:.0f}, more than {matchgrade.TOE_LIFT_WARN:g} luma. If the dark is the "
-            f"point (a silhouette, a backlit hook), look at it with `probe grade`, then pin "
-            f"it: set its tone_dst equal to its tone_src in EDL.json — match-grade leaves "
-            f"an authored pair alone unless --force.")
+            f"{hi:.0f}, {why}. If the dark is the point (a silhouette, a backlit hook), "
+            f"look at it with `probe grade`, then pin it: in selection.json give that "
+            f"episode tone_src and tone_dst both equal to its measured profile (its row "
+            f"in MATCH.md), re-run `edit_plan build` with the same flags, then "
+            f"`match_grade build` again — it leaves a pinned episode alone as "
+            f"hand-authored.")
 
 
 def _find_regions(geo: ReelGeometry) -> Declared:
@@ -330,11 +342,17 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
     out = replace(out, tone_target=target)
     write_edl(out, geo.edl)       # re-stamp: match_grade is a legitimate tool, and its
                                   # output is the tool's output (design §4)
+    sources = [e.source for e in edl.episodes]
+    lifts = matchgrade.toe_lifts([(e.tone_src, e.tone_dst) for e in out.episodes],
+                                 offset=bias[0] * k)
+    for i, lo, hi in lifts:
+        print(_toe_lift_line(i, sources[i], lo, hi, bias[0] * k).removeprefix("> "),
+              file=sys.stderr)
     md_path = Path(geo.edl).parent / "MATCH.md"
-    md_path.write_text(_report_md([e.source for e in edl.episodes], target, decisions, eps,
+    md_path.write_text(_report_md(sources, target, decisions, eps,
                                   bias=bias, bias_source=bias_source,
                                   mood=preset.name if preset is not None else None, k=k,
-                                  declared=declared))
+                                  declared=declared, lifts=lifts))
     # The machine-readable twin (design 2026-09-09 §2). MATCH.md's claim — "8/8
     # episodes authored a tone pair" — was prose, and the EDL written an hour later
     # carried five with nothing able to notice. The decisions are what the report
@@ -352,10 +370,6 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
         # §2.1 distinction — and a claim that lives only in prose cannot be checked,
         # which is the reason this twin exists at all.
         regions=declared.state, regions_at=declared.detail).write(json_path)
-    sources = [e.source for e in edl.episodes]
-    lifts = matchgrade.toe_lifts(decisions)
-    for i, lo, hi in lifts:
-        print(_toe_lift_line(i, sources[i], lo, hi).removeprefix("> "), file=sys.stderr)
     skipped = Counter(d.reason for d in decisions if d.action == "skip")
     return {"status": "written", "edl": geo.edl, "md": str(md_path),
             "json": str(json_path),

@@ -18,8 +18,9 @@ file is the short "what changed for someone who installs it" list.
   checking the reel against the generic zone.
 - **`crop_aspect` takes `"1:1"`**, the way `--canvas` is written, beside `[1, 1]`.
 - **match-grade says when it lifts the shadows.** An episode whose tone pair raises
-  p5 by more than 15 luma is named in `MATCH.md`, the log and the status JSON, with
-  the way to keep a dark shot dark (an identity pair).
+  p5 by more than 15 luma beyond the mood's own displacement is named in `MATCH.md`,
+  the log and the status JSON, with the way to keep a dark shot dark (an identity pair
+  in `selection.json`).
 
 ## 0.21.1 — 2026-10-19
 

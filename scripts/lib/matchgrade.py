@@ -206,14 +206,21 @@ TOE_LIFT_WARN = 15.0   # luma units. A first cut, not a measurement: the one cas
                        # toe is an ordinary exposure match.
 
 
-def toe_lifts(decisions: list[ToneDecision]) -> list[tuple[int, float, float]]:
-    """(index, p5 from, p5 to) for every AUTHORED pair that raises the shadows by more
-    than TOE_LIFT_WARN. The conductor cannot tell an underexposed shot from a dark one
-    on purpose — both read as a low p5 — so it does not refuse; it says so, and the
-    remedy (pin the episode with an identity pair, which the conductor then leaves
-    alone as hand-authored) stays the author's call."""
-    return [(d.index, d.tone_src[0], d.tone_dst[0]) for d in decisions
-            if d.action == "author" and d.tone_dst[0] - d.tone_src[0] > TOE_LIFT_WARN]
+def toe_lifts(pairs: list[tuple[Profile | None, Profile | None]], *,
+              offset: float = 0.0) -> list[tuple[int, float, float]]:
+    """(index, p5 from, p5 to) for every episode whose tone pair raises the shadows by
+    more than TOE_LIFT_WARN beyond `offset`. The conductor cannot tell an underexposed
+    shot from one dark on purpose — both read as a low p5 — so it does not refuse; it
+    says so, and pinning the episode stays the author's call.
+
+    `pairs` is (tone_src, tone_dst) per episode, as the EDL will ship them — not the
+    decisions, so a re-run that leaves last run's pairs alone as hand-authored still
+    names them (review finding 3). `offset` is the mood's own displacement of the toe
+    (bias p5 x scale): a brief that asks for lifted blacks lifts every episode on
+    purpose, and counting it would name most of a `nostalgic` reel (review finding 2)."""
+    return [(i, src[0], dst[0]) for i, (src, dst) in enumerate(pairs)
+            if src is not None and dst is not None
+            and dst[0] - offset - src[0] > TOE_LIFT_WARN]
 
 
 def _triple(v, what: str) -> Profile:

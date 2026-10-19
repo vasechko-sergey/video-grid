@@ -35,6 +35,8 @@ def build_spec(project_path: str, *, length_s: float, mood: str, hook: str,
                 f"would quietly use the generic zone. Known: "
                 f"{', '.join(safezones.labels())} — or leave it unset for the generic zone")
         platform = safezones.zone_name(platform)
+    else:
+        platform = ""
     return Spec(canvas=cfg.canvas, length_s=length_s, mood=mood, hook=hook,
                 reel_count=reel_count, music=music, music_mode=music_mode,
                 style_lean=style_lean, platform=platform, text=text,

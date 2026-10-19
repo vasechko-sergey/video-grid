@@ -178,8 +178,10 @@ def test_the_brief_stores_the_zone_a_platform_label_resolves_to(tmp_path):
     assert spec.platform == "reels"
 
 
-def test_the_brief_leaves_an_unset_platform_unset(tmp_path):
-    spec = build_spec(_project(tmp_path), length_s=30, mood="calm", hook="h")
+@pytest.mark.parametrize("unset", ["", "   "])
+def test_the_brief_leaves_an_unset_platform_unset(tmp_path, unset):
+    spec = build_spec(_project(tmp_path), length_s=30, mood="calm", hook="h",
+                      platform=unset)
     assert spec.platform == ""
 
 
