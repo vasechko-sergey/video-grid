@@ -25,7 +25,8 @@ from scripts.lib import (color_fidelity, episode_qc as qc_lib, gates as gates_li
 from scripts.lib.edl import EDL, preflight
 from scripts.lib.episode_qc import ReelQC
 from scripts.lib.footage import Cast
-from scripts.lib.models import EpisodeGeometry, ReelEpisode, ReelGeometry, ReelManifest
+from scripts.lib.models import (EpisodeGeometry, MusicSpec, ReelEpisode, ReelGeometry,
+                               ReelManifest)
 from scripts.lib.project import ProjectConfig
 
 DEFAULT_JOBS = 3      # measured knee (design §2): cap 4 buys nothing and costs latency
@@ -322,7 +323,12 @@ def _reel_manifest(mds: list[dict], results: list[dict], routes: list[str | None
     # #16: this argument is the version-log NOTE, not the log's path. Passing
     # str(out_dir/"VERSIONS.md") here is what made 12 of 13 entries in a real run's
     # VERSIONS.md log the file's own path instead of the reason for the version.
-    note = changelog or f"delivered from {Path(edl_path).name}"
+    # retro 2026-10-16 S11: the old default ("delivered from EDL.json") made five lines
+    # of the second run's VERSIONS.md identical. The note now states what this cut IS —
+    # always — and an authored reason (--changelog) leads it.
+    note = _cut_summary(edl, target, music or edl.music)
+    if changelog:
+        note = f"{changelog} — {note}"
     rm = ReelManifest(episodes=episodes, target_dur=target, cap=edl.cap,
                       changelog=note, music=music or edl.music, platform=edl.platform,
                       look=edl.look,
@@ -351,6 +357,20 @@ def _reel_manifest(mds: list[dict], results: list[dict], routes: list[str | None
                      "engine_at_start": started,
                      "overrides": provenance.spec_overrides(rm.check_spec)}
     return rm
+
+
+def _cut_summary(edl: EDL, target: float, music: str | None) -> str:
+    """'6 episodes · 45.7s · music: lets-go-surfing @ 49.0s' — the facts a VERSIONS.md
+    line needs to tell one delivery from the next. A MUSIC.json that cannot be read is
+    named as such rather than failing a delivery over a log line."""
+    head = f"{len(edl.episodes)} episodes · {target:.1f}s"
+    if not music:
+        return f"{head} · no music"
+    try:
+        ms = MusicSpec.from_json(music)
+    except (OSError, ValueError):
+        return f"{head} · music: {Path(music).name} (unreadable)"
+    return f"{head} · music: {Path(ms.track).stem} @ {ms.start_offset:.1f}s"
 
 
 def _build_manifest(edl_path: str, project_path: str, footage_root: str,
@@ -701,8 +721,10 @@ def build_parser() -> argparse.ArgumentParser:
                          f"--from-episodes (phase 2 renders nothing)")
     ap.add_argument("--changelog", default="",
                     help="version-log note for this delivery — the REASON for the version "
-                         "(e.g. 'regraded ep1'), not a path; defaults to 'delivered from <EDL>'; "
-                         "refused with --from-episodes (already baked into EPISODES.json)")
+                         "(e.g. 'regraded ep1'), not a path. It leads the VERSIONS.md line, "
+                         "before the cut's own facts (episodes · length · music), which are "
+                         "always written; refused with --from-episodes (already baked into "
+                         "EPISODES.json) — pass it at --from-geometry")
     phase = ap.add_mutually_exclusive_group()
     phase.add_argument("--stop-after-episodes", action="store_true",
                        help="render every episode, write EPISODES.json, and stop — the "

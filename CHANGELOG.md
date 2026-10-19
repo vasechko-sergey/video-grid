@@ -10,6 +10,14 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.20.1 — 2026-10-19
+
+- `project_init` refuses a `--project-dir` that holds the video files themselves and
+  names `<footage>/montage` — the second real run wrote `project.json` beside the clips.
+- `VERSIONS.md` lines say what each delivery is: episodes · length · music, an authored
+  `--changelog` reason first, and whether the EDL changed since the previous version.
+  The second real run's five lines all read "delivered from EDL.json".
+
 ## 0.20.0 — 2026-10-19
 
 - **Known music when the brief asks for it.** `reel_brief --music-known` records the

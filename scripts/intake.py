@@ -48,7 +48,7 @@ SHAKY_CLIP = 0.02                                 # shake (fraction of frame wid
 CLUSTER_COS = 0.30       # cosine cut for "same identity" in surfacing (design §5). A FIRST CUT
                          # calibratable on the real cache — no footage exists to tune it.
 MAX_CAST = 15            # adaptive cap on surfaced identities; excess is dropped WITH a log (no silent cap)
-_VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi"}
+_VIDEO_EXTS = runlayout.VIDEO_EXTS          # one list: intake scans it, project_init refuses on it
 DEFAULT_JOBS = 2          # 3 parallel full-clip passes pin every P-core (3x libx264 proxy
                           # alone is ~400s of CPU) and thermally throttle a laptop; 2 is the
                           # sustainable default. --jobs raises it on a cooled/desktop box or

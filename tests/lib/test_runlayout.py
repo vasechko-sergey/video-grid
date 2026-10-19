@@ -190,3 +190,25 @@ def test_a_partial_is_invisible_to_every_delivery_glob(tmp_path):
     assert sorted(p.name for p in tmp_path.glob("REEL_v*")) == ["REEL_v1.mp4"]
     assert sorted(p.name for p in tmp_path.glob("REEL_v*.*")) == ["REEL_v1.mp4"]
     assert sorted(p.name for p in tmp_path.glob(runlayout.PARTIAL_GLOB)) == [".REEL_v2.part.mp4"]
+
+
+# --- retro 2026-10-16 S10: project.json does not belong in the footage folder ---------
+
+def test_a_project_dir_that_holds_footage_is_refused_with_the_run_dir_as_remedy(tmp_path):
+    (tmp_path / "DJI_0001_D.MP4").write_bytes(b"x")
+    with pytest.raises(ValueError, match="montage"):
+        runlayout.refuse_project_dir_holding_footage(str(tmp_path), "project-init")
+
+
+def test_the_run_dir_and_a_new_dir_pass(tmp_path):
+    (tmp_path / "DJI_0001_D.MP4").write_bytes(b"x")
+    runlayout.refuse_project_dir_holding_footage(str(tmp_path / "montage"), "project-init")
+    (tmp_path / "montage").mkdir()
+    (tmp_path / "montage" / "reels" / "main").mkdir(parents=True)
+    (tmp_path / "montage" / "reels" / "main" / "draft.mp4").write_bytes(b"x")   # deeper: fine
+    runlayout.refuse_project_dir_holding_footage(str(tmp_path / "montage"), "project-init")
+
+
+def test_intake_and_the_refusal_share_one_extension_list():
+    from scripts import intake
+    assert intake._VIDEO_EXTS is runlayout.VIDEO_EXTS

@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -561,3 +562,44 @@ def test_verify_look_decodes_only_the_ends_a_look_declares(tmp_path, monkeypatch
     assert ("frames", (0.0,)) not in seen and ("last",) in seen
     ev = next(k for tag, *rest in seen if tag == "eval" for k in rest)
     assert (ev["fade"], ev["fade_in"]) == (0.8, 0.0)
+
+
+def test_the_version_log_says_whether_the_cut_changed_since_the_last_delivery(tmp_path, monkeypatch):
+    """retro 2026-10-16 S11: all five lines of the second run's VERSIONS.md were the same
+    words. Comparing this delivery's EDL digest with the previous attestation's says
+    whether a version is a re-cut or a re-render of the same cut."""
+    _fake_encode(monkeypatch)
+    master, rep = _bound(tmp_path)
+    out_dir = str(tmp_path / "out")
+    for k, digest in enumerate(("e1", "e1", "e2"), 1):
+        deliver.deliver(master, REEL_H264, out_dir, f"note {k}", rep,
+                        scratch_dir=str(tmp_path / "s"),
+                        run_provenance={"edl": {"digest": digest, "state": "intact"}})
+    lines = (Path(out_dir) / "VERSIONS.md").read_text().splitlines()
+    assert lines[-3].endswith("note 1")
+    assert lines[-2].endswith("note 2 · same EDL as v1")
+    assert lines[-1].endswith("note 3 · EDL changed since v2")
+
+
+@pytest.mark.parametrize("now,before,want", [
+    ("e2", "e1", " · EDL changed since v1"),
+    ("e1", "e1", " · same EDL as v1"),
+    ("", "e1", ""),                 # this run carries no digest: say nothing
+    ("e1", "", ""),                 # the previous one carried none: never "changed"
+])
+def test_since_last_says_only_what_both_digests_support(tmp_path, now, before, want):
+    reel = tmp_path / "REEL_v1.mp4"
+    reel.write_bytes(b"x")
+    provenance.attest_path(reel).write_text(json.dumps(
+        {"v": 1, "reel": reel.name, "reel_digest": "d", "master_digest": "m",
+         "report_digest": "r", "overall": True, "edl": {"digest": before}}))
+    rp = {"edl": {"digest": now}}
+    assert deliver._since_last(str(tmp_path), 2, "mp4", rp) == want
+    assert deliver._since_last(str(tmp_path), 1, "mp4", rp) == ""          # no previous
+
+
+def test_since_last_survives_a_hand_corrupted_sidecar(tmp_path):
+    reel = tmp_path / "REEL_v1.mp4"
+    reel.write_bytes(b"x")
+    provenance.attest_path(reel).write_text(json.dumps({"edl": "x"}))
+    assert deliver._since_last(str(tmp_path), 2, "mp4", {"edl": {"digest": "e"}}) == ""

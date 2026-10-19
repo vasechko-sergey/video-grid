@@ -63,6 +63,24 @@ def _video_only_args(profile: ExportProfile) -> list[str]:
     return out
 
 
+def _since_last(out_dir: str, n: int, container: str, run_provenance: dict | None) -> str:
+    """' · same EDL as v{n-1}' / ' · EDL changed since v{n-1}', or '' when either side
+    carries no EDL digest. Tells a re-cut from a re-render of the same cut — the second
+    real run's five VERSIONS.md lines were identical words (retro 2026-10-16 S11)."""
+    now = ((run_provenance or {}).get("edl") or {}).get("digest") or ""
+    prev = Path(out_dir) / f"REEL_v{n - 1}.{container}"
+    if n < 2 or not now or not provenance.attest_path(prev).is_file():
+        return ""
+    try:
+        edl = provenance.Attestation.from_json(provenance.attest_path(prev)).edl
+    except (OSError, ValueError, TypeError):
+        return ""
+    before = edl.get("digest") if isinstance(edl, dict) else None
+    if not before:
+        return ""
+    return f" · same EDL as v{n - 1}" if before == now else f" · EDL changed since v{n - 1}"
+
+
 def _log_version(out_dir: str, n: int, changelog: str) -> None:
     vf = Path(out_dir) / "VERSIONS.md"
     if not vf.exists():
@@ -359,7 +377,8 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
             + f". The file is on disk to look at, but no attestation was written, so "
               f"`montage status` reports it as unattested. Fix the look chain (EDL.look, "
               f"or the titles file) and deliver again — this gate has no waiver")
-    _log_version(out_dir, n, changelog)
+    _log_version(out_dir, n, changelog + _since_last(out_dir, n, profile.container,
+                                                     run_provenance))
     # The delivery's record (design §6). reel_digest binds it to the SHIPPED file, not
     # only to the master, so a reel swapped after delivery is detectable. A hand-run
     # ffmpeg produces no sidecar at all, which is what montage status reports.

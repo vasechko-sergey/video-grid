@@ -957,7 +957,12 @@ def test_the_changelog_is_a_reason_not_the_log_path(tmp_path, monkeypatch):
     seen = _wire(monkeypatch)
     edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
                             str(tmp_path / "w"), str(tmp_path / "out"))
-    assert seen["rm"].changelog == "delivered from EDL.json"
+    # retro 2026-10-16 S11: five identical "delivered from EDL.json" lines could not
+    # tell one version from the next — the note now states what this cut IS
+    edl = EDL.from_json(_edl_file(tmp_path))
+    n = len(edl.episodes)
+    total = sum(e.play_dur() for e in edl.episodes)
+    assert seen["rm"].changelog == f"{n} episodes · {total:.1f}s · no music"
     assert "VERSIONS.md" not in seen["rm"].changelog
 
 
@@ -965,7 +970,8 @@ def test_an_explicit_changelog_wins(tmp_path, monkeypatch):
     seen = _wire(monkeypatch)
     edl_to_reel.edl_to_reel(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
                             str(tmp_path / "w"), str(tmp_path / "out"), changelog="regraded ep1")
-    assert seen["rm"].changelog == "regraded ep1"
+    assert seen["rm"].changelog.startswith("regraded ep1 — ")      # the reason, then the facts
+    assert "episodes ·" in seen["rm"].changelog
 
 
 # --- Task 6: the two-phase edl_to_reel and the gate -------------------------------
@@ -2126,3 +2132,42 @@ def test_a_broken_gates_file_stops_the_run_and_names_the_path(arm, tmp_path, mon
     assert ran["passed"] == []
     if arm == "single-pass":                           # phase 1b extracts nothing to begin with
         assert ran["seen"]["segments"] == []
+
+
+# --- retro 2026-10-16 S11: the version note on the router's own path ------------------
+
+def test_the_render_step_records_the_reason_in_the_manifest(tmp_path, monkeypatch):
+    geo, ctx = _geometry_run(tmp_path, monkeypatch)
+    rm, stop = _render(ctx, changelog="ending: the other silhouette")
+    assert stop is None and rm.changelog.startswith("ending: the other silhouette — ")
+
+
+def test_the_cli_render_step_passes_its_changelog(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_render(geometry_path, project_path, work_dir, out_dir, *, music=None,
+                    jobs=edl_to_reel.DEFAULT_JOBS, changelog=""):
+        seen["changelog"] = changelog
+        return None, {"status": "stop_and_report", "finding": {"reason": "x"}}
+    monkeypatch.setattr(edl_to_reel, "render_from_geometry", fake_render)
+    monkeypatch.setattr(sys, "argv", ["edl_to_reel", "--project", _project(tmp_path),
+                                      "--work-dir", str(tmp_path / "w"),
+                                      "--out-dir", str(tmp_path / "out"),
+                                      "--from-geometry", str(tmp_path / "GEOMETRY.json"),
+                                      "--changelog", "balance 50/50"])
+    with pytest.raises(SystemExit):
+        edl_to_reel.main()
+    assert seen["changelog"] == "balance 50/50"
+
+
+def test_the_cut_summary_names_the_track_and_its_offset(tmp_path):
+    from scripts.lib.models import MusicSpec
+    edl = EDL.from_json(_edl_file(tmp_path))
+    mj = tmp_path / "MUSIC.json"
+    mj.write_text(json.dumps(MusicSpec("/x/lets-go-surfing.webm", 49.0, 45.0, 117.0,
+                                       (0.0, 0.5), (0.3,), 2.0).to_dict()))
+    assert edl_to_reel._cut_summary(edl, 45.66, str(mj)).endswith(
+        "45.7s · music: lets-go-surfing @ 49.0s")
+    (tmp_path / "bad.json").write_text("{")
+    assert "music: bad.json (unreadable)" in edl_to_reel._cut_summary(
+        edl, 45.66, str(tmp_path / "bad.json"))
