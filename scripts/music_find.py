@@ -20,7 +20,8 @@ def _log(msg: str) -> None:
 
 
 def build_shortlist(mode: str, mood_text: str, out_dir: str, *, n: int = 8,
-                    query: str | None = None, cat: str | None = None) -> dict:
+                    query: str | None = None, cat: str | None = None,
+                    popular: bool = False) -> dict:
     """Discover n candidates (per rights lane), rank by fit to mood_text, write
     MUSIC_SHORTLIST.{json,md} in out_dir. Zero candidates raises (in catalog.search); an
     unknown mood logs and falls back to drive-ranking (never silent)."""
@@ -30,7 +31,12 @@ def build_shortlist(mode: str, mood_text: str, out_dir: str, *, n: int = 8,
         search_query = f"{mood_text} instrumental"   # §4.1 free-lane stylistic hint
     else:
         search_query = mood_text
-    cands = catalog.search(mode, search_query, n, catalog=cat)
+    if popular and mode == "any" and cat is None:
+        # Known tracks: Deezer orders a search by its own ranking and ships 30 s previews.
+        # The second real run's brief asked for "any" music and got niche artists, ranked
+        # by mood fit alone (retro 2026-10-16 S8).
+        cat = "deezer"
+    cands = catalog.search(mode, search_query, n, catalog=cat, popular=popular)
     with tempfile.TemporaryDirectory() as clips:
         pairs = []
         for i, c in enumerate(cands):
@@ -50,15 +56,21 @@ def build_shortlist(mode: str, mood_text: str, out_dir: str, *, n: int = 8,
     for i, score, v in ranked:      # key by index, not slug — dup-slug rows must not cross-attribute
         c = cands[i]
         row = {"title": c.title, "artist": c.artist, "source": c.source, "ref": c.ref,
-               "license": c.license, "preview_url": c.preview_url, "vector": v.to_dict()}
+               "license": c.license, "preview_url": c.preview_url, "vector": v.to_dict(),
+               "popularity": c.popularity}
         if head["fallback"] == "drive":
             row["drive"] = round(score, 4)
         else:
             row["distance"] = round(score, 4)
             row["fit"] = round(1.0 / (1.0 + score), 4)
         rows.append(row)
-    payload = {"mood_text": mood_text, "mode": mode, **head, "candidates": rows}
+    if popular:
+        # most popular first; the mood fit stays in every row so the agent can weigh both
+        rows.sort(key=lambda r: -(r["popularity"] if r["popularity"] is not None else -1.0))
+    payload = {"mood_text": mood_text, "mode": mode, **head,
+               "sort": "popularity" if popular else "fit", "candidates": rows}
     out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
     json_path, md_path = out / "MUSIC_SHORTLIST.json", out / "MUSIC_SHORTLIST.md"
     json_path.write_text(json.dumps(payload, indent=2))
     md_path.write_text(_to_markdown(payload))
@@ -74,12 +86,14 @@ def _to_markdown(payload: dict) -> str:
                f"· pace {t['pace']:.2f}_")
     lines = [f"# Music shortlist — mood: {payload['mood_text']} (mode: {payload['mode']})",
              "", sub, "",
-             "| # | title | artist | source | fit | energy | brightness | pace | license |",
-             "|--:|-------|--------|--------|----:|-------:|-----------:|-----:|---------|"]
+             f"_sorted by {payload.get('sort', 'fit')}_", "",
+             "| # | title | artist | source | fit | popularity | energy | brightness | pace | license |",
+             "|--:|-------|--------|--------|----:|-----------:|-------:|-----------:|-----:|---------|"]
     for i, c in enumerate(payload["candidates"], 1):
         v = c["vector"]
         fit = f"{c['fit']:.2f}" if "fit" in c else f"drive {c['drive']:.2f}"
-        lines.append(f"| {i} | {c['title']} | {c['artist']} | {c['source']} | {fit} | "
+        pop = f"{c['popularity']:,.0f}" if c.get("popularity") is not None else "–"
+        lines.append(f"| {i} | {c['title']} | {c['artist']} | {c['source']} | {fit} | {pop} | "
                      f"{v['energy']:.2f} | {v['brightness']:.2f} | {v['pace']:.2f} | {c['license']} |")
     return "\n".join(lines) + "\n"
 
@@ -96,14 +110,20 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--n", type=int, default=8, help="candidate count (default 8)")
     ap.add_argument("--catalog", choices=("youtube", "itunes", "deezer"),
                     help="any-lane catalog (default youtube)")
+    ap.add_argument("--popular", action="store_true",
+                    help="known tracks first: search Deezer by its own ranking (the any "
+                         "lane's default catalog when this is set) and sort by popularity. "
+                         "Implied by SPEC.music_known with --spec")
     ap.add_argument("--out-dir", required=True, help="where to write MUSIC_SHORTLIST.{json,md}")
     return ap
 
 
 def main() -> None:
     a = build_parser().parse_args()
-    mood_text = Spec.from_json(a.spec).mood if a.spec else a.mood
-    res = build_shortlist(a.mode, mood_text, a.out_dir, n=a.n, query=a.query, cat=a.catalog)
+    sp = Spec.from_json(a.spec) if a.spec else None
+    mood_text = sp.mood if sp else a.mood
+    res = build_shortlist(a.mode, mood_text, a.out_dir, n=a.n, query=a.query, cat=a.catalog,
+                          popular=a.popular or bool(sp and sp.music_known))
     print(res["json"])
     print(res["md"])
 

@@ -154,3 +154,13 @@ def test_the_cli_writes_the_briefs_shot_length(tmp_path, monkeypatch):
     with pytest.raises(SystemExit):
         reel_brief.main()
     assert Spec.from_json(tmp_path / "SPEC.json").asl == (6.0, 10.0)
+
+
+def test_the_cli_records_a_wish_for_known_tracks(tmp_path, monkeypatch):
+    proj = _project(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["reel_brief", "build", "--project", str(proj),
+                                      "--length", "45", "--mood", "calm", "--hook", "h",
+                                      "--music-known", "--out-dir", str(tmp_path)])
+    with pytest.raises(SystemExit):
+        reel_brief.main()
+    assert Spec.from_json(tmp_path / "SPEC.json").music_known is True

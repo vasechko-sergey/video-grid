@@ -70,7 +70,7 @@ def test_build_shortlist_same_slug_candidates_do_not_cross_attribute(tmp_path, m
 def test_free_default_query_gets_instrumental_hint(tmp_path, monkeypatch):
     x = _c("X", source="ccmixter")
     seen = {}
-    def fake_search(mode, q, n, catalog=None):
+    def fake_search(mode, q, n, catalog=None, popular=False):
         seen["q"] = q
         return [x]
     monkeypatch.setattr(find.catalog, "search", fake_search)
@@ -103,3 +103,22 @@ def test_cli_requires_free_or_any(tmp_path, monkeypatch):
                                      "--out-dir", str(tmp_path)])
     with pytest.raises(SystemExit):        # choices=(free, any) → argparse rejects local
         find.main()
+
+
+def test_a_known_track_search_orders_by_popularity_and_says_so(tmp_path, monkeypatch):
+    """retro 2026-10-16 S8: the brief said "any" and the operator expected known songs;
+    the search ranked by mood fit alone and surfaced niche artists."""
+    a = Candidate("Niche", "A", "deezer", "r1", "unknown (any lane)", None, popularity=900.0)
+    b = Candidate("Hit", "B", "deezer", "r2", "unknown (any lane)", None, popularity=950000.0)
+    got = {}
+    monkeypatch.setattr(find.catalog, "search", lambda *a_, **k: (got.update(k), [a, b])[1])
+    monkeypatch.setattr(find.catalog, "preview_clip", lambda c, d: c.slug())
+    monkeypatch.setattr(find.beats, "mood_features",
+                        lambda slug: MoodVector(0.3, 0.5, 0.3) if "niche" in slug
+                        else MoodVector(0.9, 0.9, 0.9))
+    out = tmp_path / "new" / "dir"                      # S16: the dir need not exist
+    find.build_shortlist("any", "calm", str(out), popular=True)
+    data = json.loads((out / "MUSIC_SHORTLIST.json").read_text())
+    assert [r["title"] for r in data["candidates"]] == ["Hit", "Niche"]
+    assert data["sort"] == "popularity" and got["popular"] is True and got["catalog"] == "deezer"
+    assert "popularity" in (out / "MUSIC_SHORTLIST.md").read_text()

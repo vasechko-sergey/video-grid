@@ -34,6 +34,12 @@ class Candidate:
     ref: str                    # source-native id/url fetch resolves against
     license: str
     preview_url: str | None     # HTTP-fetchable 30s clip, or None → yt-dlp section
+    # The catalog's own popularity number — Deezer's `rank`, YouTube's view count — or
+    # None where a catalog has none (iTunes, the CC lanes). Not comparable ACROSS
+    # catalogs, only within one search. The second real run's search ranked by mood fit
+    # alone and surfaced niche artists to an operator who wanted known songs (retro
+    # 2026-10-16 S8).
+    popularity: float | None = None
 
     def __post_init__(self) -> None:
         for name in ("title", "artist", "source", "ref", "license"):
@@ -46,14 +52,22 @@ class Candidate:
                                                  and self.preview_url.strip()):
             raise ValueError(f"Candidate.preview_url must be a non-empty string or None, "
                              f"got {self.preview_url!r}")
+        if self.popularity is not None and (isinstance(self.popularity, bool) or not
+                                            isinstance(self.popularity, (int, float))
+                                            or self.popularity < 0):
+            raise ValueError(f"Candidate.popularity must be a number >= 0 or None, got "
+                             f"{self.popularity!r}")
 
     def slug(self) -> str:
         raw = f"{self.source}-{self.artist}-{self.title}".lower()
         return re.sub(r"[^a-z0-9]+", "-", raw).strip("-")[:80] or "track"
 
     def to_dict(self) -> dict:
-        return {"title": self.title, "artist": self.artist, "source": self.source,
-                "ref": self.ref, "license": self.license, "preview_url": self.preview_url}
+        d = {"title": self.title, "artist": self.artist, "source": self.source,
+             "ref": self.ref, "license": self.license, "preview_url": self.preview_url}
+        if self.popularity is not None:
+            d["popularity"] = self.popularity
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "Candidate":
@@ -70,7 +84,8 @@ class Candidate:
             raise ValueError(f"Candidate.from_dict missing key(s) {missing} — a candidate "
                              f"needs title, artist, source, ref, license")
         return cls(title=d["title"], artist=d["artist"], source=d["source"], ref=d["ref"],
-                   license=d["license"], preview_url=d.get("preview_url"))
+                   license=d["license"], preview_url=d.get("preview_url"),
+                   popularity=d.get("popularity"))
 
 
 def has_ytdlp() -> bool:
@@ -161,8 +176,15 @@ def _search_itunes(query: str, n: int) -> list[Candidate]:
     return out
 
 
-def _search_deezer(query: str, n: int) -> list[Candidate]:
-    url = "https://api.deezer.com/search?" + urllib.parse.urlencode({"q": query, "limit": n})
+def _num_or_none(v: object) -> float | None:
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0 else None
+
+
+def _search_deezer(query: str, n: int, popular: bool = False) -> list[Candidate]:
+    params = {"q": query, "limit": n}
+    if popular:
+        params["order"] = "RANKING"           # Deezer's own popularity order
+    url = "https://api.deezer.com/search?" + urllib.parse.urlencode(params)
     out = []
     for r in _get_json(url).get("data", []):
         title, artist = r.get("title"), (r.get("artist") or {}).get("name")
@@ -170,7 +192,8 @@ def _search_deezer(query: str, n: int) -> list[Candidate]:
             continue
         out.append(Candidate(title=title, artist=artist, source="deezer",
                              ref=f"{artist} - {title}", license="unknown (any lane)",
-                             preview_url=r.get("preview")))
+                             preview_url=r.get("preview"),
+                             popularity=_num_or_none(r.get("rank"))))
     return out
 
 
@@ -229,11 +252,12 @@ def _search_youtube(query: str, n: int) -> list[Candidate]:
             continue
         out.append(Candidate(title=title, artist=r.get("channel") or r.get("uploader") or "unknown",
                              source="youtube", ref=ref, license="unknown (any lane)",
-                             preview_url=None))
+                             preview_url=None, popularity=_num_or_none(r.get("view_count"))))
     return out
 
 
-def search(mode: str, query: str, n: int, catalog: str | None = None) -> list[Candidate]:
+def search(mode: str, query: str, n: int, catalog: str | None = None,
+           popular: bool = False) -> list[Candidate]:
     """Discovery across rights lanes (design §4). `free` → _free_source() (ccMixter / Jamendo);
     `any` → YouTube by default, or `catalog` in {itunes, deezer}. Rights invariant: the free
     branch only ever calls the CC catalogs, never YouTube. Zero results raises."""
@@ -247,7 +271,7 @@ def search(mode: str, query: str, n: int, catalog: str | None = None) -> list[Ca
         if catalog == "itunes":
             cands = _search_itunes(query, n)
         elif catalog == "deezer":
-            cands = _search_deezer(query, n)
+            cands = _search_deezer(query, n, popular=popular)
         elif catalog in (None, "youtube"):
             cands = _search_youtube(query, n)
         else:

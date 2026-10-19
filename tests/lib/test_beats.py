@@ -250,3 +250,16 @@ def test_downbeat_phase_declines_silence():
     times = [i * 0.5 for i in range(16)]
     y = np.zeros(int(sr * 8.5), dtype=np.float32)
     assert beats._downbeat_phase(y, sr, times) is None
+
+
+def test_preview_cuts_exactly_the_analysed_window(tmp_path, monkeypatch):
+    """retro 2026-10-16 S8: the operator asked "where is the preview?" — the agent cut
+    45 s excerpts with ffmpeg by hand. The window that will play is the one MUSIC.json
+    records, so the preview is cut from exactly that."""
+    calls = []
+    monkeypatch.setattr(beats.proc, "run", lambda cmd, **k: calls.append(cmd))
+    out = beats.write_preview("t.webm", 49.0, 45.6, str(tmp_path / "p.mp3"))
+    cmd = calls[0]
+    assert out == str(tmp_path / "p.mp3") and cmd[-1] == out
+    assert cmd[cmd.index("-ss") + 1] == "49.000" and cmd[cmd.index("-t") + 1] == "45.600"
+    assert "-vn" in cmd and cmd.index("-i") < cmd.index("-ss")
