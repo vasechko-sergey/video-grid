@@ -12,8 +12,10 @@ a deterministic Python + ffmpeg engine does every render and every measurement,
 so each decision leaves a file you can read.
 
 > **Example.** The second real run: 20 drone clips (7 min of 1080p60) of two
-> longboard surfers, turned into a 45-second Instagram Reel. The first cut was
-> delivered 1 h 49 min after the first message, 1 h 21 min of it active. The three
+> longboard surfers, turned into
+> [a 45-second Instagram Reel](https://www.instagram.com/p/DeshltIBIST/). The
+> first cut was delivered 1 h 49 min after the first message, 1 h 21 min of it
+> active. The three
 > re-cuts the operator asked for took 16, 15 and 64 minutes; about 45 minutes of
 > the last went on finding a track. The run's own retrospective is in
 > [docs/retro/2026-10-16-second-real-run.md](docs/retro/2026-10-16-second-real-run.md).
