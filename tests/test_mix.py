@@ -1,5 +1,7 @@
 """mix ambient path — unit level, proc.run mocked (the real ffmpeg proof lives in
 tests/integration/test_ambient.py). Asserts branch selection + command shape only."""
+import json
+
 import pytest
 
 from scripts import mix
@@ -311,3 +313,22 @@ def test_no_music_less_stem_unless_asked(tmp_path, monkeypatch):
                         lambda cmd, **k: (calls.append(cmd), _R(stderr=_loudnorm_stderr()))[1])
     mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0)
     assert not any("alimiter" in " ".join(map(str, c)) for c in calls)
+
+
+
+@pytest.mark.parametrize("tp, linear", [(-3.0, False), (-9.0, True)])
+def test_mix_records_what_the_music_less_stem_holds_and_whether_the_gain_is_exact(
+        tmp_path, monkeypatch, tp, linear):
+    """loudnorm stays linear only while the lifted true peak fits its target; past it,
+    the music stem rode a dynamic gain and the music-less one sits a few dB away."""
+    stats = (f'"input_i" : "-20.0", "input_tp" : "{tp}", '
+             f'"input_lra" : "5.0", "input_thresh" : "-30.0"').encode()
+    calls = []
+    monkeypatch.setattr(mix.proc, "run", lambda cmd, **k: (calls.append(cmd),
+                        _R(stdout=b"48000,2\n", stderr=stats))[1])
+    monkeypatch.setattr(mix, "_build_ambient", lambda segs, d: d + "/ambient.wav")
+    nm = tmp_path / "out" / "no_music.m4a"
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0, segments=[("s0.mp4", 6.0)],
+            without_music=str(nm))
+    assert json.loads(nm.with_suffix(".json").read_text()) == {
+        "ambient": True, "sfx": False, "gain_db": 6.0, "linear": linear}

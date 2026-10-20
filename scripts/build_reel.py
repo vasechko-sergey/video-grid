@@ -89,15 +89,26 @@ def _deliver_without_music(delivered: str, stem: str, music: MusicSpec,
     nm_dir.mkdir(parents=True, exist_ok=True)
     target = nm_dir / src.name
     part = nm_dir / f".{src.stem}.part{src.suffix}"      # the extension tells ffmpeg the muxer
-    proc.run([ffbin.ffmpeg(), "-y", "-i", str(src), "-i", stem, "-map", "0:v", "-map", "1:a",
-              "-c", "copy", "-shortest", "-movflags", "+faststart", str(part)])
-    os.replace(part, target)
+    try:
+        proc.run([ffbin.ffmpeg(), "-y", "-i", str(src), "-i", stem, "-map", "0:v",
+                  "-map", "1:a", "-c", "copy", "-shortest", "-movflags", "+faststart",
+                  str(part)])
+        os.replace(part, target)
+    finally:
+        part.unlink(missing_ok=True)        # no half-written file left beside the note
+    held = json.loads(Path(stem).with_suffix(".json").read_text())   # mix's own record
+    if not held["linear"]:
+        print(f"build_reel: the music stem was levelled dynamically, so the music-less "
+              f"{src.name}'s natural sound sits a few dB from the music version's",
+              file=sys.stderr)
     durs = [check_reel._probe_dur(e.clip) for e in rm.episodes]
     cuts = [sum(durs[:k + 1]) for k in range(len(durs) - 1)]
     note = nm_dir / f"{src.stem}.sound.md"
     note.write_text(soundnote.render(music, fetch.track_meta(music.track), src.name,
                                      provenance.digest_file(str(src)),
-                                     check_reel._probe_dur(str(src)), cuts, rm.platform))
+                                     check_reel._probe_dur(str(src)), cuts, rm.platform,
+                                     ambient=held["ambient"], sfx=held["sfx"],
+                                     linear=held["linear"], fitted=rm.outro is not None))
     return {"no_music": str(target), "sound_note": str(note)}
 
 
@@ -259,8 +270,17 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
             result = {"status": "delivered", "output": out, "report": report.to_dict(),
                       "reprocessed": sorted(reprocessed)}
             if rm.music_in_app and music is not None:
-                result.update(_deliver_without_music(
-                    out, str(Path(work_dir) / "audio_no_music.m4a"), music, rm))
+                # After the delivery, which already stands: a failure here is reported
+                # beside it, never raised — raising would lose the "delivered" result
+                # and a re-run would spend REEL_v{n+1} on the same reel.
+                try:
+                    result.update(_deliver_without_music(
+                        out, str(Path(work_dir) / "audio_no_music.m4a"), music, rm))
+                except (RuntimeError, OSError, ValueError) as e:
+                    result["no_music_error"] = (
+                        f"the music-less version of {Path(out).name} failed: {e} — the reel "
+                        f"itself is delivered; re-deliver to try again")
+                    print(f"build_reel: {result['no_music_error']}", file=sys.stderr)
             return result
         if action.kind == "escalate":
             return {"status": "stop_and_report", "finding": action.finding,

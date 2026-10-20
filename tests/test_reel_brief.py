@@ -256,3 +256,14 @@ def test_the_brief_records_music_in_app(tmp_path):
         ["build", "--project", "p", "--length", "30", "--mood", "m", "--hook", "h",
          "--out-dir", "o", "--music-in-app"])
     assert a.music_in_app is True
+
+
+
+def test_the_cli_hands_music_in_app_to_the_brief(tmp_path, monkeypatch, capsys):
+    """--music-in-app is the user's only way in; main() must pass it on."""
+    monkeypatch.setattr(sys, "argv", ["reel_brief", "build", "--project", _project(tmp_path),
+                                      "--length", "30", "--mood", "calm", "--hook", "h",
+                                      "--music-in-app", "--out-dir", str(tmp_path / "o")])
+    with pytest.raises(SystemExit):
+        reel_brief.main()
+    assert Spec.from_json(tmp_path / "o" / "SPEC.json").music_in_app is True

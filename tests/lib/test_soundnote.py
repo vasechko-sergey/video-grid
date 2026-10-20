@@ -38,3 +38,32 @@ def test_a_local_track_with_no_record_is_named_by_its_file():
     assert "attach it in the app" in text
     assert "| Track | youtube-the-drums-lets-go-surfing-75be4374 |" in text
     assert "no music_fetch record" in text and "| Cuts | none (one shot) |" in text
+
+
+
+def test_a_silent_stem_is_called_silent_not_natural_sound():
+    text = soundnote.render(_MS, _META, "REEL_v5.mp4", "d", 45.0, [5.0],
+                            ambient=False, sfx=False)
+    assert "and silent: the reel had no natural sound to keep" in text
+    assert "natural sound kept" not in text and "whooshes" not in text
+    assert "4. The file has no natural sound" in text
+
+
+def test_whooshes_are_named_only_when_the_stem_has_them():
+    plain = soundnote.render(_MS, _META, "R.mp4", "d", 45.0, [5.0], ambient=True, sfx=False)
+    both = soundnote.render(_MS, _META, "R.mp4", "d", 45.0, [5.0], ambient=True, sfx=True)
+    assert "whooshes" not in plain and "the natural sound and the transition whooshes kept" in both
+
+
+def test_a_dynamic_music_mix_is_said_to_shift_the_natural_sound():
+    text = soundnote.render(_MS, _META, "R.mp4", "d", 45.0, [5.0], linear=False)
+    assert "levelled dynamically" in text
+    assert "levelled dynamically" not in soundnote.render(_MS, _META, "R.mp4", "d", 45.0, [5.0])
+
+
+def test_an_unfitted_cut_gets_no_beat_check():
+    """Only a pacing pass fits the cuts to the music; without one, 'the first cut lands
+    on a beat' would pull the start away from where the music was actually taken."""
+    text = soundnote.render(_MS, _META, "R.mp4", "d", 45.0, [5.0], fitted=False)
+    assert "not fitted to this song's beats" in text
+    assert "lands on a beat" not in text and "nudge the start" not in text

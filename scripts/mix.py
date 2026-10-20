@@ -5,10 +5,12 @@ chosen fragment, fade, two-pass loudnorm to −14 LUFS → aac. Given `segments`
 transitions and mixed in on top. Both bake into the one stem before the final
 loudnorm, so deliver/check_reel see a single pre-normalized signal."""
 import argparse
+import json
 import os
 import re
 import statistics
 import tempfile
+from pathlib import Path
 
 from scripts.lib import assembly, ffbin, proc
 from scripts.lib.models import MusicSpec
@@ -187,8 +189,9 @@ def _nomusic_graph(has_ambient: bool, has_sfx: bool, gain_db: float, fades: list
       their level relative to each other and to the picture.
     - The music stem's own loudnorm gain as a plain `volume`, never a second loudnorm: an
       ambient bed normalized to −14 LUFS alone would lift the wind noise.
-    - The same bookend fades, then a ceiling at the stem's true-peak limit: an un-ducked
-      wave crash can peak higher than it did under the duck. alimiter's `level` defaults to
+    - The same bookend fades, then a sample-peak ceiling at the stem's true-peak target:
+      an un-ducked wave crash can peak higher than it did under the duck. It is not a
+      true-peak limiter — inter-sample peaks can still pass it. alimiter's `level` defaults to
       an AUTO LEVEL that normalizes its output up — level=0 is load-bearing — and latency=1
       keeps its lookahead from shifting the sound against the picture."""
     n = 1 + has_ambient + has_sfx                       # the MUSIC mix's amix input count
@@ -288,8 +291,18 @@ def mix(music: MusicSpec, out_dir: str, dur: float,
                    f"measured_LRA={st['input_lra']}:measured_thresh={st['input_thresh']}"),
                   "-c:a", "aac", "-b:a", "192k", out])
         if without_music is not None:
-            _render_without_music(without_music, amb, sfx_bed, dur, fades,
-                                  _TARGET_LUFS - float(st["input_i"]), _layout(out))
+            gain = _TARGET_LUFS - float(st["input_i"])
+            _render_without_music(without_music, amb, sfx_bed, dur, fades, gain, _layout(out))
+            # What the stem holds, and whether `gain` IS what the music stem received:
+            # loudnorm only stays linear when the measured range and the lifted true peak
+            # both fit its targets (af_loudnorm's own test). Otherwise it rode a dynamic
+            # gain and the music-less ambient sits several dB from the music version's —
+            # measured 4.9 and 6.3 dB on wide-range fixtures — so the note says so.
+            linear = (float(st["input_lra"]) <= _LRA_TARGET
+                      and float(st["input_tp"]) + gain <= _TP_MAX)
+            Path(without_music).with_suffix(".json").write_text(json.dumps(
+                {"ambient": amb is not None, "sfx": sfx_bed is not None,
+                 "gain_db": round(gain, 3), "linear": linear}))
     return out
 
 

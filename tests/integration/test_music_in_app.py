@@ -3,6 +3,7 @@ stem with the track muted — no music in it, no duck pumping to a song that is 
 ambient at the level the music stem gave it, and silence when there is nothing to keep.
 Synthetic known-answer signals, the idiom of tests/integration/test_ambient.py."""
 import shutil
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -74,7 +75,7 @@ def test_the_music_less_stem_is_the_music_stem_with_the_track_muted(tmp_path, st
     # 3. the music stem's gain, not a re-normalization: where the music stem's duck has
     #    released (music silent), its ambient and the music-less ambient are one level
     ratio = second / _band(with_m, sr, 880.0, 3.5, 5.0)
-    assert 0.85 < ratio < 1.15
+    assert 0.97 < ratio < 1.03                    # the gain is exact in loudnorm's linear mode
 
 
 @pytest.mark.integration
@@ -105,6 +106,8 @@ def test_the_music_less_delivery_keeps_the_delivered_picture_byte_for_byte(tmp_p
     stem = str(tmp_path / "nm.m4a")
     proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
               "-t", "3", "-c:a", "aac", stem])
+    (tmp_path / "nm.json").write_text(            # the record mix writes beside its stem
+        '{"ambient": false, "sfx": false, "gain_db": 0.0, "linear": true}')
     ms = _music(tmp_path / "m.wav", 6)
     rm = ReelManifest(episodes=[ReelEpisode(manifest={"segment": "s.mp4"}, clip=str(sample_clip),
                                             route=None)],
@@ -116,3 +119,4 @@ def test_the_music_less_delivery_keeps_the_delivered_picture_byte_for_byte(tmp_p
                   "-show_entries", "stream=codec_name", "-of", "csv=p=0", nm])
     assert r.stdout.decode().strip() == "aac"
     assert sorted(p.name for p in out.glob("REEL_v*")) == ["REEL_v2.mp4"]
+    assert "and silent" in Path(res["sound_note"]).read_text()

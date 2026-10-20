@@ -1171,9 +1171,14 @@ def _wire_in_app(monkeypatch, tmp_path, mixed, runs):
                         lambda p: 3.0 if Path(p).name.startswith("c") else 6.0)
     reports = [_passing(), _passing()]
     monkeypatch.setattr(build_reel.check_reel, "run", lambda *a, **k: reports.pop(0))
-    monkeypatch.setattr(build_reel.mix, "mix",
-                        lambda mus, wd, dur, segments=None, ambient=True, sfx=False, **k:
-                        (mixed.append(k), "stem.m4a")[1])
+    def fake_mix(mus, wd, dur, segments=None, ambient=True, sfx=False, **k):
+        mixed.append(k)
+        if "without_music" in k:                  # mix's own record of what it rendered
+            Path(wd).mkdir(parents=True, exist_ok=True)
+            Path(k["without_music"]).with_suffix(".json").write_text(json.dumps(
+                {"ambient": True, "sfx": False, "gain_db": 6.0, "linear": True}))
+        return "stem.m4a"
+    monkeypatch.setattr(build_reel.mix, "mix", fake_mix)
     monkeypatch.setattr(build_reel.deliver, "deliver", lambda *a, **k: str(delivered))
 
     def fake_run(cmd, **k):
@@ -1212,3 +1217,21 @@ def test_a_reel_not_for_the_app_ships_exactly_as_before(tmp_path, monkeypatch):
                                 str(tmp_path / "out"), str(tmp_path / "work"))
     assert "no_music" not in res and mixed == [{}] and runs == []
     assert not (tmp_path / "out" / "no-music").exists()
+
+
+
+def test_a_failed_music_less_mux_is_reported_beside_the_delivery_not_raised(tmp_path, monkeypatch):
+    """The reel is already delivered and attested when this runs; raising would lose that
+    result and a re-run would spend the next version number on the same reel."""
+    mixed, runs = [], []
+    _wire_in_app(monkeypatch, tmp_path, mixed, runs)
+
+    def failing_run(cmd, **k):
+        Path(cmd[-1]).write_bytes(b"half")
+        raise RuntimeError("ffmpeg exited 1")
+    monkeypatch.setattr(build_reel.proc, "run", failing_run)
+    rm = dataclasses.replace(_rm_music(music=str(tmp_path / "MUSIC.json")), music_in_app=True)
+    res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "work"))
+    assert res["status"] == "delivered" and "no_music" not in res
+    assert "ffmpeg exited 1" in res["no_music_error"]
+    assert not list((tmp_path / "out" / "no-music").glob(".*part*"))   # no half-written file

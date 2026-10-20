@@ -14,8 +14,9 @@ file is the short "what changed for someone who installs it" list.
 
 - **A reel can ship without its song, for attaching the music in the app.** A brief
   recorded with `--music-in-app` makes the delivery also write
-  `deliveries/no-music/REEL_v{n}.mp4` — the same picture, the natural sound and
-  whooshes kept, not ducked and not pushed up to −14 LUFS — and a `.sound.md` note
+  `deliveries/no-music/REEL_v{n}.mp4` — the same picture, with whatever natural
+  sound and whooshes it has, not ducked and not pushed up to −14 LUFS — and a
+  `.sound.md` note
   naming the track, where the reel's music starts in it, and the cut times to check
   it by ear.
 

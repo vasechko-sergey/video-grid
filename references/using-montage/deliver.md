@@ -25,12 +25,13 @@ in `draft.mp4` and in every check that ran before this point — Checkpoint
 
 **Music in the app (`SPEC.music_in_app`).** When the brief recorded it, the
 delivery also writes `deliveries/no-music/REEL_v{n}.mp4` — the same picture,
-stream-copied, with the song removed and the natural sound and whooshes kept —
+stream-copied, with the song removed and whatever natural sound it has kept —
 and `deliveries/no-music/REEL_v{n}.sound.md`, naming the track, where the reel's
 music starts in it and the cut times. At CP3 show the user both, and say the one
 thing the note cannot settle: the start was measured on the downloaded file, so
-the app's version may sit a little earlier or later — the first cut should land
-on a beat (design 2026-10-20). The music-less file is not attested; `check_reel`
+the app's version may sit a little earlier or later — after a pacing pass the
+first cut should land on a beat (design 2026-10-20). A `no_music_error` in the
+result means the reel itself delivered and only the music-less copy failed. The music-less file is not attested; `check_reel`
 judged the version with the music.
 
 **Authored bars (`GATES.json`) are shown here, not decided here.** Phase 2 judges

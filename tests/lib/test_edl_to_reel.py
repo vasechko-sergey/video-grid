@@ -2186,6 +2186,11 @@ def test_the_manifest_carries_music_in_app_off_the_edl(monkeypatch, tmp_path):
     assert stop is None and rm.music_in_app is True
 
 
-def test_music_in_app_without_music_is_refused_with_the_flag_to_pass(monkeypatch, tmp_path):
+def test_music_in_app_without_music_is_refused_before_the_pool_renders(monkeypatch, tmp_path):
+    _wire(monkeypatch)
+    monkeypatch.setattr(edl_to_reel, "_run_pool",
+                        lambda *a, **k: pytest.fail("the pool ran before the refusal"))
+    edl_path = _edl_file(tmp_path, episodes=[_plain_episode().to_dict()], music_in_app=True)
     with pytest.raises(ValueError, match="edl_to_reel --music"):
-        _manifest_for(monkeypatch, tmp_path, [_plain_episode()], music_in_app=True)
+        edl_to_reel._build_manifest(edl_path, _project(tmp_path), str(tmp_path),
+                                    str(tmp_path / "w"), str(tmp_path / "out"))

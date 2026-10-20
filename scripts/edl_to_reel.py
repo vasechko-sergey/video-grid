@@ -168,6 +168,17 @@ def _phase_one_setup(edl_path: str, project_path: str, footage_root: str,
     return edl, started, mds, None, authored
 
 
+def _refuse_in_app_without_music(edl: EDL, music: str | None) -> None:
+    """The brief asked for the music to be attached in the app, and the note that needs
+    names the track — so a run with no --music is refused BEFORE the pool renders every
+    episode, not by ReelManifest after it (design 2026-10-20 §1)."""
+    if edl.music_in_app and not music:
+        raise ValueError("the brief asked for the music to be attached in the app "
+                         "(EDL.music_in_app), and its sound note names the track — pass "
+                         "edl_to_reel --music <MUSIC.json>, or re-brief without "
+                         "--music-in-app")
+
+
 def _cast_for(edl: EDL) -> Cast | None:
     """The reel's cast registry, loaded once for the warm-up's pin resolution.
 
@@ -386,6 +397,7 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
                                                          footage_root, work_dir, out_dir, jobs)
     if stop:
         return None, stop
+    _refuse_in_app_without_music(edl, music)
     # 3. loop-1 fan-out: one process_episode per episode, up to `jobs` concurrently.
     results, stop = _run_pool(mds, work_dir, jobs, cast=_cast_for(edl), authored=authored)
     if stop:
@@ -599,6 +611,7 @@ def render_from_geometry(geometry_path: str, project_path: str, work_dir: str,
                          f"memory-constrained box, raise it only with a GPU)")
     geo = ReelGeometry.from_json(geometry_path)
     edl = EDL.from_json(geo.edl)
+    _refuse_in_app_without_music(edl, music)
     cfg = ProjectConfig.from_json(project_path)
     # Found again HERE, not carried over from phase 1a: this phase never calls
     # _phase_one_setup, and it is the one that RENDERS and so runs the checks. A bar is

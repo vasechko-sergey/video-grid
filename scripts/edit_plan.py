@@ -735,6 +735,11 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
              "but the GENERIC zone is what check_reel will actually judge against")
     else:
         _log(f"platform: {plat} — its safe zone is what check_reel and the titles will use")
+    # Said on every run, like the platform: the pacing re-apply re-stamps the EDL from
+    # scratch, and a dropped --spec there would lose this without a word.
+    in_app = ("yes — deliver also writes the reel without the song and a sound note"
+              if sp and sp.music_in_app else "no")
+    _log(f"music in the app: {in_app}{'' if sp else ' (no --spec)'}")
     # selection.json wins over the preset's default (build_edl re-applies the same
     # is-not-None rule below; this log line only reports which source won). When
     # NOTHING matched (preset is the 'balanced' fallback), the preset's own .look is
