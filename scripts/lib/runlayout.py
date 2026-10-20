@@ -2,7 +2,8 @@
 
 The conveyor discovers footage by extension over a FLAT listing of the footage
 root (intake.py: `root.iterdir()`, no exclusion). Anything it writes there that
-happens to be a video therefore becomes source material on the next scan —
+happens to be a video — or, since photos are footage too, an image — therefore
+becomes source material on the next scan —
 measured 2026-08-19: `draft.mp4` sat among 99 real clips and escaped the scan
 only because the scan had already run (design 2026-08-25 §0).
 
@@ -15,8 +16,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 RUN_DIRNAME = "montage"       # <footage_root>/montage — see the skills and the README
-VIDEO_EXTS = frozenset({".mp4", ".mov", ".m4v", ".avi"})   # what intake scans for, and so what
-                                                # marks a directory as footage
+VIDEO_EXTS = frozenset({".mp4", ".mov", ".m4v", ".avi"})
+# Stills intake reads since 2026-10-20 (design docs/specs/2026-10-20-photos-design.md §1).
+# RAW (.dng) is not here: Pillow would hand back the embedded preview, not the photo.
+PHOTO_EXTS = frozenset({".jpg", ".jpeg", ".png", ".heic", ".heif"})
+FOOTAGE_EXTS = VIDEO_EXTS | PHOTO_EXTS   # what intake scans for, and so what marks a
+                                         # directory as footage
+
+
+def is_photo(name: str | Path) -> bool:
+    """The one predicate for "this source is a still": its extension. Asked by intake,
+    the EDL, the manifest bridge and extract, so the four cannot disagree."""
+    return Path(name).suffix.lower() in PHOTO_EXTS
 
 DEFAULT_REEL = "main"         # a run has one reel unless the user names a variant
 
@@ -208,10 +219,10 @@ def refuse_project_dir_holding_footage(project_dir: str, what: str) -> None:
     d = Path(project_dir)
     if not d.is_dir():
         return
-    clips = [p for p in d.iterdir() if p.is_file() and p.suffix.lower() in VIDEO_EXTS]
+    clips = [p for p in d.iterdir() if p.is_file() and p.suffix.lower() in FOOTAGE_EXTS]
     if not clips:
         return
     raise ValueError(
-        f"{what}: {d.resolve()} holds {len(clips)} video file(s) — it is the footage "
+        f"{what}: {d.resolve()} holds {len(clips)} video or photo file(s) — it is the footage "
         f"folder, which intake scans for source clips, not the run directory. Point it "
         f"at {d.resolve() / RUN_DIRNAME} instead.")

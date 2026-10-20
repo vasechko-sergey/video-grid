@@ -120,8 +120,15 @@ class FootageWindow:
                 "present": self.present}
 
 
+CLIP_KINDS = ("video", "photo")
+
+
 @dataclass
 class FootageClip:
+    """One source file. A `photo` (design 2026-10-20 §1) is a clip with one window, no
+    scene cuts and no frame rate: `fps` is 0.0 for it, and `dur` is how long it may be
+    held (intake's PHOTO_ROOM), not a length it has. `res` is the upright, capped raster
+    the decoder hands back, which is what every reader of the photo sees."""
     source: str
     dur: float
     res: tuple[int, int]
@@ -129,10 +136,13 @@ class FootageClip:
     shaky: bool = False
     scene_cuts: list[float] = field(default_factory=list)
     windows: list[FootageWindow] = field(default_factory=list)
+    kind: str = "video"
 
     def __post_init__(self) -> None:
         if not (isinstance(self.source, str) and self.source):
             raise ValueError("FootageClip.source must be a non-empty clip path")
+        if self.kind not in CLIP_KINDS:
+            raise ValueError(f"FootageClip.kind must be one of {CLIP_KINDS}, got {self.kind!r}")
         if not (_num(self.dur) and self.dur > 0):
             raise ValueError(f"FootageClip.dur must be a positive number, got {self.dur!r}")
         if isinstance(self.res, list):
@@ -140,7 +150,14 @@ class FootageClip:
         if not (isinstance(self.res, tuple) and len(self.res) == 2
                 and all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in self.res)):
             raise ValueError(f"FootageClip.res must be (w, h) positive ints, got {self.res!r}")
-        if not (_num(self.fps) and self.fps > 0):
+        if self.kind == "photo":
+            if not (_num(self.fps) and self.fps == 0):
+                raise ValueError(f"FootageClip.fps must be 0.0 for a photo — a still has no "
+                                 f"frame rate, and a number here would read as one; got "
+                                 f"{self.fps!r}")
+            if self.scene_cuts or self.shaky:
+                raise ValueError("FootageClip: a photo has no scene cuts and cannot be shaky")
+        elif not (_num(self.fps) and self.fps > 0):
             raise ValueError(f"FootageClip.fps must be a positive number, got {self.fps!r}")
         if not isinstance(self.shaky, bool):
             raise ValueError("FootageClip.shaky must be a bool")
@@ -194,9 +211,12 @@ class FootageClip:
             raise ValueError(f"FootageClip.from_dict: missing or unknown field — {ex}") from ex
 
     def to_dict(self) -> dict:
-        return {"source": self.source, "dur": self.dur, "res": list(self.res), "fps": self.fps,
-                "shaky": self.shaky, "scene_cuts": self.scene_cuts,
-                "windows": [w.to_dict() for w in self.windows]}
+        d = {"source": self.source, "dur": self.dur, "res": list(self.res), "fps": self.fps,
+             "shaky": self.shaky, "scene_cuts": self.scene_cuts,
+             "windows": [w.to_dict() for w in self.windows]}
+        if self.kind != "video":       # omitted for video: every FOOTAGE.json and cache
+            d["kind"] = self.kind      # entry written before photos stays byte-identical
+        return d
 
     def room_after(self, start: float) -> float:
         """Seconds available after `start` inside the SAME uninterrupted shot.
@@ -352,7 +372,11 @@ class Footage:
                       + ", ".join(f"**{t}** {sep[t]}/{n}" for t in SCORE_TERMS) + ".", ""]
         for c in self.clips:
             flag = " · shaky" if c.shaky else ""
-            lines.append(f"## {c.source}  ({c.dur:.1f}s · {c.res[0]}×{c.res[1]} @{c.fps:g}{flag})")
+            if c.kind == "photo":
+                lines.append(f"## {c.source}  (photo · {c.res[0]}×{c.res[1]} · may hold up "
+                             f"to {c.dur:.1f}s)")
+            else:
+                lines.append(f"## {c.source}  ({c.dur:.1f}s · {c.res[0]}×{c.res[1]} @{c.fps:g}{flag})")
             if c.scene_cuts:
                 lines.append("scene cuts: " + ", ".join(f"{t:.2f}" for t in c.scene_cuts))
             lines.append("| # | start | dur | shot | people | motion | shake | score | best | description |")

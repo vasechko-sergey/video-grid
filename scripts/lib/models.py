@@ -712,6 +712,40 @@ class ZoomSpec:
 
 
 @dataclass(frozen=True)
+class StillSpec:
+    """The move over a photo (design 2026-10-20 §3): a homothety about the subject from
+    `start` to `end`, both fractions of the base frame's WIDTH — 1.0 is the largest frame
+    of the layout's aspect the photo holds (times crop_scale), 0.92 an 8.7 % push-in.
+
+    Unlike ZoomSpec, equal ends are legal: a photo held without a move is a choice an
+    author makes, while a video zoom that does not move is a smaller crop. Wire names
+    `from`/`to` for the reason ZoomSpec and PanSpec give."""
+    start: float
+    end: float
+
+    def __post_init__(self) -> None:
+        for name, v in (("start", self.start), ("end", self.end)):
+            # bool BEFORE int, and no float(): the reasons ZoomSpec documents
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0.0 < v <= 1.0:
+                raise ValueError(
+                    f"StillSpec.{name} must be a number in (0.0, 1.0] — a fraction of the "
+                    f"photo's base frame width, where 1.0 is the whole frame and 0.92 an "
+                    f"8.7% push-in; got {v!r}")
+
+    def to_dict(self) -> dict:
+        return {"from": self.start, "to": self.end}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "StillSpec":
+        if not isinstance(d, dict) or set(d) != {"from", "to"}:
+            raise ValueError(
+                f"StillSpec.from_dict: expected {{\"from\": a, \"to\": b}} — fractions of "
+                f"the photo's base frame width, e.g. {{\"from\": 1.0, \"to\": 0.92}} for a "
+                f"push-in; got {d!r}")
+        return cls(start=d["from"], end=d["to"])
+
+
+@dataclass(frozen=True)
 class RampSpec:
     """A speed ramp: playback eases down to a slow plateau around one moment and
     back up (design 2026-08-09). The pro "hit the drop in slow-mo" move, rather

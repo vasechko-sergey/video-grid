@@ -52,6 +52,23 @@ def probe_stream(path: str) -> StreamInfo:
                       s["pix_fmt"], s["codec_name"], s.get("color_range") or "unknown")
 
 
+def probe_rate(path: str) -> tuple[str, int]:
+    """The first video stream's exact `r_frame_rate` ("30000/1001") and its time base's
+    denominator — what a photo segment copies so it sits beside the video segments on
+    the same clock, not on a float approximation of it (design 2026-10-20 §4)."""
+    out = proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
+                    "-show_entries", "stream=r_frame_rate,time_base", "-of", "json",
+                    str(path)]).stdout.decode("utf-8", errors="replace")
+    streams = json.loads(out).get("streams", [])
+    if not streams:
+        raise RuntimeError(f"{path} has no video stream to take a frame rate from")
+    s = streams[0]
+    num, den = s["r_frame_rate"].split("/")
+    if float(num) <= 0 or float(den) <= 0:
+        raise RuntimeError(f"{path} reports r_frame_rate {s['r_frame_rate']!r} — unusable")
+    return s["r_frame_rate"], int(s["time_base"].split("/")[1])
+
+
 def probe_duration(path: str) -> float:
     """Container duration in seconds (format=duration). StreamInfo carries w/h/fps
     only; this is the shared duration probe (was extract._probe_dur)."""
