@@ -38,7 +38,7 @@ Runs in Claude Code mode (environment access available). The skill is isolated v
 video-grid/                             # the skill-set repo (github.com/vasechko-sergey/video-grid)
 ├── SKILLS/                             # skill entry points (follow-on plans)
 │   ├── using-montage/SKILL.md          # router ("1% → invoke" rule)
-│   ├── footage-intake/  reel-brief/  trend-scan/  music-and-mood/  pacing/
+│   ├── footage-intake/  reel-brief/  music-and-mood/  pacing/
 │   ├── edit-plan/  extract/  assemble-draft/
 │   ├── process-episode/SKILL.md        # subagent, crown jewel
 │   ├── episode-postcheck/SKILL.md      # gate
@@ -53,7 +53,7 @@ video-grid/                             # the skill-set repo (github.com/vasechk
 ├── scripts/
 │   ├── lib/                            # pure logic, unit-tested: geometry, motion, pathsmooth, color, checks
 │   ├── extract.py  track.py  reframe.py  storyboard.py  check_episode.py    # core engine (current plan)
-│   ├── intake.py  beats.py  music_find.py  music_fetch.py  trends.py        # follow-on plans
+│   ├── intake.py  beats.py  music_find.py  music_fetch.py                   # follow-on plans
 │   └── check_reel.py  mix.py  assemble.py  deliver.py                       # follow-on plans
 ├── tests/                              # unit (lib/) + integration + golden fixtures (real clip + frozen route)
 ├── requirements.txt                    # ONE file — the full pipeline set (§ Environment)
@@ -98,8 +98,7 @@ Everything in `docs/montage/<project>/` — under git, raw footage untouched:
 |------|-----------|----------|
 | `FOOTAGE.md` | footage-intake | per clip: who, what, quality, shaky flag, scene-cuts; **list of moments** (one clip → several windows), each window with its own shot-type guess, description, score |
 | `cast.json` | footage-intake | hero registry (§6.1a): name → appearance descriptor (color hist over seg-mask pixels from 1–3 reference crops) + notes; one interactive naming pass; referenced by `SPEC.cast` and episode manifests |
-| `SPEC.md` | reel-brief | reel count, platform+canvas, length, mood, music, **music.mode** (local/free/any, default free), hook, text, ending, style-lean, **cast** (who the reel is about, → `cast.json`) |
-| `TRENDS.md` | trend-scan | trend cache (fetch date, TTL 7–10d): cut-style, transitions, hook patterns, text-style, composition deviations, trending-sound candidates |
+| `SPEC.md` | reel-brief | reel count, platform+canvas, length, mood, music, **music.mode** (local/free/any, default free), hook, text, ending, shot length, **cast** (who the reel is about, → `cast.json`) |
 | `MUSIC.json` | music-and-mood | beat-grid, downbeats, drop, **energy-curve** (RMS), mood-vector, cut-map, **start_offset** (chosen track fragment), **vocal-map** (phrase boundaries for start snapping), **source** (url/artist/title/license), **delivery** (baked/platform-sound) |
 | `PACING.md` | pacing | **energy spine**: episode order + target length + energy level, pinned to music sections, hook first |
 | `EDL.md` | edit-plan | ordered episodes: source+window, shot-type, layout, composition, grid, motion, processing-notes, beat-slot |
@@ -125,7 +124,6 @@ footage-intake ──► FOOTAGE.md
 reel-brief ──────► SPEC.md            (brainstorming for reels)
       │
       ▼
-trend-scan ──────► TRENDS.md          (cache TTL 7–10d)
       │
       ▼
 music-and-mood ──► MUSIC.json         (mood-match + energy + beats)
@@ -200,7 +198,7 @@ Gates are hard: a stage does not exit until its exit conditions are met. A faile
 
 ### 5.1 using-montage (router)
 Entry point. The "if there's a 1% chance a skill applies → invoke it" rule. Step 0: ensure-env (venv). Routes through stages 1–13. Analogous to `using-superpowers`.
-**Natural-language overrides:** the user passes options as free text in the invocation ("make it without music", "music.mode any", "9:16", "more classic"); `using-montage`/`reel-brief` parse intent into `SPEC` params (music.mode, delivery, style-lean, canvas, default grid, …). The scripts receive explicit args internally — the user never types CLI flags. Scripts always get the project dir explicitly (`--project-dir`); nothing assumes the caller's cwd.
+**Natural-language overrides:** the user passes options as free text in the invocation ("make it without music", "music.mode any", "9:16", "whole rides, not quick cuts"); `using-montage`/`reel-brief` parse intent into `SPEC` params (music.mode, delivery, shot length, canvas, default grid, …). The scripts receive explicit args internally — the user never types CLI flags. Scripts always get the project dir explicitly (`--project-dir`); nothing assumes the caller's cwd.
 
 > **Built (2026-07-12, entry-skill):** `SKILLS/using-montage/SKILL.md` conducts the
 > built stages (project-init → footage-intake → [music] → edit-plan → edl_to_reel)
@@ -258,7 +256,7 @@ The original text, kept as the record of what was planned:
 **Track-fragment selection:** the track **need not start at 0:00** — pick the strongest segment of the melody (by sections/energy/drop) for the reel length, don't force 0:00 (session: ODESZA `-ss 15`, Billie `-ss 13`). Record `start_offset`.
 **Vocal-aware start:** if the chosen window has vocals, the in-point must never land mid-word. **v1 rule:** snap the in-point to a section boundary's downbeat — section starts almost never begin mid-word; no vocals → any downbeat. **Optional upgrade (not v1):** demucs vocal stem → RMS phrase gaps → snap to the nearest phrase boundary.
 **Autonomous find + download** — the skill can source the track itself, in three stages:
-- **Discovery** (`music_find.py`): mood-match (the trend-sound half was removed with §5.4, 2026-10-20; a popular song is `--popular`) against catalog metadata (Spotify `audio-features` valence/energy/tempo — ideal for the mood cosine; iTunes Search API needs no key; Deezer) → rank = mood-cosine × tempo-fit × trend-presence → shortlist. Metadata + 30s previews only at this stage.
+- **Discovery** (`music_find.py`): mood-match (the trend-sound half was removed with §5.4, 2026-10-20; a popular song is `--popular`) against catalog metadata (Spotify `audio-features` valence/energy/tempo — ideal for the mood cosine; iTunes Search API needs no key; Deezer) → rank = mood-cosine × tempo-fit, or catalogue popularity with `--popular` → shortlist. Metadata + 30s previews only at this stage.
 - **Resolve + download** (`music_fetch.py`): `yt-dlp` resolves the chosen track to an audio source (YouTube/YT Music/SoundCloud/Bandcamp) → `bestaudio` → cache `music/cache/` with metadata (title/artist/source-url/date). Beats/mood then run on the **real file**, not the preview. Cache → reuse across runs.
 - **`SPEC.music.mode` (default `free`, overridable at skill invocation)** — the rights lane: `local` (user's own folder) · `free` (royalty-free APIs: YouTube Audio Library, Pixabay, Uppbeat, Free Music Archive, ccMixter — legal search+download; safe default for distribution) · `any` (full autonomous discovery+download incl. copyrighted via yt-dlp; user accepts responsibility — auto-downloading copyrighted audio is legally gray and jurisdiction-dependent, so this is a responsibility switch, not a baked-in default). Beat detection is **always local**.
 
@@ -433,7 +431,7 @@ Both must pass. Fail → back to reframe.
 ### 5.13 reel-final-check (gate) — mandatory whole-reel check
 Two parts:
 - **Mechanical** (`check_reel.py`): black frames (blackdetect), loudness (loudnorm measure), cuts-on-beat, color deltas across cuts, **variety-guard** (perceptual hash — no near-duplicates back to back), length, safe-zones, key-action-not-clipped, pad-bars-clean, layout-transitions-not-jarring (the last three **advisory**, built 2026-07-17 — see below).
-- **Editorial** (agent, like `requesting-code-review`): does the reel deliver SPEC's original idea? Mood/story? Hook strong? Ending right? Pacing along the spine? Anything from EDL missing/weak? Classic base **and** trend flavor (not bland, not gimmicky). → findings → fix loop → re-check. **Built 2026-07-18 (Slice B) — see below.**
+- **Editorial** (agent, like `requesting-code-review`): does the reel deliver SPEC's original idea? Mood/story? Hook strong? Ending right? Pacing along the spine? Anything from EDL missing/weak? (The "classic base **and** trend flavor" question was removed 2026-10-20 with §5.4.) → findings → fix loop → re-check. **Built 2026-07-18 (Slice B) — see below.**
 **Gate:** both parts green.
 
 > **Built (2026-07-17, the still-mechanical trio — Slice A):**
@@ -458,10 +456,10 @@ Two parts:
 > (`Finding` + `Review` config-specs, `Review.verdict` = revise-iff-any-blocking) +
 > `scripts/reel_review.py` (validate the reviewer's raw findings → `REVIEW.json`+
 > `REVIEW.md`) + `SKILLS/reel-review/` (a fresh reviewer subagent judges the reel
-> against `SPEC` — idea/mood/hook/ending/spine/edl_completeness/trend_flavor — and
+> against `SPEC` — idea/mood/hook/ending/spine/edl_completeness (and `colour` since 2026-08-29) — and
 > emits routed findings; the human disposes at CP3). **Human-gated (§4.1)** — no
-> auto-fix; `check_reel`/`build_reel`/`deliver`/loop-2 untouched. `trend_flavor` is
-> judged at forced low confidence (no source until §5.4). **§5.13 is now ✅ — both
+> auto-fix; `check_reel`/`build_reel`/`deliver`/loop-2 untouched. (`trend_flavor`,
+> judged at forced low confidence, was removed 2026-10-20 with §5.4.) **§5.13 is now ✅ — both
 > parts green.** See `docs/specs/2026-07-18-reel-review-editorial-design.md`.
 
 ### 5.14 deliver → `out/REEL_*.mp4`
@@ -900,8 +898,8 @@ The palette is a floor to build from, not a ceiling — the editor can override.
 
 1. ~~Model weights~~ **Resolved (2026-07-06):** model size is a runtime parameter — `yolo11n-seg` default, `s`/`m` for small/far subjects; weights auto-download by name, cached in `models/`; detection at `imgsz≈960`.
 2. ~~madmom vs librosa~~ **Resolved (2026-07-06):** librosa is the v1 stack; madmom (git master) documented as an optional upgrade, not wired in.
-3. **TikTok Creative Center** — how stable is public access without an API; scraping fallback is fragile.
-4. **style-lean default** — 70/30 proposed, calibrate on real runs.
+3. ~~TikTok Creative Center~~ **Moot (2026-10-20):** trend scanning removed (§5.4) — no API, and its terms forbid scraping.
+4. ~~style-lean default~~ **Moot (2026-10-20):** `style_lean` removed (§6.3).
 5. ~~essentia mood models~~ **Resolved (2026-07-06):** essentia dropped from v1; mood v1 = librosa features + agent judgment (§5.5).
 6. **Thresholds §9** — starting values, calibrate on the first reels.
 7. ~~Vocal detection for start snapping~~ **Resolved for v1 (2026-07-06):** snap to a section-boundary downbeat; demucs phrase-boundary snapping is the documented upgrade.

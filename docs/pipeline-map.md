@@ -6,9 +6,9 @@ when it ships. The detailed per-subsystem changelog lives in
 [build-status.md](build-status.md); **this** file is the "where are we in the
 whole cycle" view — update the status column and the phase checkboxes together.
 
-_Last updated: 2026-10-12._
+_Last updated: 2026-10-20._
 
-**Legend:** ✅ built · ◐ partial · ❌ not built · 🔜 next up
+**Legend:** ✅ built · ◐ partial · ❌ not built · ⊘ removed · 🔜 next up
 
 ## The 16 stages (design §5)
 
@@ -102,10 +102,10 @@ status table above.
 | 5.16 | titles | ✅ | — (2026-07-13) | — | reel-review CP polish |
 | — | cast → hero-pin | ✅ | — (2026-07-16) | none — **5.2 cast.json ✅** | §6.1a layer 3 (continuity re-match) |
 
-**Tally:** 15 ✅ · 0 ◐ · 1 ❌. Both automation loops closed. Every **mechanical**
-check the conveyor runs is built, and §5.13's editorial half is now built too
-(2026-07-18, the `reel-review` SKILL); what is left is only 5.4 (never started
-— YAGNI), the one remaining ❌.
+**Tally:** 15 ✅ · 0 ◐ · 0 ❌ · 1 ⊘. Both automation loops closed. Every
+**mechanical** check the conveyor runs is built, and §5.13's editorial half is
+built too (2026-07-18, the `reel-review` SKILL); 5.4 trend-scan, never started,
+was removed on 2026-10-20.
 
 ### Critical path to autonomous v1
 
@@ -133,7 +133,7 @@ of it has since shipped (B4 pacing, 5.9 draft, 5.12 ambient+SFX, 5.13 now fully
 closed — `safe_zones` 2026-07-16 + `key_action`/`pad_bars`/`transitions`
 2026-07-17 + the agent review 2026-07-18 — cast→hero-pin 2026-07-16, and the
 Phase B tail — the two length auto-fixes — 2026-07-18). Genuinely open on the
-quality side: the **§7 misc-engine tail** (5.4 trend-scan was removed 2026-10-20) (see the roadmap below).
+quality side: the **§7 misc-engine tail** (see the roadmap below); 5.4 trend-scan was removed 2026-10-20.
 
 ## What produces a reel today
 

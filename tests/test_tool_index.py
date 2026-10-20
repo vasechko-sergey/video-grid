@@ -7,7 +7,6 @@ version-keyed install path let episode-qc stay missing for 316 commits.
 import importlib.util
 from pathlib import Path
 
-from scripts import montage
 from scripts.lib import toolindex
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -157,5 +156,6 @@ def test_the_router_table_covers_every_live_stage_once():
 def test_the_removed_trend_stage_gets_no_row():
     """trend-scan was removed on 2026-10-20 (backlog U1): no row, and no stage
     under that name for a row to come from."""
+    from scripts import montage
     assert "trend-scan" not in toolindex.render_stages()
     assert "trend-scan" not in [s.key for s in montage.V1_STAGES]

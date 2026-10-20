@@ -16,8 +16,8 @@ file is the short "what changed for someone who installs it" list.
   `trend_flavor` axis and the brief's style-lean question (`--style-lean`, read by
   no code) are removed. Research found no measured reach gain from trending
   sounds or formats, a trend lives about five days and is regional, and no legal
-  machine source exposes formats. An older `SPEC.json` or `REVIEW.json` still
-  loads. A popular song stays `--music-known`, labelled "popular", never
+  machine source exposes formats. An older `SPEC.json` still loads, and
+  `montage status`/`verify` still read an older `REVIEW.json`. A popular song stays `--music-known`, labelled "popular", never
   "trending".
 
 ## 0.22.2 — 2026-10-20

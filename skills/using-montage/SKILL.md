@@ -16,7 +16,7 @@ does the reel read) is yours and the sub-skills'.
 
 **Core principle:** sequence, checkpoint, resume. Run built stages in order;
 surface the three user gates (design §4.1); resume from wherever the run's
-artifacts already reach; and when a stage is deferred/unbuilt, say so in one line
+artifacts already reach; and when you skip an optional stage, say so in one line
 rather than pretending it ran.
 
 ## When to Use

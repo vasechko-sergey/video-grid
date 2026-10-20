@@ -66,7 +66,8 @@ def test_an_unknown_bucket_is_refused():
 
 def test_v1_stages_order_and_keys():
     assert [s.key for s in V1_STAGES] == [
-        "project-init", "footage-intake", "contact-sheet", "reel-brief", "edit-plan", "music-and-mood", "pacing", "episodes-geometry", "match-grade",
+        "project-init", "footage-intake", "contact-sheet", "reel-brief", "edit-plan",
+        "music-and-mood", "pacing", "episodes-geometry", "match-grade",
         "assemble-draft", "titles", "episodes", "episode-qc", "deliver", "reel-review"]
 
 
@@ -1172,3 +1173,20 @@ def test_verify_survives_a_review_json_whose_reel_digest_is_a_dict(tmp_path):
     got = montage.verify(str(tmp_path))["review"]           # must not raise
     assert got["state"] == "unbound"
     assert got["detail"]
+
+
+def test_a_review_written_with_the_removed_trend_axis_still_reads(tmp_path):
+    """trend_flavor was removed on 2026-10-20 (backlog U1). status and verify read
+    REVIEW.json raw, so a review from before that still reads as fresh and bound —
+    only the typed Review loader, which no production code calls, would refuse it."""
+    lay = runlayout.RunLayout(tmp_path)
+    lay.deliveries.mkdir(parents=True, exist_ok=True)
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    reel = lay.deliveries / "REEL_v1.mp4"
+    reel.write_text("delivered")
+    (lay.reel_dir / "REVIEW.json").write_text(json.dumps(
+        {"reel": str(reel), "reel_digest": provenance.digest_file(reel),
+         "findings": [{"axis": "trend_flavor", "severity": "minor", "evidence": "e",
+                       "route": "edit-plan", "suggestion": "s", "confidence": "low"}]}))
+    assert montage._review_state(lay.reel_dir, lay.deliveries) == ("fresh", "")
+    assert montage.verify(str(tmp_path))["review"]["state"] == "bound"

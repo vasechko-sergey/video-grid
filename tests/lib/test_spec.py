@@ -283,7 +283,7 @@ def test_known_tracks_need_the_any_lane():
     assert Spec(**GOOD, music_mode="any", music_known=True).music_known is True
 
 
-def test_a_brief_written_before_style_lean_was_removed_still_loads(tmp_path):
+def test_a_brief_written_before_style_lean_was_removed_still_loads():
     """style_lean was removed on 2026-10-20 (backlog U1): no code ever read it. An
     older SPEC.json still carrying the key loads, and the key is not written back."""
     d = Spec(canvas=(9, 16), length_s=30.0, mood="calm", hook="h").to_dict()
