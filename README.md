@@ -37,7 +37,9 @@ run when the reel asks for them:
    PySceneDetect, people are detected and tracked with YOLO11-seg and ByteTrack,
    camera shake is measured with vidstab, and each clip is carved into scored
    moment windows. The people who recur are clustered by appearance (OSNet re-ID)
-   and shown to you as cards so you can name them.
+   and shown to you as cards so you can name them. Photos (JPEG, PNG, HEIC) in
+   the same folder come in too: upright, colour-managed to sRGB, framed on the
+   people in them and given a slow sub-pixel push instead of a still frame.
 3. **Contact sheets.** The agent looks at the frames of every window rather than
    trusting the scores alone.
 4. **Brief** *(optional; checkpoint 1)*. One question at a time: length, mood, the

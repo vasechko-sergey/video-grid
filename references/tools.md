@@ -28,7 +28,7 @@ One row per `--help` surface. It answers *which tool*; `--help` answers
 | `episode_qc pack` | `episode-qc` | `EPISODE_QC.json` | write one evidence directory per episode — a frame strip of the delivered clip, its storyboard, its mechanical report, a colour reading, and the clip's own digest |
 | `episode_qc build` | `episode-qc` | `EPISODE_QC.json` | validate every judge's findings.json into EPISODE_QC.json + .md, stamping each verdict with the clip digest read from disk |
 | `extract` | — | — | cut one EDL window out of a source clip into a standalone segment, normalized to tv range — the pipeline's canonical form |
-| `intake` | `footage-intake` | `FOOTAGE.json` | footage-intake (5.2): scan clips → FOOTAGE.json/.md |
+| `intake` | `footage-intake` | `FOOTAGE.json` | footage-intake (5.2): scan clips and photos → FOOTAGE.json/.md |
 | `match_grade` | `match-grade` | `MATCH.json` | match-grade conductor — author tone_src/tone_dst across an EDL (§10) |
 | `match_grade build` | `match-grade` | `MATCH.json` | measure every episode's tracked crop, compute one common reel tone target, and author tone_src/tone_dst on the episodes that deviate past --eps → a rewritten EDL.json plus MATCH.json and MATCH.md |
 | `mix` | — | — | build the reel audio stem from MUSIC.json |

@@ -55,7 +55,8 @@ def _evidence(ep, i: int, clip_stats: dict, strip: dict,
         # only a judge's own blocking verdict caught it.
         "clip_digest": provenance.digest_file(ep.clip),
         "intent": {k: m.get(k) for k in ("composition", "grid", "hero", "target_dur",
-                                         "layout", "pan", "stabilize", "canvas")},
+                                         "layout", "pan", "stabilize", "still",
+                                         "canvas")},
         # Absent is reported as absent, never as a path that resolves to nothing — the
         # same rule the loop below applies to the other three sidecars, and the one the
         # `hero` axis stands on (design §6): a judge must be able to tell "there was no

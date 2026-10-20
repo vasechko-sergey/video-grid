@@ -16,13 +16,14 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from scripts.lib import provenance
+from scripts.lib import kenburns, provenance, runlayout
 from scripts.lib import ramp as ramp_mod
+from scripts.lib import zoom as zoom_mod
 from scripts.lib.constraints import ConstraintReport
 from scripts.lib.footage import Cast
 from scripts.lib.look import LookSpec
 from scripts.lib.manifest import DEFAULT_COLOR, LAYOUTS_SUPPORTED, Manifest, validate
-from scripts.lib.models import COMPOSITIONS, GRIDS, HERO_RULES, MOTIONS, RampSpec
+from scripts.lib.models import COMPOSITIONS, GRIDS, HERO_RULES, MOTIONS, RampSpec, StillSpec
 from scripts.lib.moodpreset import VarietyReport
 from scripts.lib.outro import CAUSE_WHY, OutroFit
 from scripts.lib.project import ProjectConfig, resolve_manifest
@@ -68,6 +69,11 @@ class EDLEpisode:
                               # has, and play_dur() must be safe to call from anywhere.
                               # RampSpec covers the four numbers; ramp.validate_window
                               # covers the window.
+    still: dict | None = None # {"from": f, "to": f} — a PHOTO's move (design 2026-10-20 §3),
+                              # fractions of its base frame's width; None on a photo means
+                              # kenburns.DEFAULT_MOVE. Validated HERE, like `ramp`: whether
+                              # the source is a photo, and the move's rate, both need fields
+                              # only this class has.
     stabilize: bool = False   # run the vidstab pre-stage before tracking (design
                               # 2026-07-20). EXPLICIT by design and never inferred:
                               # a wade-in shot is handheld in moving water and so is
@@ -158,6 +164,12 @@ class EDLEpisode:
                 f"EDLEpisode.smooth_window_s must be a span in seconds in (0, 2.0] or "
                 f"null, got {self.smooth_window_s!r} — it is a filter cutoff, and a "
                 "window longer than a couple of seconds stops following the subject")
+        if runlayout.is_photo(self.source):
+            self._refuse_what_a_photo_cannot_carry()
+        elif self.still is not None:
+            raise ValueError(
+                f"EDLEpisode.still is a photo's move and {self.source} is a video — a "
+                f"push-in over video is `zoom`")
         if self.ramp is not None:
             ramp_mod.validate_window(
                 RampSpec.from_dict(self.ramp), self.dur,
@@ -198,6 +210,34 @@ class EDLEpisode:
         if isinstance(self.tone_dst, list):
             self.tone_dst = tuple(self.tone_dst)
 
+    def _refuse_what_a_photo_cannot_carry(self) -> None:
+        """A photo's camera lives in its segment and it has no timeline or track
+        (design 2026-10-20 §3, §5): every field that addresses one is refused by name
+        rather than ignored."""
+        where = f"EDLEpisode {self.source} is a photo"
+        if self.start != 0:
+            raise ValueError(f"{where} — it has no timeline, so its start must be 0, got "
+                             f"{self.start!r}")
+        moves = {"pan": self.pan, "zoom": self.zoom, "ramp": self.ramp, "hero": self.hero,
+                 "motion": self.motion, "smooth_window_s": self.smooth_window_s,
+                 "stabilize": self.stabilize or None}
+        bad = [k for k, v in moves.items() if v is not None]
+        if bad:
+            raise ValueError(
+                f"{where} and cannot carry {', '.join(bad)} — nothing is tracked or "
+                f"retimed on a still: its move is `still` ({{\"from\": 1.0, \"to\": "
+                f"0.92}} is the default push-in), and its subject is the people YOLO finds "
+                f"in it")
+        if self.still is not None:
+            move = StillSpec.from_dict(self.still)
+            rate = abs(move.end - move.start) / self.dur
+            if rate > zoom_mod.ZOOM_MAX_RATE:
+                raise ValueError(
+                    f"{where}: still {move.start}->{move.end} over {self.dur:.2f}s is "
+                    f"{rate:.3g} of the frame width per second, past the "
+                    f"{zoom_mod.ZOOM_MAX_RATE} a zoom may move — a lurch, not a move. "
+                    f"Narrow it or hold the photo longer")
+
     def to_dict(self) -> dict:
         def _j(v: object) -> object:
             return list(v) if isinstance(v, tuple) else v
@@ -209,6 +249,7 @@ class EDLEpisode:
                 "border_color": self.border_color, "motion": self.motion, "pan": self.pan,
                 "zoom": self.zoom,
                 "stabilize": self.stabilize, "ramp": self.ramp,
+                **({"still": dict(self.still)} if self.still is not None else {}),
                 "smooth_window_s": self.smooth_window_s,
                 "hero": _j(self.hero),
                 "white_balance": self.white_balance,
@@ -478,6 +519,9 @@ class EDL:
             if e.zoom is not None:
                 zm = f"zoom {e.zoom.get('from')}→{e.zoom.get('to')}"
                 motion = zm if motion == "–" else f"{motion} · {zm}"
+            if runlayout.is_photo(e.source):
+                mv = e.still or kenburns.DEFAULT_MOVE.to_dict()
+                motion = f"photo · {mv['from']}→{mv['to']}"
             beat = str(e.beat_slot) if e.beat_slot is not None else "–"
             window = f"{e.start:.2f}–{e.start + e.dur:.2f} ({e.dur:.2f}s)"
             notes = e.processing_notes
@@ -632,6 +676,11 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
         md["smooth_window_s"] = ep.smooth_window_s
     if ep.stabilize:
         md["stabilize"] = True
+    if runlayout.is_photo(ep.source):
+        # the move was rendered into the segment at extract (design 2026-10-20 §5), so
+        # reframe crops the whole segment and nobody tracks it — like `ramp`, the move
+        # itself is EDL-only and does not cross
+        md["still"] = True
     if ep.hero is not None:
         md["hero"] = list(ep.hero) if isinstance(ep.hero, tuple) else ep.hero
     if cast is not None:

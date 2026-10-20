@@ -1272,3 +1272,73 @@ def test_a_card_enlarges_by_nearest_neighbour_never_smoothing(tmp_path):
     k = 480 // 2
     left = (card.width - 2 * k) // 2
     assert set(row[left:left + k].tolist()) == {0} and set(row[left + k:left + 2 * k].tolist()) == {255}
+
+
+# --- photos (design 2026-10-20 §1) --------------------------------------------------
+
+def _photo_file(path, size=(400, 300)):
+    from PIL import Image as _Image
+    _Image.new("RGB", size, (40, 90, 160)).save(path)
+    return path
+
+
+def test_a_photo_becomes_one_held_window_measured_on_its_largest_person(monkeypatch, tmp_path):
+    seen = []
+    monkeypatch.setattr(intake.still, "people",
+                        lambda rgb, model: (seen.append(rgb.shape), [(200, 150, 120, 240),
+                                                                     (50, 50, 20, 40)])[1])
+    res = intake._process_photo(str(_photo_file(tmp_path / "IMG_1.JPG")))
+    c = res.clip
+    assert (c.kind, c.source, c.res, c.fps, c.dur) == ("photo", "IMG_1.JPG", (400, 300), 0.0,
+                                                       intake.PHOTO_ROOM)
+    (w,) = c.windows
+    assert (w.start, w.dur, w.people, w.motion, w.shake, w.present) == (
+        0.0, intake.PHOTO_HOLD, 2, 0.0, 0.0, 1.0)
+    assert (w.subject_w, w.subject_h) == (0.3, 0.8)       # the largest box, as for video
+    assert w.shot_type == "medium"                        # 0.24 of the frame
+    assert len(res.phashes) == 1 and res.cast == []
+    assert seen == [(300, 400, 3)]                        # YOLO saw the decoded still
+
+
+def test_a_photo_with_nobody_in_it_is_a_wide_empty_window(monkeypatch, tmp_path):
+    monkeypatch.setattr(intake.still, "people", lambda rgb, model: [])
+    (w,) = intake._process_photo(str(_photo_file(tmp_path / "sea.png"))).clip.windows
+    assert (w.people, w.present, w.subject_w, w.shot_type) == (0, 0.0, 0.0, "wide")
+
+
+def test_process_clip_hands_a_photo_to_the_photo_road(monkeypatch):
+    monkeypatch.setattr(intake.assembly, "probe_stream",
+                        lambda s: (_ for _ in ()).throw(AssertionError("probed a photo")))
+    monkeypatch.setattr(intake, "_process_photo", lambda p: ("photo-road", p))
+    assert intake._process_clip("/foot/IMG_2.HEIC") == ("photo-road", "/foot/IMG_2.HEIC")
+
+
+def test_intake_scans_photos_and_caches_them(monkeypatch, tmp_path):
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    calls = []
+    monkeypatch.setattr(intake.still, "people",
+                        lambda rgb, model: (calls.append(1), [(100, 100, 50, 120)])[1])
+    root = tmp_path / "footage"; root.mkdir()
+    _photo_file(root / "IMG_1.jpg")
+    out = tmp_path / "out"
+    f = intake.intake(str(root), str(out))
+    assert [c.kind for c in f.clips] == ["photo"]
+    on_disk = json.loads((out / "FOOTAGE.json").read_text())
+    assert on_disk["clips"][0]["kind"] == "photo"
+    assert "(photo · 400×300" in (out / "FOOTAGE.md").read_text()
+    intake.intake(str(root), str(out))                     # second scan: a cache hit
+    assert len(calls) == 1
+
+
+def test_intake_names_what_it_skipped_and_the_live_photo_pairs(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    monkeypatch.setattr(intake, "_process_clip",
+                        lambda path, sf=intake.SAMPLE_FPS, embed_cast=True,
+                        band=carve.DEFAULT_BAND: _fake_result(intake.Path(path).name))
+    root = tmp_path / "footage"; root.mkdir()
+    for n in ("IMG_7.HEIC", "IMG_7.MOV", "a.dng", "b.dng", "c.webp", ".DS_Store"):
+        (root / n).write_bytes(b"x")
+    intake.intake(str(root), str(tmp_path / "out"))
+    err = capsys.readouterr().err
+    assert "skipped 2 .dng, 1 .webp" in err                 # dotfiles are not news
+    assert "1 photo+video pair(s) share a name (img_7)" in err

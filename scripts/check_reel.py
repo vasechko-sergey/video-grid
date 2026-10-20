@@ -556,16 +556,16 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
         # episode nor a remedy.
         routes = []
         for i, ((r, _, _), me) in enumerate(zip(geometry, metas)):
-            if me.pan:
+            if me.pan or me.still:      # generated: a pan, or a photo (design 2026-10-20 §5)
                 routes.append(None)
             elif r is None:
                 raise ValueError(
                     f"check_reel needs a route for episode {i}: the sidecar says this path "
-                    "was tracked (pan=false), but route_path is None — pass the route.json "
-                    "reframe used, or re-render with a pan")
+                    "was tracked (pan=false, still=false), but route_path is None — pass "
+                    "the route.json reframe used, or re-render with a pan")
             else:
                 routes.append(route_from_json(r))
-        panned = [i for i, me in enumerate(metas) if me.pan]
+        panned = [i for i, me in enumerate(metas) if me.pan or me.still]
         zone = safezones.safe_zone_for(platform)
         marks_per_ep = [[] if rt is None else safezones.subject_marks(rt, pa, me, dur)
                         for rt, pa, me, dur in zip(routes, paths, metas, durations)]
@@ -578,8 +578,9 @@ def run(master: str, episodes: list[str], spec: ReelCheckSpec, out_report: str,
             for name in ("safe_zones", "key_action"):
                 checks[name] = CheckResult(name, None,
                                            {"status": "not-checked", "advisory": True,
-                                            "reason": "every episode is a generated pan — "
-                                                      "no tracked subject to project"})
+                                            "reason": "every episode is a generated pan "
+                                                      "or a photo — no tracked subject to "
+                                                      "project"})
         else:
             sz_pass, sz_detail = safezones.evaluate(marks_per_ep, zone)
             ka_pass, ka_detail = reel_final.evaluate_key_action(extents_per_ep, spec.clip_tol)

@@ -144,3 +144,47 @@ def test_the_guard_still_reads_a_landmine_carried_by_a_path_element(monkeypatch)
                         lambda *a, **k: pytest.fail("guard did not fire"))
     with pytest.raises(ValueError, match="lutrgb"):
         proc.run(["ffmpeg", "-vf", Path("lutrgb=r=val"), "o.mp4"])
+
+
+# --- feed: run()'s stdin twin (design 2026-10-20 §3) --------------------------------
+
+def test_feed_writes_every_chunk_in_order(tmp_path):
+    out = tmp_path / "out.txt"
+    proc.feed(["sh", "-c", f"cat > {out}"], (c for c in [b"ab", b"cd", b"ef"]))
+    assert out.read_bytes() == b"abcdef"
+
+
+def test_feed_surfaces_stderr_and_exit_code_on_failure():
+    with pytest.raises(RuntimeError, match=r"exit 3[\s\S]*boom"):
+        proc.feed(["sh", "-c", "cat >/dev/null; echo boom >&2; exit 3"], [b"x"])
+
+
+def test_feed_reports_a_command_that_died_before_reading():
+    with pytest.raises(RuntimeError, match="exit 1"):
+        proc.feed(["sh", "-c", "exit 1"], (b"x" * 65536 for _ in range(64)))
+
+
+def test_feed_kills_the_command_when_a_chunk_raises(tmp_path):
+    def chunks():
+        yield b"x"
+        raise ZeroDivisionError("frame 2")
+    with pytest.raises(ZeroDivisionError, match="frame 2"):
+        proc.feed(["sh", "-c", "cat >/dev/null"], chunks())
+
+
+def test_feed_refuses_a_landmine_before_starting_anything(monkeypatch):
+    def _never(*a, **k):
+        raise AssertionError("Popen was reached — the guard did not fire")
+    monkeypatch.setattr(proc.subprocess, "Popen", _never)
+    with pytest.raises(ValueError, match="lutrgb"):
+        proc.feed(["ffmpeg", "-i", "-", "-vf", "lutrgb=r=val", "o.mp4"], [b""])
+
+
+def test_feed_missing_binary_reports_remedy():
+    with pytest.raises(RuntimeError, match="not found on PATH"):
+        proc.feed(["vg-nonexistent-binary-xyz"], [b""])
+
+
+def test_feed_times_out_loudly():
+    with pytest.raises(RuntimeError, match="timed out"):
+        proc.feed(["sh", "-c", "cat >/dev/null; sleep 5"], [b"x"], timeout=0.3)

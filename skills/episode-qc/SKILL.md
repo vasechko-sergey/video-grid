@@ -53,7 +53,7 @@ place of `check_episode`'s mechanical gates — those already ran, inside
   at.
 - Nothing else. No `FOOTAGE.json`, no `SPEC.json` — each episode's own
   manifest already carries its declared intent (`composition`/`grid`/`hero`/
-  `target_dur`/`layout`/`pan`/`stabilize`/`canvas`), and `pack` puts it
+  `target_dur`/`layout`/`pan`/`stabilize`/`still`/`canvas`), and `pack` puts it
   straight into that episode's `evidence.json`.
 
 ## The Process
@@ -282,8 +282,9 @@ guessing a path.
 - **QC is per-episode and blind to neighbours.** Never comment on how one
   episode sits next to another, on pacing, or on repetition — that is
   reel-review's question, asked after delivery, over the assembled reel.
-- **Under a `pan`, `hero` has nothing to stand on.** `intent.pan` set means a
-  generated path following nobody — no tracked subject, no marker. Report
+- **Under a `pan` or on a photo, `hero` has nothing to stand on.** `intent.pan`
+  set means a generated path following nobody, and `intent.still` a photo whose
+  move was rendered with nothing tracked — no tracked subject, no marker. Report
   the axis as not-judgeable (a real finding, `route: "none"`), never as a
   silent pass.
 - **N judges per run is the accepted cost of this gate.** A 20-episode reel

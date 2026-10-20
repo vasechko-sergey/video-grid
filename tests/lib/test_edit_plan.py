@@ -1968,3 +1968,68 @@ def test_the_briefs_music_in_app_reaches_the_edl(tmp_path):
                                        spec=_write_spec(tmp_path, music_in_app=True))
     assert result["status"] == "written", result
     assert EDL.from_json(str(tmp_path / "EDL.json")).music_in_app is True
+
+
+# --- photos (design 2026-10-20 §2) ----------------------------------------------------
+
+def _photo_clip(res):
+    return FootageClip(source="IMG_1.HEIC", dur=8.0, res=res, fps=0.0, kind="photo",
+                       windows=[FootageWindow(start=0.0, dur=2.0, shot_type="medium",
+                                              people=1, motion=0.0, shake=0.0)])
+
+
+@pytest.mark.parametrize("res, canvas, layout", [
+    ((3024, 4032), (9, 16), "fill"),     # 3:4 keeps 75%
+    ((3200, 4000), (9, 16), "fill"),     # 4:5 keeps 70%
+    ((3000, 3000), (9, 16), "fit"),      # 1:1 keeps 56%
+    ((4032, 3024), (9, 16), "fit"),      # 4:3 keeps 42%
+    ((4032, 3024), (16, 9), "fill"),     # the same photo on a horizontal canvas
+    ((3024, 4032), (16, 9), "fit"),
+])
+def test_a_photo_fills_when_the_canvas_crop_keeps_most_of_it(res, canvas, layout):
+    assert edit_plan.photo_layout(res, canvas) == layout
+    clip = _photo_clip(res)
+    ep = edit_plan.window_to_episode(clip, clip.windows[0], canvas=canvas,
+                                     composition="center", grid="thirds")
+    assert ep.layout == layout
+
+
+def test_an_authored_layout_wins_and_needs_no_canvas():
+    clip = _photo_clip((4032, 3024))
+    ep = edit_plan.window_to_episode(clip, clip.windows[0], composition="center",
+                                     grid="thirds", layout="insert", rect=[0.1, 0.2, 0.8])
+    assert ep.layout == "insert"
+
+
+def test_a_photo_default_layout_without_a_canvas_is_refused():
+    clip = _photo_clip((4032, 3024))
+    with pytest.raises(ValueError, match="depends on the canvas"):
+        edit_plan.window_to_episode(clip, clip.windows[0], composition="center", grid="thirds")
+
+
+def test_a_ramp_on_a_photo_meets_the_photo_refusal_not_the_judder_gate():
+    clip = _photo_clip((3024, 4032))
+    with pytest.raises(ValueError, match="is a photo and cannot carry ramp"):
+        edit_plan.window_to_episode(clip, clip.windows[0], canvas=(9, 16),
+                                    composition="center", grid="thirds",
+                                    ramp={"at": 1.0, "factor": 0.5, "ease": 0.2, "hold": 0.2})
+
+
+def test_a_fit_photo_is_censused_by_the_band_it_fills_not_as_a_crop():
+    """The review's M3: delivered_shot reads a landscape photo as if cropped to 9:16,
+    which multiplies its subject's width 2.4x; fit keeps the width and shrinks the
+    height to the photo's band on the canvas."""
+    clip = _photo_clip((4032, 3024))                       # fit by default on 9:16
+    w = FootageWindow(start=0.0, dur=2.0, shot_type="medium", people=1, motion=0.0,
+                      shake=0.0, subject_w=0.4, subject_h=0.9)
+    # as a crop: (0.4 * 2.37, 0.9) -> close; on the band: (0.4, 0.9 * 0.42) -> medium
+    assert edit_plan._delivered(clip, w, (9, 16)) == "medium"
+    assert edit_plan._delivered(clip, w, (9, 16), "fill") == "close"
+
+
+def test_a_canvas_in_selection_is_refused_by_name():
+    f = Footage(clips=[_photo_clip((3024, 4032))])
+    sel = {"episodes": [{"source": "IMG_1.HEIC", "window": 0, "composition": "center",
+                         "grid": "thirds", "canvas": [9, 16]}]}
+    with pytest.raises(ValueError, match="`canvas` is the project's"):
+        edit_plan.build_edl(f, sel, aspect=(9, 16))

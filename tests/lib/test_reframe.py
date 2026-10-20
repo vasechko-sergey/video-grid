@@ -328,3 +328,57 @@ def test_the_guard_runs_even_with_no_colour_knob_set(monkeypatch):
                        pan=PanSpec(start=0.0, end=0.2))
     with pytest.raises(ValueError, match="pc"):
         reframe.plan_render(spec, "src.mp4", None)
+
+
+# --- still (design 2026-10-20 §5): the crop is the whole segment ---
+
+def _still_spec(**kw):
+    base = dict(composition="center", grid="thirds", canvas=(9, 16),
+                color_means=(110.0, 120.0, 130.0),
+                delivery=Delivery.from_spec("short_edge:1080"), still=True,
+                layout=LayoutSpec(mode="fill", crop_scale=0.8))
+    return ReframeSpec(**{**base, **kw})
+
+
+def test_a_still_crops_its_whole_segment_and_spends_no_crop_scale(monkeypatch):
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1080, 1920, 30.0, 2.0, "yuv420p", "tv"))
+    plan = reframe.plan_render(_still_spec(), "seg.mp4", None)
+    assert (plan.rl.crop_w, plan.rl.crop_h, plan.rl.freedom) == (1080, 1920, 0)
+    assert (plan.rl.out_w, plan.rl.out_h) == (1080, 1920)          # the scale is the identity
+    assert set(plan.path) == {0} and plan.cy == 0 and len(plan.path) == 60
+    meta = reframe.path_meta(plan, _still_spec(), stabilized=False)
+    assert meta.still is True and meta.pan is False
+
+
+def test_a_fill_still_is_its_own_canvas_even_off_the_pixel(monkeypatch):
+    # 606x1080 is what a native delivery makes of a 1080p video's 9:16 crop; crop_for on
+    # the canvas aspect would leave 606x1077 and shave three rows
+    monkeypatch.setattr(reframe, "_probe", lambda src: (606, 1080, 30.0, 2.0, "yuv420p", "tv"))
+    plan = reframe.plan_render(_still_spec(delivery=Delivery.from_spec("native")), "s.mp4", None)
+    assert (plan.rl.crop_w, plan.rl.crop_h, plan.rl.out_w, plan.rl.out_h) == (606, 1080, 606, 1080)
+    assert set(plan.path) == {0} and plan.cy == 0
+
+
+def test_a_fit_still_trims_its_evenness_pixels_centred(monkeypatch):
+    # an insert cut at 4:5 into 802x1000: a 4:5 crop of it is 800 wide, 2 px trimmed, 1 each side
+    monkeypatch.setattr(reframe, "_probe", lambda src: (802, 1000, 30.0, 2.0, "yuv420p", "tv"))
+    spec = _still_spec(layout=LayoutSpec(mode="insert", crop_aspect=(4, 5), rect=(0.1, 0.1, 0.8)))
+    plan = reframe.plan_render(spec, "s.mp4", None)
+    assert plan.rl.freedom == 2 and set(plan.path) == {1}
+
+
+def test_a_still_cut_for_another_shape_is_refused(monkeypatch):
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.0, "yuv420p", "tv"))
+    with pytest.raises(ValueError, match="is not the shape of its 9:16 canvas"):
+        reframe.plan_render(_still_spec(), "seg.mp4", None)
+    monkeypatch.setattr(reframe, "_probe", lambda src: (900, 1000, 30.0, 2.0, "yuv420p", "tv"))
+    spec = _still_spec(layout=LayoutSpec(mode="insert", crop_aspect=(4, 5), rect=(0.1, 0.1, 0.8)))
+    with pytest.raises(ValueError, match="not the shape of its layout's crop"):
+        reframe.plan_render(spec, "seg.mp4", None)
+
+
+def test_a_still_refuses_a_pan_or_a_zoom_before_probing(monkeypatch):
+    monkeypatch.setattr(reframe, "_probe", lambda src: (_ for _ in ()).throw(AssertionError))
+    for kw in (dict(pan=PanSpec(start=0.0, end=0.2)), dict(zoom=ZoomSpec(start=1.0, end=0.8))):
+        with pytest.raises(ValueError, match="cannot also pan or zoom"):
+            reframe.plan_render(_still_spec(**kw), "seg.mp4", None)

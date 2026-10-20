@@ -75,6 +75,19 @@ target length, and order them **hook first**. For each episode assign:
   `(0, 1]`; a push-in tightened past `ZOOM_MAX_UPSCALE` (1.5x, an
   unresolved-upsample ceiling) or faster than `ZOOM_MAX_RATE` (0.5
   crop-widths/second, a whip-zoom guard) is refused, not silently clamped.
+- `still` (optional, a **photo** only) — `{"from": 1.0, "to": 0.92}`, the move
+  over a photo (design 2026-10-20): a push toward the people YOLO finds in it,
+  two fractions of the photo's base frame width, equal ends allowed for a photo
+  held without a move. Absent means that default 8.7 % push-in; `{"from": 0.92,
+  "to": 1.0}` pulls out. It is rendered sub-pixel into the segment at extract,
+  so nothing is tracked and framing reads `editorial-only`. A photo's default
+  `layout` is `fill` when a canvas-shaped crop keeps 60 % of it (portrait 3:4,
+  4:5) and `fit` with the blurred field otherwise (square, landscape); author
+  `layout` to override. A photo refuses `zoom`, `pan`, `ramp`, `stabilize`,
+  `hero`, `motion`, `smooth_window_s` and any `start_offset`, and a move faster
+  than `ZOOM_MAX_RATE` for its hold. Pacing may grow its `dur` up to 8.0 s; there is
+  no field to set it by hand. The move keeps the TOP half of the people whole (heads),
+  shortening itself rather than cut it.
 - `pan` (optional) — `{"from": f, "to": f}`, a **generated** constant-velocity
   camera move: two fractions of the crop's horizontal freedom (`0.0` hard
   left, `1.0` hard right; direction is the sign of `to - from`). It replaces
@@ -170,6 +183,7 @@ is the index into it. Anything absent from this table is not authorable from
 | `hero` | who to follow — bbox, rule, track id, or cast name |
 | `pan` | a generated camera move; refused over a window holding people |
 | `zoom` | a subject-anchored push-in/pull-out along the tracked route |
+| `still` | a photo's move — a push toward its people, rendered into the segment |
 | `ramp` | a speed ramp down to a slow plateau and back |
 | `stabilize` | the vidstab pre-stage; never on a wade-in/out shot |
 | `smooth_window_s` | seconds of path smoothing |

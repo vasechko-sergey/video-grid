@@ -21,7 +21,7 @@ from pathlib import Path
 from scripts import build_reel, extract, process_episode, track
 from scripts.lib import (color_fidelity, episode_qc as qc_lib, gates as gates_lib,
                         hero as hero_lib, manifest as manifest_lib, provenance, reid,
-                        runlayout)
+                        kenburns, runlayout)
 from scripts.lib.edl import EDL, preflight
 from scripts.lib.episode_qc import ReelQC
 from scripts.lib.footage import Cast
@@ -164,7 +164,7 @@ def _phase_one_setup(edl_path: str, project_path: str, footage_root: str,
         return edl, started, mds, stop, authored
 
     # 2. extract every window (paths match the seg_dir/ep{i}_raw.mp4 the bridge used)
-    extract.extract_edl(edl, footage_root, seg_dir)
+    extract.extract_edl(edl, footage_root, seg_dir, project=cfg)
     return edl, started, mds, None, authored
 
 
@@ -405,7 +405,8 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
 
     # 4. loop-2: assemble the ReelManifest and drive build_reel
     epdirs = [str(Path(work_dir) / f"ep{i}") for i in range(len(mds))]
-    routes = [None if md.get("pan") is not None else str(Path(d) / "route.json")
+    routes = [None if (md.get("pan") is not None or md.get("still"))
+              else str(Path(d) / "route.json")
               for md, d in zip(mds, epdirs, strict=True)]
     return _reel_manifest(mds, results, routes, epdirs, edl, edl_path, music=music,
                           changelog=changelog, started=started, authored=authored), None
@@ -471,8 +472,14 @@ def _cut_identity(edl: EDL) -> list[dict]:
     frozen route was measured on — and NOT ONE of them crosses `to_manifest_dict`, so
     the stripped-manifest comparison cannot see any of them. Phase 1b deliberately
     does not re-extract, so without this an author who nudged a window would get the
-    old one back, silently: the reel would ship a cut the EDL no longer describes."""
-    return [{"source": ep.source, "start": ep.start, "dur": ep.dur, "ramp": ep.ramp}
+    old one back, silently: the reel would ship a cut the EDL no longer describes.
+
+    A photo's `still` move is the same kind of input — it is rendered into the segment
+    and does not cross either (design 2026-10-20 §4) — so it joins the identity, for
+    photos only: a GEOMETRY.json written before photos keeps comparing equal."""
+    return [{"source": ep.source, "start": ep.start, "dur": ep.dur, "ramp": ep.ramp,
+             **({"still": ep.still or kenburns.DEFAULT_MOVE.to_dict()}
+                if runlayout.is_photo(ep.source) else {})}
             for ep in edl.episodes]
 
 

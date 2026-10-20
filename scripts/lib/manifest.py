@@ -25,7 +25,7 @@ REQUIRED = ("segment", "out_path", "composition", "grid", "canvas", "target_dur"
 OPTIONAL = ("layout", "motion", "pan", "zoom", "hero", "cast", "color_means", "white_balance",
             "black_point", "highlight", "highlight_red", "tone_src", "tone_dst", "saturation",
             "shadow_red", "mid_blue", "dip", "smooth_window_s",
-            "stabilize", "model",
+            "stabilize", "still", "model",
             "delivery", "crop_aspect", "crop_scale", "rect", "background", "background_color",
             "border_px", "border_color")
 LAYOUTS_SUPPORTED = ("fill", "fit", "insert")   # split → its own plan; pan is not a layout
@@ -69,6 +69,10 @@ class Manifest:
     tone_src: tuple[float, float, float] | None = None
     tone_dst: tuple[float, float, float] | None = None
     stabilize: bool = False
+    still: bool = False              # the segment is a rendered PHOTO (design 2026-10-20 §5):
+                                     # its move is already in the pixels, so nobody tracks it
+                                     # and reframe crops the whole segment. Set by
+                                     # edl.to_manifest_dict from the source's extension.
     model: str = DEFAULT_MODEL
     delivery: str = "native"
     crop_aspect: str | tuple[int, int] = "canvas"
@@ -142,6 +146,9 @@ class Manifest:
             tone_src=tuple(d["tone_src"]) if d.get("tone_src") is not None else None,
             tone_dst=tuple(d["tone_dst"]) if d.get("tone_dst") is not None else None,
             stabilize=bool(d.get("stabilize", False)),
+            # raw, like smooth_window_s: validate() checks the type, and bool() would read
+            # the string "false" as True
+            still=d.get("still", False) if d.get("still") is not None else False,
             model=model if model is not None else DEFAULT_MODEL,
             delivery=delivery if delivery is not None else "native",
             crop_aspect=crop_aspect if crop_aspect is not None else (
@@ -294,6 +301,20 @@ def validate(m: Manifest, cast: Cast | None = None) -> list[str]:
             ZoomSpec.from_dict(m.zoom)
         except ValueError as e:
             problems.append(str(e))
+    if not isinstance(m.still, bool):
+        problems.append(f"still must be true or false, got {m.still!r}")
+    elif m.still:
+        # The same refusals EDLEpisode makes for a photo source, again here because a
+        # hand-written manifest reaches process_episode without an EDL (design §5).
+        carried = [k for k, v in (("pan", m.pan), ("zoom", m.zoom), ("hero", m.hero),
+                                  ("motion", m.motion),
+                                  ("smooth_window_s", m.smooth_window_s),
+                                  ("stabilize", m.stabilize or None)) if v is not None]
+        if carried:
+            problems.append(
+                f"a still episode cannot carry {', '.join(carried)}: its move is rendered "
+                f"into the segment and nothing is tracked on it — drop them, or drop "
+                f"`still` if the segment is video")
     if m.model not in MODELS:
         problems.append(f"model {m.model!r} unknown — expected one of {MODELS}")
     try:

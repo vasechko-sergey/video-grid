@@ -1401,3 +1401,60 @@ def test_music_in_app_round_trips_and_is_absent_when_unasked():
 def test_music_in_app_on_the_edl_must_be_a_bool():
     with pytest.raises(ValueError, match="music_in_app"):
         EDL(episodes=(_ep(),), music_in_app="yes")
+
+
+# --- photos (design 2026-10-20 §3, §5) ----------------------------------------------
+
+def _photo_ep(**kw):
+    return _ep(**{"source": "IMG_1.HEIC", "start": 0.0, "composition": "center", **kw})
+
+
+def test_a_photo_episode_carries_its_move_and_says_so():
+    e = _photo_ep(still={"from": 1.0, "to": 0.9})
+    assert e.to_dict()["still"] == {"from": 1.0, "to": 0.9}
+    assert EDLEpisode(**e.to_dict()).still == {"from": 1.0, "to": 0.9}
+
+
+def test_a_video_episode_writes_no_still_key_so_old_edls_are_byte_identical():
+    assert "still" not in _ep().to_dict()
+
+
+def test_still_on_a_video_source_is_refused_naming_zoom():
+    with pytest.raises(ValueError, match="is a video — a push-in over video is `zoom`"):
+        _ep(still={"from": 1.0, "to": 0.9})
+
+
+@pytest.mark.parametrize("kw, name", [
+    (dict(pan={"from": 0.0, "to": 1.0}), "pan"), (dict(zoom={"from": 1.0, "to": 0.8}), "zoom"),
+    (dict(ramp={"at": 1.0, "factor": 0.5, "ease": 0.2, "hold": 0.2}), "ramp"),
+    (dict(hero="Lena"), "hero"), (dict(motion="static"), "motion"),
+    (dict(smooth_window_s=0.5), "smooth_window_s"), (dict(stabilize=True), "stabilize"),
+])
+def test_a_photo_refuses_what_addresses_a_timeline_or_a_track(kw, name):
+    with pytest.raises(ValueError, match=f"is a photo and cannot carry {name}"):
+        _photo_ep(**kw)
+
+
+def test_a_photo_has_no_start_but_zero():
+    with pytest.raises(ValueError, match="no timeline, so its start must be 0"):
+        _photo_ep(start=0.5)
+
+
+def test_a_photo_move_too_fast_for_its_hold_is_refused():
+    _photo_ep(dur=2.0, still={"from": 1.0, "to": 0.5})          # 0.25/s: fine
+    with pytest.raises(ValueError, match="a lurch, not a move"):
+        _photo_ep(dur=0.5, still={"from": 1.0, "to": 0.5})       # 1.0/s
+    with pytest.raises(ValueError, match="StillSpec"):
+        _photo_ep(still={"from": 1.0, "to": 1.5})
+
+
+def test_the_manifest_bridge_marks_a_photo_still_and_drops_its_move():
+    md = to_manifest_dict(_photo_ep(still={"from": 1.0, "to": 0.9}), "seg.mp4", "out.mp4")
+    assert md["still"] is True and "zoom" not in md
+    assert not any(isinstance(v, dict) and v == {"from": 1.0, "to": 0.9} for v in md.values())
+    assert "still" not in to_manifest_dict(_ep(), "seg.mp4", "out.mp4")
+
+
+def test_edl_md_names_a_photo_and_its_move():
+    md = EDL(episodes=(_photo_ep(), _photo_ep(still={"from": 0.9, "to": 1.0}))).to_markdown()
+    assert "photo · 1.0→0.92" in md and "photo · 0.9→1.0" in md

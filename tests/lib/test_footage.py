@@ -566,3 +566,46 @@ def test_footage_markdown_names_a_term_that_separated_nothing():
 
 def test_footage_markdown_says_nothing_about_scoring_on_an_older_artifact():
     assert "separated" not in footage.Footage(clips=[]).to_markdown()
+
+
+# --- photos (design 2026-10-20 §1) --------------------------------------------------
+
+def _photo(**kw):
+    d = dict(source="IMG_0001.HEIC", dur=8.0, res=(3024, 4032), fps=0.0, kind="photo",
+             windows=[_win(start=0.0, motion=0.0, shake=0.0)])
+    d.update(kw)
+    return FootageClip(**d)
+
+
+def test_a_photo_clip_roundtrips_with_its_kind():
+    c = _photo()
+    d = c.to_dict()
+    assert d["kind"] == "photo" and d["fps"] == 0.0
+    assert FootageClip.from_dict(json.loads(json.dumps(d))).to_dict() == d
+
+
+def test_a_video_clip_omits_kind_so_old_artifacts_are_byte_identical():
+    c = FootageClip(source="a.mp4", dur=22.0, res=(1920, 1080), fps=59.94, windows=[_win()])
+    assert "kind" not in c.to_dict()
+    assert FootageClip.from_dict(c.to_dict()).kind == "video"
+
+
+@pytest.mark.parametrize("kw, msg", [
+    (dict(fps=30.0), "0.0 for a photo"),
+    (dict(scene_cuts=[1.0]), "no scene cuts"),
+    (dict(shaky=True), "cannot be shaky"),
+    (dict(kind="clip"), "kind must be one of"),
+])
+def test_a_photo_clip_refuses_what_a_still_cannot_have(kw, msg):
+    with pytest.raises(ValueError, match=msg):
+        _photo(**kw)
+
+
+def test_a_video_clip_still_refuses_a_zero_rate():
+    with pytest.raises(ValueError, match="fps must be a positive number"):
+        FootageClip(source="a.mp4", dur=2.0, res=(10, 10), fps=0.0)
+
+
+def test_footage_markdown_names_a_photo_as_one():
+    md = Footage(clips=[_photo()]).to_markdown()
+    assert "## IMG_0001.HEIC  (photo · 3024×4032 · may hold up to 8.0s)" in md

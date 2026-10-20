@@ -227,6 +227,9 @@ class PathMeta:
     pan: bool = False      # True ⇒ the path was GENERATED, not observed (design 2026-07-19 §5)
     stabilized: bool = False   # True ⇒ reframe's `src` was a vidstab pre-stage output, not the
                                # raw segment (design 2026-07-20 §6.2)
+    still: bool = False    # True ⇒ `src` was a rendered PHOTO whose move is in its pixels:
+                           # the path is generated and constant, nothing was observed
+                           # (design 2026-10-20 §5). The third provenance bit.
     crop_ws: list[int] | None = None    # per-route-sample effective crop width under a zoom
     crop_hs: list[int] | None = None    # ... height
     crop_ys: list[int] | None = None    # ... top edge (the rect keeps the base rect's centre)
@@ -295,6 +298,8 @@ class PathMeta:
         # sidecar it has always written. The judgement of whether a value is
         # NEWS lives in reframe.path_meta, which knows the spec's defaults;
         # here the rule is only "emit what you were given".
+        if self.still:                  # emitted only when true, like the zoom arrays:
+            d["still"] = True           # every video sidecar stays byte-identical
         if self.max_speed is not None:
             d["max_speed"] = self.max_speed
         if self.smooth_window_s is not None:
@@ -333,6 +338,9 @@ class PathMeta:
                        # and its absence honestly means the source was raw —
                        # stabilization was refused upstream until then.
                        stabilized=d.get("stabilized", False),
+                       # Sixth, the same reasoning as `pan`'s: a sidecar written before
+                       # photos has no `still` key, and no photo could have been cut then.
+                       still=d.get("still", False),
                        # Fourth exemption, same reasoning: a sidecar written before the
                        # zoom slice has no crop_ws/crop_hs/crop_ys keys, and their absence
                        # honestly means a constant rect — zoom did not exist as a source yet.
@@ -712,6 +720,40 @@ class ZoomSpec:
 
 
 @dataclass(frozen=True)
+class StillSpec:
+    """The move over a photo (design 2026-10-20 §3): a homothety about the subject from
+    `start` to `end`, both fractions of the base frame's WIDTH — 1.0 is the largest frame
+    of the layout's aspect the photo holds (times crop_scale), 0.92 an 8.7 % push-in.
+
+    Unlike ZoomSpec, equal ends are legal: a photo held without a move is a choice an
+    author makes, while a video zoom that does not move is a smaller crop. Wire names
+    `from`/`to` for the reason ZoomSpec and PanSpec give."""
+    start: float
+    end: float
+
+    def __post_init__(self) -> None:
+        for name, v in (("start", self.start), ("end", self.end)):
+            # bool BEFORE int, and no float(): the reasons ZoomSpec documents
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0.0 < v <= 1.0:
+                raise ValueError(
+                    f"StillSpec.{name} must be a number in (0.0, 1.0] — a fraction of the "
+                    f"photo's base frame width, where 1.0 is the whole frame and 0.92 an "
+                    f"8.7% push-in; got {v!r}")
+
+    def to_dict(self) -> dict:
+        return {"from": self.start, "to": self.end}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "StillSpec":
+        if not isinstance(d, dict) or set(d) != {"from", "to"}:
+            raise ValueError(
+                f"StillSpec.from_dict: expected {{\"from\": a, \"to\": b}} — fractions of "
+                f"the photo's base frame width, e.g. {{\"from\": 1.0, \"to\": 0.92}} for a "
+                f"push-in; got {d!r}")
+        return cls(start=d["from"], end=d["to"])
+
+
+@dataclass(frozen=True)
 class RampSpec:
     """A speed ramp: playback eases down to a slow plateau around one moment and
     back up (design 2026-08-09). The pro "hit the drop in slow-mo" move, rather
@@ -946,6 +988,9 @@ class ReframeSpec:
     tone_src: "tuple[float, float, float] | None" = None
     tone_dst: "tuple[float, float, float] | None" = None
     pan: "PanSpec | None" = None
+    still: bool = False              # the source is a rendered photo whose move is in its
+                                     # pixels: no route, the crop is the whole segment
+                                     # (design 2026-10-20 §5)
     zoom: "ZoomSpec | None" = None   # a subject-anchored push-in/pull-out (design
                                      # 2026-08-08). Requires a route: unlike `pan` it does
                                      # not replace the observation, it rescales the rect the
@@ -1023,6 +1068,8 @@ class ReframeSpec:
                 f"ReframeSpec.zoom must be a ZoomSpec or None, got {type(self.zoom).__name__} — "
                 "build it with ZoomSpec.from_dict({'from': …, 'to': …}); a zoom rescales the "
                 "rect the tracked route places, it does not replace it")
+        if not isinstance(self.still, bool):
+            raise ValueError(f"ReframeSpec.still must be a bool, got {self.still!r}")
 
 
 @dataclass

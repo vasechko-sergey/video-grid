@@ -40,13 +40,10 @@ Rows S1–S17 come from the second real run — evidence and measurements in
 
 ## Photos — asked 2026-10-20
 
-From the photo-reel research of 2026-10-20: photos are a main material of memory and travel reels, and in 2025–2026 they move. Order: U4+U5+U6 is the first slice, U7+U8 the second, U9 the third; U10 waits for a real run with photos.
+From the photo-reel research of 2026-10-20: photos are a main material of memory and travel reels, and in 2025–2026 they move. Order: U4+U5+U6 — the first slice — shipped in 0.26.0 (closed rows in [backlog-closed.md](backlog-closed.md)); U7+U8 are the second, U9 the third; U10 waits for a real run with photos.
 
 | | Item | Size | Source |
 |---|------|------|--------|
-| ○ | **U4 · Ingest photos** — intake sees HEIC/JPEG (it scans only `.mp4/.mov/.m4v/.avi` today, so photos are skipped silently); EXIF and HEIF orientation, ICC/Display P3 → sRGB (ffmpeg ignores ICC without `iccdetect`), the SDR base of an HDR gain-map photo, a size cap; a still becomes a clip on the exact contract of a video segment (fps, timebase, SAR, pix_fmt, range, matrix). Declare `opencv-python`, which arrives only through ultralytics today. | M | user, 2026-10-20 |
-| ○ | **U5 · Fit a photo to 9:16 by its subject** — YOLO on the still gives the subject box; a portrait photo fills, a landscape one fits with a background. No consumer tool documents how it does this, and the engine already tracks subjects. | S | user, 2026-10-20 |
-| ○ | **U6 · A sub-pixel Ken Burns** — a float warp rendered in Python and piped as rawvideo instead of `zoompan`, whose crop is truncated to whole pixels and stair-steps on a still; log-scale zoom with eased ends, toward the subject, 5–10 % by default. The same renderer removes the integer residual of today's video zoom. | M | user, 2026-10-20 |
 | ○ | **U7 · A photo's length comes from the music grid** — holds in whole beats, deliberately varied, accelerating into a drop. The inverse of video, where the footage owns the length. | M | user, 2026-10-20 |
 | ○ | **U8 · Photos among video, and choosing which** — one segment contract, a freeze-frame with a shutter accent, burst and near-duplicate grouping (pHash exists) before ranking. | M | user, 2026-10-20 |
 | ○ | **U9 · Live Photos and Motion Photos** — pair an iPhone still with its MOV by `ContentIdentifier` (today the MOV enters as an unrelated 3-second clip), slice an Android Motion Photo's embedded MP4 by `Item:Length`; ~1.5 s of real motion around the still. | M | user, 2026-10-20 |

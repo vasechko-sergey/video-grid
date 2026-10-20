@@ -1,5 +1,7 @@
 """Loud subprocess wrapper: ffmpeg/ffprobe failures surface stderr (hard rule §12)."""
 import subprocess
+import tempfile
+from collections.abc import Iterable
 
 from scripts.lib import lint
 
@@ -11,6 +13,69 @@ from scripts.lib import lint
 # 90s-and-killed against a 0.8s normal run — and this machine has no timeout(1) to
 # bound it from outside. An unbounded wait is not a test result.
 DEFAULT_TIMEOUT_S = 900.0
+
+
+def _refuse_landmines(cmd: list[str]) -> None:
+    problems = lint.check_argv([str(a) for a in cmd])
+    if problems:
+        raise ValueError(
+            "refusing to run a command carrying a design §12 landmine:\n  "
+            + "\n  ".join(problems)
+            + f"\ncommand: {' '.join(map(str, cmd))}")
+
+
+def _tail(err: bytes | str) -> str:
+    if isinstance(err, bytes):
+        err = err.decode("utf-8", errors="replace")
+    return "\n".join(err.strip().splitlines()[-30:])
+
+
+def feed(cmd: list[str], chunks: Iterable[bytes], *,
+         timeout: float = DEFAULT_TIMEOUT_S) -> None:
+    """run()'s twin for a command that READS its input from stdin: every chunk is
+    written in order, then stdin closes and the command must exit 0.
+
+    Exists for the photo renderer (design 2026-10-20 §3), whose frames are computed in
+    Python and would be ~6 MB each as a temp file. The same landmine guard as run()
+    runs first. stderr goes to a temp file, not a pipe: a pipe the caller is not
+    reading fills at 64 KB and ffmpeg then blocks while this side blocks writing
+    stdin. If producing a chunk raises, the command is killed, so a half-written
+    file is never left by a process still running.
+    """
+    _refuse_landmines(cmd)
+    with tempfile.TemporaryFile() as err:
+        try:
+            p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                                 stderr=err)
+        except FileNotFoundError as e:
+            raise RuntimeError(f"{cmd[0]!r} not found on PATH — install it "
+                               "(ffmpeg/ffprobe: `bash setup.sh`)") from e
+        try:
+            try:
+                for c in chunks:
+                    p.stdin.write(c)
+            except BrokenPipeError:
+                pass             # the command died early; its exit code and stderr say why
+            finally:
+                try:
+                    p.stdin.close()
+                except BrokenPipeError:
+                    pass
+            rc = p.wait(timeout=timeout)
+        except subprocess.TimeoutExpired as e:
+            p.kill()
+            p.wait()
+            raise RuntimeError(f"command timed out after {timeout:g}s: "
+                               f"{' '.join(map(str, cmd))}") from e
+        except BaseException:
+            p.kill()
+            p.wait()
+            raise
+        if rc != 0:
+            err.seek(0)
+            raise RuntimeError(
+                f"command failed (exit {rc}): {' '.join(map(str, cmd))}\n"
+                f"--- stderr tail ---\n{_tail(err.read())}")
 
 
 def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
@@ -45,12 +110,7 @@ def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     # a traceback pointing at the lint instead of running, or instead of the
     # ValueError-with-a-remedy this guard exists to give. The error paths below
     # already assume non-str elements are legal (`' '.join(map(str, cmd))`).
-    problems = lint.check_argv([str(a) for a in cmd])
-    if problems:
-        raise ValueError(
-            "refusing to run a command carrying a design §12 landmine:\n  "
-            + "\n  ".join(problems)
-            + f"\ncommand: {' '.join(map(str, cmd))}")
+    _refuse_landmines(cmd)
     kwargs.setdefault("check", True)
     kwargs.setdefault("capture_output", True)
     kwargs.setdefault("timeout", DEFAULT_TIMEOUT_S)
@@ -72,10 +132,6 @@ def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
             "it's the latter, pass an explicit `timeout=` at the call site, scaled "
             "to the input's length, rather than raising this default") from e
     except subprocess.CalledProcessError as e:
-        err = e.stderr or b""
-        if isinstance(err, bytes):
-            err = err.decode("utf-8", errors="replace")
-        tail = "\n".join(err.strip().splitlines()[-30:])
         raise RuntimeError(
             f"command failed (exit {e.returncode}): {' '.join(map(str, cmd))}\n"
-            f"--- stderr tail ---\n{tail}") from e
+            f"--- stderr tail ---\n{_tail(e.stderr or b'')}") from e

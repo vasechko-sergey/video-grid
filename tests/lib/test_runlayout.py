@@ -209,6 +209,30 @@ def test_the_run_dir_and_a_new_dir_pass(tmp_path):
     runlayout.refuse_project_dir_holding_footage(str(tmp_path / "montage"), "project-init")
 
 
+def test_a_project_dir_that_holds_only_photos_is_refused_too(tmp_path):
+    (tmp_path / "IMG_0001.HEIC").write_bytes(b"x")
+    with pytest.raises(ValueError, match="video or photo"):
+        runlayout.refuse_project_dir_holding_footage(str(tmp_path), "project-init")
+
+
 def test_intake_and_the_refusal_share_one_extension_list():
     from scripts import intake
-    assert intake._VIDEO_EXTS is runlayout.VIDEO_EXTS
+    assert intake._FOOTAGE_EXTS is runlayout.FOOTAGE_EXTS
+    assert runlayout.FOOTAGE_EXTS == runlayout.VIDEO_EXTS | runlayout.PHOTO_EXTS
+
+
+@pytest.mark.parametrize("name, photo", [
+    ("IMG_0001.HEIC", True), ("a.jpg", True), ("a.JPEG", True), ("a.png", True),
+    ("a.heif", True), ("DJI_0001.MP4", False), ("a.mov", False), ("a.dng", False),
+    ("dir/IMG_2.heic", True)])
+def test_is_photo_reads_the_extension_only(name, photo):
+    assert runlayout.is_photo(name) is photo
+
+
+def test_still_canvas_reads_the_record_beside_a_photo_segment(tmp_path):
+    seg = tmp_path / "ep0_raw.mp4"
+    assert runlayout.still_canvas(seg) is None                     # no record: a hand-made still
+    seg.with_suffix(runlayout.STILL_SIDECAR).write_text('{"frames": 30}')
+    assert runlayout.still_canvas(seg) is None                     # a record from before the field
+    seg.with_suffix(runlayout.STILL_SIDECAR).write_text('{"canvas_px": [606, 1080]}')
+    assert runlayout.still_canvas(seg) == (606, 1080)

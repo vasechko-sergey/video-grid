@@ -538,3 +538,22 @@ def test_the_cli_refuses_a_broken_gates_file_beside_the_project_and_names_it(
     with pytest.raises(ValueError) as e:
         _drive_main(monkeypatch, tmp_path, "--project", str(run / "project.json"))
     assert str(run / "GATES.json") in str(e.value)
+
+
+# --- still (design 2026-10-20 §5) ---------------------------------------------------
+
+@pytest.mark.parametrize("kw", [dict(route_path="route.json"), dict(keyframes_path="k.json")])
+def test_a_still_takes_no_route_and_no_marks(tmp_path, kw):
+    res = process_episode.process_episode(_episode_manifest(tmp_path, still=True), tmp_path, **kw)
+    assert res["status"] == "needs_input"
+    assert "a still episode takes no --route or --keyframes" in res["problems"][0]
+
+
+def test_a_still_is_not_tracked_and_stops_at_geometry_with_no_route(tmp_path, monkeypatch):
+    monkeypatch.setattr(process_episode.track, "build_route",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("tracked a still")))
+    monkeypatch.setattr(process_episode.orch, "detect_contradictions",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("gated a still")))
+    res = process_episode.process_episode(_episode_manifest(tmp_path, still=True), tmp_path,
+                                          stop_after="geometry")
+    assert res["status"] == "geometry" and res["route"] is None

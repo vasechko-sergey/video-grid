@@ -41,7 +41,7 @@ def build_draft(edl_path: str, project_path: str, footage_root: str, work_dir: s
     fontfile = resolve_font(font)
     work = Path(work_dir)
     seg_dir = str(work / "segments")
-    segments = extract.extract_edl(edl, footage_root, seg_dir)
+    segments = extract.extract_edl(edl, footage_root, seg_dir, project=cfg)
     probe = assembly.probe_stream(segments[0])
     fps = probe.fps
     # cfg.canvas is an ASPECT (PURPOSE_CANVAS maps reel -> (9, 16)), never pixels.

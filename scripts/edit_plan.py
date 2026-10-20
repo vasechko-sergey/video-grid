@@ -20,7 +20,8 @@ from pathlib import Path
 from scripts.lib import edl as edl_lib, gridfit, moodpreset, outro, ramp as ramp_mod, safezones
 from scripts.lib.constraints import Constraints, Placed, evaluate as check_constraints
 from scripts.lib.edl import EDL, EDLEpisode, preflight, write_edl
-from scripts.lib.footage import Footage, FootageClip, FootageWindow, SHOT_TYPES, delivered_shot
+from scripts.lib.footage import (Footage, FootageClip, FootageWindow, SHOT_TYPES, delivered_shot,
+                                 shot_type)
 from scripts.lib.look import LookSpec
 from scripts.lib.models import HERO_RULES, MusicSpec, RampSpec
 from scripts.lib.moodpreset import MoodPreset
@@ -46,7 +47,21 @@ _MIX_DEFAULT_FADE = 0.5    # mix._FADE — the bookend a reel gets when no look 
                            # driver, and this slice does not touch mix.py at all (§1).
 
 
+FILL_KEEP = 0.6   # a photo fills the canvas when the canvas-shaped crop keeps at least
+                  # this share of it — 3:4 keeps 75% of a 9:16 frame, 1:1 56% (design
+                  # 2026-10-20 §2). A convention from the research's table.
+
+
+def photo_layout(res: tuple[int, int], canvas: tuple[int, int]) -> str:
+    """fill or fit for a photo of `res` on a `canvas`-shaped frame (design §2): the
+    share of the photo a canvas-aspect crop keeps decides it."""
+    r_photo, r_canvas = res[0] / res[1], canvas[0] / canvas[1]
+    keep = min(r_photo / r_canvas, r_canvas / r_photo)
+    return "fill" if keep >= FILL_KEEP else "fit"
+
+
 def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: float = 0.0,
+                      *, canvas: tuple[int, int] | None = None,
                       **editorial: object) -> EDLEpisode:
     """Project a scored FootageWindow onto an EDLEpisode. Mechanical fields come
     from the clip/window by reference; editorial fields (composition/grid required;
@@ -76,6 +91,11 @@ def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: fl
     ramp that would stutter is refused before the pipeline spends anything on it.
     The extract pre-stage repeats the check against the PROBED rate, which is what
     a hand-authored EDL meets instead of this one.
+
+    A photo (design 2026-10-20 §2) defaults its layout from its own aspect against
+    `canvas` — fill when a canvas-shaped crop keeps FILL_KEEP of it, else fit — so a
+    photo episode needs the canvas unless the author named a layout. What a photo
+    cannot carry (a ramp, a pan, a zoom, a start) EDLEpisode refuses by name.
     """
     if isinstance(start_offset, bool) or not isinstance(start_offset, (int, float)):
         raise ValueError(f"window_to_episode: start_offset must be a number of seconds, "
@@ -110,7 +130,14 @@ def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: fl
             "check_episode reports framing editorial-only, continuity not-checked and "
             "colour-fidelity not-checked. Drop the `pan` and let the tracked route place the "
             "crop, or reference a window intake measured as empty")
-    if editorial.get("ramp") is not None:
+    if clip.kind == "photo" and editorial.get("layout") is None:
+        if canvas is None:
+            raise ValueError(
+                f"window_to_episode: {clip.source} is a photo, and its default layout (fill "
+                f"or fit) depends on the canvas — pass the project's canvas, or author "
+                f"`layout` for this episode")
+        editorial = {**editorial, "layout": photo_layout(clip.res, canvas)}
+    if editorial.get("ramp") is not None and clip.kind != "photo":
         # The early half of the judder gate (design §5): FOOTAGE already knows this
         # clip's frame rate, so a ramp that would stutter is refused before the
         # pipeline spends anything. The extract pre-stage repeats the check against
@@ -374,6 +401,21 @@ def _apply_outro(episodes: list[EDLEpisode], footage: Footage, music: MusicSpec,
     return out, fit
 
 
+def _delivered(clip: FootageClip, w: FootageWindow, aspect: tuple[int, int],
+               layout: str | None = None, rect: tuple | None = None) -> str:
+    """A window's shot size as it will read on the canvas. A photo laid out with `fit`
+    (its default unless it fills, design 2026-10-20 §2) spans the canvas width instead of
+    being cropped to it, so its subject keeps its width and loses height to the field
+    around it; an `insert` shrinks both by its rect's width. delivered_shot's crop
+    arithmetic is for what is cropped."""
+    layout = layout or photo_layout(clip.res, aspect)
+    if clip.kind == "photo" and layout != "fill":
+        scale = rect[2] if layout == "insert" and rect else 1.0
+        band = (clip.res[1] / clip.res[0]) * (aspect[0] / aspect[1])   # photo height / canvas
+        return shot_type(min(1.0, w.subject_w * scale), min(1.0, w.subject_h * band * scale))
+    return delivered_shot(w.subject_w, w.subject_h, clip.res, aspect)
+
+
 def _available_census(footage: Footage, aspect: tuple[int, int]) -> tuple[dict[str, int], int]:
     """Every window the footage offers, bucketed in DELIVERED geometry (design §6).
 
@@ -397,7 +439,7 @@ def _available_census(footage: Footage, aspect: tuple[int, int]) -> tuple[dict[s
     unmeasured = 0
     for clip in footage.clips:
         for w in clip.windows:
-            counts[delivered_shot(w.subject_w, w.subject_h, clip.res, aspect)] += 1
+            counts[_delivered(clip, w, aspect)] += 1
             if w.subject_w * w.subject_h == 0.0:
                 unmeasured += 1
     return counts, unmeasured
@@ -410,7 +452,7 @@ def _candidates(footage: Footage, aspect: tuple[int, int], want: str,
     rows = [(clip.source, i, w.score)
             for clip in footage.clips
             for i, w in enumerate(clip.windows)
-            if delivered_shot(w.subject_w, w.subject_h, clip.res, aspect) == want]
+            if _delivered(clip, w, aspect) == want]
     return sorted(rows, key=lambda r: r[2], reverse=True)[:limit]
 
 
@@ -522,9 +564,12 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
             raise ValueError(f"selection episode {k}: source {source!r} not in FOOTAGE — "
                              f"have {sorted(by_source)}")
         fw = _resolve_window(clip, window, source, k)
+        if "canvas" in ed:
+            raise ValueError(f"selection episode {k}: `canvas` is the project's, not an "
+                             f"episode's — set it in project.json")
+        ep = window_to_episode(clip, fw, start_offset=start_offset, canvas=aspect, **ed)
         if aspect is not None:
-            used[delivered_shot(fw.subject_w, fw.subject_h, clip.res, aspect)] += 1
-        ep = window_to_episode(clip, fw, start_offset=start_offset, **ed)
+            used[_delivered(clip, fw, aspect, ep.layout, ep.rect)] += 1
         episodes.append(ep)
         placed.append(_placed(clip, ep))
     # the reel's bookend fade, resolved exactly as EDL.look is (selection.json wins over
