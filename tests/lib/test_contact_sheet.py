@@ -60,13 +60,13 @@ def fake_frames(monkeypatch):
 def test_one_frame_per_window_at_the_window_midpoint(tmp_path, fake_frames):
     fp = _footage(tmp_path, [_clip(windows=[_win(start=4.0, dur=2.0),
                                             _win(start=10.0, dur=3.0)])])
-    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
+    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path / "out"))
     assert fake_frames == [(str(tmp_path / "a.mp4"), [5.0, 11.5], 30.0)]
 
 
 def test_one_decode_call_per_clip(tmp_path, fake_frames):
     fp = _footage(tmp_path, [_clip("a.mp4"), _clip("b.mp4")])
-    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
+    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path / "out"))
     assert [c[0] for c in fake_frames] == [str(tmp_path / "a.mp4"), str(tmp_path / "b.mp4")]
 
 
@@ -74,7 +74,7 @@ def test_cells_run_in_clip_then_window_order_not_score_order(tmp_path, fake_fram
     # window 0 scores lower than window 1: a score-ordered sheet would swap them.
     fp = _footage(tmp_path, [_clip(windows=[_win(start=0.0, score=0.51),
                                             _win(start=8.0, score=0.99)])])
-    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
+    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path / "out"))
     assert fake_frames[0][1] == [1.0, 9.0]
 
 
@@ -83,14 +83,14 @@ def test_cells_run_in_clip_then_window_order_not_score_order(tmp_path, fake_fram
 def test_every_window_is_shown_by_default(tmp_path, fake_frames):
     fp = _footage(tmp_path, [_clip(windows=[_win(start=0.0, best=True),
                                             _win(start=8.0, best=False)])])
-    res = contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
+    res = contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path / "out"))
     assert res["cells"] == 2
 
 
 def test_best_only_drops_the_rest(tmp_path, fake_frames):
     fp = _footage(tmp_path, [_clip(windows=[_win(start=0.0, best=True),
                                             _win(start=8.0, best=False)])])
-    res = contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path), best_only=True)
+    res = contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path / "out"), best_only=True)
     assert res["cells"] == 1
     assert fake_frames[0][1] == [1.0]
 
@@ -99,9 +99,9 @@ def test_best_only_drops_the_rest(tmp_path, fake_frames):
 
 def test_writes_sheets_and_an_index_that_links_every_one(tmp_path, fake_frames):
     fp = _footage(tmp_path, [_clip(windows=[_win(start=float(i)) for i in range(31)])])
-    res = contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
+    res = contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path / "out"))
     assert len(res["sheets"]) == 2                      # 31 cells at 30 per sheet
-    md = (tmp_path / "SHEETS.md").read_text()
+    md = (tmp_path / "out" / "SHEETS.md").read_text()
     for p in res["sheets"]:
         assert f"sheets/{Path(p).name}" in md
         assert Path(p).exists()
@@ -112,8 +112,8 @@ def test_the_index_says_the_star_is_not_a_ranking_to_follow(tmp_path, fake_frame
     # the scoring bias (design §1.1) is why a reader must not simply take the top of
     # the list; the index has to say so where the reader is.
     fp = _footage(tmp_path, [_clip()])
-    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
-    md = (tmp_path / "SHEETS.md").read_text()
+    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path / "out"))
+    md = (tmp_path / "out" / "SHEETS.md").read_text()
     assert "not a ranking to follow" in md
 
 
@@ -126,7 +126,7 @@ def test_labels_carry_the_window_index_and_the_measurements(tmp_path, monkeypatc
                                    windows=[_win(start=0.0, dur=3.4, shot="medium",
                                                  score=0.71, best=True),
                                             _win(start=8.0, best=False)])])
-    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
+    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path / "out"))
     assert seen[0] == ("MVI_3739.mp4 #0", "medium · 3.4s · 0.71 ★")
     assert seen[1][0] == "MVI_3739.mp4 #1"
     assert "★" not in seen[1][1]
@@ -139,7 +139,7 @@ def test_best_windows_are_marked(tmp_path, monkeypatch):
                         _stub_tile(lambda cells, kw: seen.extend(c.marked for c in cells)))
     fp = _footage(tmp_path, [_clip(windows=[_win(start=0.0, best=True),
                                             _win(start=8.0, best=False)])])
-    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
+    contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path / "out"))
     assert seen == [True, False]
 
 
@@ -168,10 +168,10 @@ def test_a_clip_that_will_not_decode_is_skipped_and_named(tmp_path, monkeypatch)
         return [np.zeros((180, 320, 3), np.uint8) for _ in times]
     monkeypatch.setattr(contact_sheet.assembly, "frames_rgb", _frames)
     fp = _footage(tmp_path, [_clip("bad.mp4"), _clip("good.mp4")])
-    res = contact_sheet.build_sheets(fp, root, str(tmp_path))
+    res = contact_sheet.build_sheets(fp, root, str(tmp_path / "out"))
     assert res["skipped"] == ["bad.mp4"]                 # the bare clip.source, not the joined path
     assert res["cells"] == 1                             # good.mp4 still sheeted
-    md = (tmp_path / "SHEETS.md").read_text()
+    md = (tmp_path / "out" / "SHEETS.md").read_text()
     assert "Not sheeted" in md and "bad.mp4" in md and "is missing" in md
 
 
@@ -188,8 +188,8 @@ def test_the_skip_reason_in_sheets_md_is_trimmed_to_its_last_line(tmp_path, monk
             return [np.zeros((180, 320, 3), np.uint8) for _ in times]
         raise RuntimeError(banner)
     monkeypatch.setattr(contact_sheet.assembly, "frames_rgb", _one_ok)
-    res = contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
-    md = (tmp_path / "SHEETS.md").read_text()
+    res = contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path / "out"))
+    md = (tmp_path / "out" / "SHEETS.md").read_text()
     assert "junk line" not in md
     assert "real_clip.mp4: No such file or directory" in md
     assert res["skipped"] == ["bad.mp4"]
@@ -201,11 +201,11 @@ def test_no_windows_writes_an_honest_index_and_no_png(tmp_path, fake_frames):
     # had a candidate window — distinct from "attempted and every attempt failed"
     # below, which must raise instead (Critical-2 floor).
     fp = _footage(tmp_path, [_clip(windows=[_win(best=False)])])
-    res = contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path), best_only=True)
+    res = contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path / "out"), best_only=True)
     assert res["sheets"] == [] and res["cells"] == 0
-    assert (tmp_path / "SHEETS.md").exists()
-    assert "No sheets" in (tmp_path / "SHEETS.md").read_text()
-    assert not (tmp_path / "sheets").exists()
+    assert (tmp_path / "out" / "SHEETS.md").exists()
+    assert "No sheets" in (tmp_path / "out" / "SHEETS.md").read_text()
+    assert not (tmp_path / "out" / "sheets").exists()
 
 
 def test_every_clip_failing_to_decode_raises_instead_of_a_silent_empty_success(
@@ -219,8 +219,8 @@ def test_every_clip_failing_to_decode_raises_instead_of_a_silent_empty_success(
     monkeypatch.setattr(contact_sheet.assembly, "frames_rgb", _frames)
     fp = _footage(tmp_path, [_clip("a.mp4"), _clip("b.mp4")])
     with pytest.raises(RuntimeError, match="every one of 2"):
-        contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path))
-    assert not (tmp_path / "SHEETS.md").exists()
+        contact_sheet.build_sheets(fp, str(tmp_path), str(tmp_path / "out"))
+    assert not (tmp_path / "out" / "SHEETS.md").exists()
 
 
 def test_the_every_clip_failed_error_names_the_root_as_the_likely_cause(tmp_path, monkeypatch):
@@ -236,8 +236,8 @@ def test_the_every_clip_failed_error_names_the_root_as_the_likely_cause(tmp_path
 def test_a_corrupt_footage_file_fails_loud(tmp_path):
     bad = tmp_path / "FOOTAGE.json"
     bad.write_text("{not json")
-    with pytest.raises(ValueError):
-        contact_sheet.build_sheets(str(bad), str(tmp_path), str(tmp_path))
+    with pytest.raises(ValueError, match="not valid JSON"):
+        contact_sheet.build_sheets(str(bad), str(tmp_path), str(tmp_path / "out"))
 
 
 def test_markdown_distinguishes_every_clip_failing_from_nothing_to_attempt(tmp_path):
@@ -476,3 +476,34 @@ def test_cli_strip_explicit_source_and_range_needs_no_footage_root(tmp_path, mon
         contact_sheet.main()
     assert e.value.code == 0
     assert seen["src"] == "a.mp4" and seen["start"] == 1.0 and seen["dur"] == 2.0
+
+
+# ---- photos (design 2026-10-20 §1) ----
+
+def test_a_photo_cell_is_the_decoded_photo_not_a_video_decode(tmp_path, monkeypatch):
+    root = tmp_path / "foot"; root.mkdir()
+    Image.new("RGB", (60, 40), (200, 10, 10)).save(root / "IMG_1.png")
+    photo = FootageClip(source="IMG_1.png", dur=8.0, res=(60, 40), fps=0.0, kind="photo",
+                        windows=[_win()])
+    seen = []
+    monkeypatch.setattr(contact_sheet.assembly, "frames_rgb",
+                        lambda *a: (_ for _ in ()).throw(AssertionError("video decode")))
+    monkeypatch.setattr(contact_sheet.sheet, "tile",
+                        _stub_tile(lambda cells, kw: seen.extend(cells)))
+    contact_sheet.build_sheets(_footage(tmp_path, [photo]), str(root), str(tmp_path / "out"))
+    (cell,) = seen
+    assert cell.image.shape == (40, 60, 3) and tuple(cell.image[5, 5]) == (200, 10, 10)
+
+
+def test_sheets_are_never_written_into_the_footage_folder(tmp_path):
+    with pytest.raises(ValueError, match="contact_sheet's out_dir"):
+        contact_sheet.build_sheets(_footage(tmp_path, [_clip()]), str(tmp_path),
+                                   str(tmp_path))
+
+
+def test_a_strip_of_a_photo_is_refused_with_the_reason(tmp_path):
+    photo = FootageClip(source="IMG_1.jpg", dur=8.0, res=(60, 40), fps=0.0, kind="photo",
+                        windows=[_win()])
+    with pytest.raises(ValueError, match="is a photo"):
+        contact_sheet.resolve_window(_footage(tmp_path, [photo]), str(tmp_path),
+                                     "IMG_1.jpg", 0)

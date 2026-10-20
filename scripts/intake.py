@@ -19,7 +19,7 @@ import imagehash
 from PIL import Image, ImageDraw
 
 from scripts import check_reel                    # reuse _hamming for cull dedup
-from scripts.lib import assembly, carve, footage, intake_cache, reid, runlayout, vidstab
+from scripts.lib import assembly, carve, footage, intake_cache, reid, runlayout, still, vidstab
 from scripts.lib.appearance import crop_bbox
 from scripts.lib.intake_cache import CastEntry, ClipResult
 from scripts.track import MODEL, ensure_model       # reuse the tracker's model choice
@@ -56,7 +56,12 @@ MIN_NAMEABLE_PX = 96     # a candidate whose crop's long side is under this is s
 CARD_LONG_SIDE = 480     # a review card enlarges its crop by WHOLE pixels until its long side
                          # reaches this, so a small crop is legible and nothing is invented
 CARD_MIN_W = 360         # the card's narrowest canvas, so its caption is never cut
-_VIDEO_EXTS = runlayout.VIDEO_EXTS          # one list: intake scans it, project_init refuses on it
+_FOOTAGE_EXTS = runlayout.FOOTAGE_EXTS      # one list: intake scans it, project_init refuses on it
+PHOTO_HOLD = 2.0         # a photo window's length: the research's 1-2 s per photo in a reel,
+                         # 2-4 s in a post (design 2026-10-20 §1). A convention; U7 will take
+                         # a photo's length from the music grid instead.
+PHOTO_ROOM = 8.0         # how long a photo MAY be held — its clip `dur`, the room the pacing
+                         # fitter and an author can stretch it into. A convention.
 DEFAULT_JOBS = 2          # 3 parallel full-clip passes pin every P-core (3x libx264 proxy
                           # alone is ~400s of CPU) and thermally throttle a laptop; 2 is the
                           # sustainable default. --jobs raises it on a cooled/desktop box or
@@ -500,6 +505,26 @@ def _motion(samples: list, res: tuple[int, int]) -> float:
     return float(min(1.0, (sum(disps) / len(disps)) / w))
 
 
+def _process_photo(path: str) -> ClipResult:
+    """A still's Phase 1 (design 2026-10-20 §1): decode it the one way every reader does,
+    one YOLO pass on the decoded pixels, one window of PHOTO_HOLD seconds. The shot size
+    reads off the LARGEST person box, as a video window's does; the move's subject (the
+    union) is decided at render, from the same decode and the same model. A photo has
+    no motion or shake to measure, so both are 0, and it surfaces no cast in this slice."""
+    st = still.load(path)
+    w, h = st.dims
+    boxes = still.people(st.rgb, MODEL)
+    sw, sh = (boxes[0][2] / w, boxes[0][3] / h) if boxes else (0.0, 0.0)
+    win = footage.FootageWindow(start=0.0, dur=PHOTO_HOLD,
+                                shot_type=footage.shot_type(sw, sh), people=len(boxes),
+                                motion=0.0, shake=0.0, subject_w=round(min(sw, 1.0), 4),
+                                subject_h=round(min(sh, 1.0), 4),
+                                present=1.0 if boxes else 0.0)
+    clip = footage.FootageClip(source=Path(path).name, dur=PHOTO_ROOM, res=(w, h), fps=0.0,
+                               windows=[win], kind="photo")
+    return ClipResult(clip=clip, phashes=[str(imagehash.phash(Image.fromarray(st.rgb)))])
+
+
 def _process_clip(path: str, sample_fps: float = SAMPLE_FPS, embed_cast: bool = True,
                   band: tuple[float, float] = carve.DEFAULT_BAND) -> ClipResult:
     """One clip's CV (Phase 1, design §2): probe → build a decode-once analysis
@@ -513,7 +538,11 @@ def _process_clip(path: str, sample_fps: float = SAMPLE_FPS, embed_cast: bool = 
 
     embed_cast=False (reID not installed, design 2026-08-04 §6) skips ONLY the cast
     embedding — windows, scoring and phashes still compute, cast comes back empty —
-    so an absent optional dep degrades the cast surface, never the whole scan."""
+    so an absent optional dep degrades the cast surface, never the whole scan.
+
+    A photo takes its own, much shorter road (_process_photo)."""
+    if runlayout.is_photo(path):
+        return _process_photo(path)
     info = assembly.probe_stream(path)
     dur = assembly.probe_duration(path)
     res = (info.w, info.h)                                       # ORIGINAL — stored on FootageClip
@@ -614,7 +643,10 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
     root = Path(footage_root)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    paths = sorted(p for p in root.iterdir() if p.suffix.lower() in _VIDEO_EXTS)
+    listing = list(root.iterdir())
+    paths = sorted(p for p in listing if p.suffix.lower() in _FOOTAGE_EXTS)
+    _log_unread([p for p in listing if p.is_file() and not p.name.startswith(".")])
+    _log_live_pairs(paths)
     ensure_model(MODEL)                                # weights-race landmine (§4), before the pool
     # reID is ADVISORY (design 2026-08-04 §6): the producer WARNS and continues. When
     # torchreid is installed, warm its OSNet weights once before the pool (the same
@@ -691,9 +723,34 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
     return result
 
 
+def _log_unread(listing: list[Path]) -> None:
+    """Files intake does not read are counted by extension, so a folder of .dng or .webp
+    does not go missing in silence — the way photos did before 2026-10-20."""
+    other = Counter(p.suffix.lower() or "(none)" for p in listing
+                    if p.suffix.lower() not in _FOOTAGE_EXTS)
+    if other:
+        print("intake: skipped " + ", ".join(f"{n} {ext}" for ext, n in sorted(other.items()))
+              + f" — intake reads {', '.join(sorted(_FOOTAGE_EXTS))}", file=sys.stderr)
+
+
+def _log_live_pairs(paths: list[Path]) -> None:
+    """A photo and a video sharing a stem are most likely one iPhone Live Photo's two
+    halves. Both enter as separate sources today; pairing them is backlog U9."""
+    stems: dict[str, set[str]] = {}
+    for p in paths:
+        stems.setdefault(p.stem.lower(), set()).add("photo" if runlayout.is_photo(p) else "video")
+    pairs = sorted(st for st, kinds in stems.items() if kinds == {"photo", "video"})
+    if pairs:
+        print(f"intake: {len(pairs)} photo+video pair(s) share a name ({', '.join(pairs[:5])}"
+              f"{', ...' if len(pairs) > 5 else ''}) — likely Live Photos; both halves enter "
+              f"as separate sources", file=sys.stderr)
+
+
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(description="footage-intake (5.2): scan clips → FOOTAGE.json/.md")
-    ap.add_argument("footage_root", help="dir of raw clips to scan — never the run dir")
+    ap = argparse.ArgumentParser(description="footage-intake (5.2): scan clips and photos "
+                                             "→ FOOTAGE.json/.md")
+    ap.add_argument("footage_root", help="dir of raw clips and photos to scan — never "
+                                         "the run dir")
     ap.add_argument("out_dir", help="where FOOTAGE.json and FOOTAGE.md go")
     ap.add_argument("--sample-fps", type=float, default=SAMPLE_FPS,
                     help="analysis sampling rate, frames per second (default %(default)s)")

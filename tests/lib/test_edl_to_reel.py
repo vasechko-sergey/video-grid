@@ -56,7 +56,7 @@ def _wire(monkeypatch, pe_results=None, build_result=None):
     seen = {"segments": [], "pe": [], "rm": None, "build": [], "build_titles": None,
             "warm": [], "order": []}
 
-    def fake_extract(edl, footage_root, seg_dir):
+    def fake_extract(edl, footage_root, seg_dir, project=None):
         segs = [str(Path(seg_dir) / f"ep{i}_raw.mp4") for i in range(len(edl.episodes))]
         Path(seg_dir).mkdir(parents=True, exist_ok=True)
         for s in segs:

@@ -10,6 +10,24 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.26.0 — 2026-10-20
+
+- **Photos are footage.** Intake reads JPEG, PNG and HEIC/HEIF beside the clips
+  (it skipped them in silence before) and says by extension what it did not read.
+  Each photo is decoded upright and in sRGB — a Display P3 iPhone photo is
+  converted, where ignoring its profile turns pure red into (234, 51, 35) — capped
+  at 4096 px, and becomes one window of 2.0 s it may be held up to 8.0 s.
+- **A photo fills or fits by its shape.** A portrait photo fills the 9:16 canvas, a
+  square or landscape one sits on a blurred field of itself; the frame is aimed at
+  the people YOLO finds in it. Author `layout` to override.
+- **A photo moves without stair-steps.** The default is an 8.7 % push toward the
+  people (`still: {"from": 1.0, "to": 0.92}` in the EDL, any other move by hand),
+  log-scale and eased, rendered with a float warp: a tracked dot strays 0.02 px
+  from a smooth curve where `zoompan`'s whole-pixel crop strays 0.46 px. The
+  segment lands on the video's own clock and colour tags.
+- New runtime imports, both already installed: `pi-heif` and `opencv-python` are now
+  declared, and `verify_runtime` checks `pi_heif`. Run `bash setup.sh` anyway.
+
 ## 0.25.0 — 2026-10-20
 
 - **A reel can ship without its song, for attaching the music in the app.** A brief

@@ -46,7 +46,21 @@ _MIX_DEFAULT_FADE = 0.5    # mix._FADE — the bookend a reel gets when no look 
                            # driver, and this slice does not touch mix.py at all (§1).
 
 
+FILL_KEEP = 0.6   # a photo fills the canvas when the canvas-shaped crop keeps at least
+                  # this share of it — 3:4 keeps 75% of a 9:16 frame, 1:1 56% (design
+                  # 2026-10-20 §2). A convention from the research's table.
+
+
+def photo_layout(res: tuple[int, int], canvas: tuple[int, int]) -> str:
+    """fill or fit for a photo of `res` on a `canvas`-shaped frame (design §2): the
+    share of the photo a canvas-aspect crop keeps decides it."""
+    r_photo, r_canvas = res[0] / res[1], canvas[0] / canvas[1]
+    keep = min(r_photo / r_canvas, r_canvas / r_photo)
+    return "fill" if keep >= FILL_KEEP else "fit"
+
+
 def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: float = 0.0,
+                      *, canvas: tuple[int, int] | None = None,
                       **editorial: object) -> EDLEpisode:
     """Project a scored FootageWindow onto an EDLEpisode. Mechanical fields come
     from the clip/window by reference; editorial fields (composition/grid required;
@@ -76,6 +90,11 @@ def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: fl
     ramp that would stutter is refused before the pipeline spends anything on it.
     The extract pre-stage repeats the check against the PROBED rate, which is what
     a hand-authored EDL meets instead of this one.
+
+    A photo (design 2026-10-20 §2) defaults its layout from its own aspect against
+    `canvas` — fill when a canvas-shaped crop keeps FILL_KEEP of it, else fit — so a
+    photo episode needs the canvas unless the author named a layout. What a photo
+    cannot carry (a ramp, a pan, a zoom, a start) EDLEpisode refuses by name.
     """
     if isinstance(start_offset, bool) or not isinstance(start_offset, (int, float)):
         raise ValueError(f"window_to_episode: start_offset must be a number of seconds, "
@@ -110,7 +129,14 @@ def window_to_episode(clip: FootageClip, window: FootageWindow, start_offset: fl
             "check_episode reports framing editorial-only, continuity not-checked and "
             "colour-fidelity not-checked. Drop the `pan` and let the tracked route place the "
             "crop, or reference a window intake measured as empty")
-    if editorial.get("ramp") is not None:
+    if clip.kind == "photo" and editorial.get("layout") is None:
+        if canvas is None:
+            raise ValueError(
+                f"window_to_episode: {clip.source} is a photo, and its default layout (fill "
+                f"or fit) depends on the canvas — pass the project's canvas, or author "
+                f"`layout` for this episode")
+        editorial = {**editorial, "layout": photo_layout(clip.res, canvas)}
+    if editorial.get("ramp") is not None and clip.kind != "photo":
         # The early half of the judder gate (design §5): FOOTAGE already knows this
         # clip's frame rate, so a ramp that would stutter is refused before the
         # pipeline spends anything. The extract pre-stage repeats the check against
@@ -524,7 +550,7 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
         fw = _resolve_window(clip, window, source, k)
         if aspect is not None:
             used[delivered_shot(fw.subject_w, fw.subject_h, clip.res, aspect)] += 1
-        ep = window_to_episode(clip, fw, start_offset=start_offset, **ed)
+        ep = window_to_episode(clip, fw, start_offset=start_offset, canvas=aspect, **ed)
         episodes.append(ep)
         placed.append(_placed(clip, ep))
     # the reel's bookend fade, resolved exactly as EDL.look is (selection.json wins over

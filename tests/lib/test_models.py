@@ -2571,3 +2571,19 @@ def test_reel_manifest_carries_music_in_app_and_omits_it_when_unasked():
 def test_reel_manifest_refuses_music_in_app_without_music():
     with pytest.raises(ValueError, match="edl_to_reel --music"):
         m.ReelManifest.from_dict(_reel_dict(music_in_app=True))
+
+
+# --- PathMeta.still (design 2026-10-20 §5): the third provenance bit ---
+
+def test_pathmeta_records_a_still_and_omits_it_otherwise():
+    assert "still" not in m.PathMeta(**_META_KW).to_dict()        # video: byte-identical
+    pm = m.PathMeta(**_META_KW, still=True)
+    assert pm.to_dict()["still"] is True and m.PathMeta.from_dict(pm.to_dict()).still is True
+    assert m.PathMeta.from_dict(m.PathMeta(**_META_KW).to_dict()).still is False
+
+
+def test_reframespec_still_must_be_a_bool():
+    with pytest.raises(ValueError, match="ReframeSpec.still must be a bool"):
+        m.ReframeSpec(composition="center", grid="thirds", canvas=(9, 16),
+                      color_means=(110.0, 120.0, 130.0),
+                      delivery=m.Delivery.from_spec("native"), still="yes")

@@ -164,7 +164,7 @@ def _phase_one_setup(edl_path: str, project_path: str, footage_root: str,
         return edl, started, mds, stop, authored
 
     # 2. extract every window (paths match the seg_dir/ep{i}_raw.mp4 the bridge used)
-    extract.extract_edl(edl, footage_root, seg_dir)
+    extract.extract_edl(edl, footage_root, seg_dir, project=cfg)
     return edl, started, mds, None, authored
 
 
@@ -405,7 +405,8 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
 
     # 4. loop-2: assemble the ReelManifest and drive build_reel
     epdirs = [str(Path(work_dir) / f"ep{i}") for i in range(len(mds))]
-    routes = [None if md.get("pan") is not None else str(Path(d) / "route.json")
+    routes = [None if (md.get("pan") is not None or md.get("still"))
+              else str(Path(d) / "route.json")
               for md, d in zip(mds, epdirs, strict=True)]
     return _reel_manifest(mds, results, routes, epdirs, edl, edl_path, music=music,
                           changelog=changelog, started=started, authored=authored), None

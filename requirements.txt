@@ -6,6 +6,12 @@ librosa>=0.10
 ultralytics>=8.3
 scenedetect>=0.6
 imagehash>=4.3
+# photos (design 2026-10-20): HEIC/HEIF decoding, and the float warp of the move.
+# Both were already present as dependencies of dependencies; declared because the
+# pipeline imports them directly. opencv-python is the dist ultralytics pulls in —
+# NOT opencv-python-headless, which would install a second cv2 beside it.
+pi-heif>=1.0
+opencv-python>=4.8
 yt-dlp
 requests>=2.31
 certifi

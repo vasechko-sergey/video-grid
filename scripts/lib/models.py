@@ -227,6 +227,9 @@ class PathMeta:
     pan: bool = False      # True ⇒ the path was GENERATED, not observed (design 2026-07-19 §5)
     stabilized: bool = False   # True ⇒ reframe's `src` was a vidstab pre-stage output, not the
                                # raw segment (design 2026-07-20 §6.2)
+    still: bool = False    # True ⇒ `src` was a rendered PHOTO whose move is in its pixels:
+                           # the path is generated and constant, nothing was observed
+                           # (design 2026-10-20 §5). The third provenance bit.
     crop_ws: list[int] | None = None    # per-route-sample effective crop width under a zoom
     crop_hs: list[int] | None = None    # ... height
     crop_ys: list[int] | None = None    # ... top edge (the rect keeps the base rect's centre)
@@ -295,6 +298,8 @@ class PathMeta:
         # sidecar it has always written. The judgement of whether a value is
         # NEWS lives in reframe.path_meta, which knows the spec's defaults;
         # here the rule is only "emit what you were given".
+        if self.still:                  # emitted only when true, like the zoom arrays:
+            d["still"] = True           # every video sidecar stays byte-identical
         if self.max_speed is not None:
             d["max_speed"] = self.max_speed
         if self.smooth_window_s is not None:
@@ -333,6 +338,9 @@ class PathMeta:
                        # and its absence honestly means the source was raw —
                        # stabilization was refused upstream until then.
                        stabilized=d.get("stabilized", False),
+                       # Sixth, the same reasoning as `pan`'s: a sidecar written before
+                       # photos has no `still` key, and no photo could have been cut then.
+                       still=d.get("still", False),
                        # Fourth exemption, same reasoning: a sidecar written before the
                        # zoom slice has no crop_ws/crop_hs/crop_ys keys, and their absence
                        # honestly means a constant rect — zoom did not exist as a source yet.
@@ -980,6 +988,9 @@ class ReframeSpec:
     tone_src: "tuple[float, float, float] | None" = None
     tone_dst: "tuple[float, float, float] | None" = None
     pan: "PanSpec | None" = None
+    still: bool = False              # the source is a rendered photo whose move is in its
+                                     # pixels: no route, the crop is the whole segment
+                                     # (design 2026-10-20 §5)
     zoom: "ZoomSpec | None" = None   # a subject-anchored push-in/pull-out (design
                                      # 2026-08-08). Requires a route: unlike `pan` it does
                                      # not replace the observation, it rescales the rect the
@@ -1057,6 +1068,8 @@ class ReframeSpec:
                 f"ReframeSpec.zoom must be a ZoomSpec or None, got {type(self.zoom).__name__} — "
                 "build it with ZoomSpec.from_dict({'from': …, 'to': …}); a zoom rescales the "
                 "rect the tracked route places, it does not replace it")
+        if not isinstance(self.still, bool):
+            raise ValueError(f"ReframeSpec.still must be a bool, got {self.still!r}")
 
 
 @dataclass

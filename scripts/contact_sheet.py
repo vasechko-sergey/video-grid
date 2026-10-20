@@ -7,14 +7,15 @@ window -> a single image, for the timing and identity questions a single frame c
 answer. Sampling and I/O live here; the layout is pure in lib/sheet.py.
 
 No ffmpeg argv is built here — frames come from assembly.frames_rgb, which decodes
-once per 60-frame chunk with a select filter (never -ss, montage §12).
+once per 60-frame chunk with a select filter (never -ss, montage §12). A photo's one
+cell is the photo itself, through lib/still — the decoder every other reader of it uses.
 """
 import argparse
 import json
 import sys
 from pathlib import Path
 
-from scripts.lib import assembly, sheet
+from scripts.lib import assembly, runlayout, sheet, still
 from scripts.lib.footage import Footage, FootageWindow
 
 
@@ -106,6 +107,10 @@ def build_sheets(footage_path: str, footage_root: str, out_dir: str, *,
     windows at all (nothing to attempt — an empty FOOTAGE or a --best-only that
     matched nothing) keeps the honest-empty SHEETS.md from design §7, because an
     absent artifact would wedge the router on this stage forever."""
+    # Its sheets are PNGs, and photos are footage since 2026-10-20: written into the
+    # footage folder they would be scanned as photos by the next intake (the draft.mp4
+    # class, design 2026-08-25 §0).
+    runlayout.refuse_output_in_footage(footage_root, out_dir, "contact_sheet's out_dir")
     footage = Footage.from_json(footage_path)
     out = Path(out_dir)
     cells: list[sheet.Cell] = []
@@ -118,7 +123,8 @@ def build_sheets(footage_path: str, footage_root: str, out_dir: str, *,
         src = str(Path(footage_root) / clip.source)
         times = [w.start + w.dur / 2 for _, w in picked]
         try:
-            frames = assembly.frames_rgb(src, times, clip.fps)
+            frames = ([still.load(src).rgb] * len(picked) if clip.kind == "photo"
+                      else assembly.frames_rgb(src, times, clip.fps))
         except (RuntimeError, ValueError) as ex:
             _log(f"contact-sheet: {clip.source} skipped — {ex}")
             skipped.append((clip.source, _tail(str(ex))))
@@ -176,6 +182,9 @@ def resolve_window(footage_path: str, footage_root: str, source: str,
     if not 0 <= index < len(clip.windows):
         raise ValueError(f"strip: window {index} out of range for {source} "
                          f"(has {len(clip.windows)})")
+    if clip.kind == "photo":
+        raise ValueError(f"strip: {source} is a photo — one frame, which the contact sheet "
+                         f"already shows; a strip samples time inside a video window")
     w = clip.windows[index]
     src = str(Path(footage_root) / clip.source)
     if not Path(src).exists():

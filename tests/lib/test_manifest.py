@@ -570,3 +570,29 @@ def test_manifest_accepts_a_pan_beside_a_bare_cast_path():
                                     pan={"from": 0.0, "to": 1.0},
                                     cast="cast.json"))
     assert mf.validate(m) == []
+
+
+# --- still (design 2026-10-20 §5) -----------------------------------------------------
+
+def _still_md(**kw):
+    return {"segment": "s.mp4", "out_path": "o.mp4", "composition": "center",
+            "grid": "thirds", "canvas": [9, 16], "target_dur": 2.0, "still": True, **kw}
+
+
+def test_a_still_manifest_is_valid_and_reads_back():
+    m = mf.Manifest.from_dict(_still_md())
+    assert m.still is True and mf.validate(m) == []
+    assert mf.Manifest.from_dict({**_still_md(), "still": None}).still is False
+
+
+@pytest.mark.parametrize("kw", [dict(pan={"from": 0, "to": 1}), dict(zoom={"from": 1, "to": 0.8}),
+                                dict(hero=[1, 2, 3, 4]), dict(motion="static"),
+                                dict(smooth_window_s=0.5)])
+def test_a_still_manifest_refuses_a_move_or_a_track(kw):
+    problems = mf.validate(mf.Manifest.from_dict(_still_md(**kw)))
+    assert any(p.startswith("a still episode cannot carry") for p in problems), problems
+
+
+def test_still_must_be_a_bool():
+    problems = mf.validate(mf.Manifest.from_dict(_still_md(still="false")))
+    assert "still must be true or false, got 'false'" in problems

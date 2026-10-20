@@ -327,7 +327,10 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     # that also hands over a route under a pan is redundant, not wrong, so the
     # route is ignored rather than refused; the reverse (a tracked sidecar with no
     # route) IS refused below, because there the missing input is load-bearing.
-    if meta.pan:
+    generated = meta.pan or meta.still     # nothing observed: a pan, or a photo (2026-10-20 §5)
+    why = ("photo — the move was rendered into the segment, nothing was tracked"
+           if meta.still else "generated path — no tracked subject")
+    if generated:
         # A GENERATED path (design 2026-07-19 §5). There is no route, so there is
         # nothing to classify — take the direction off the path itself, or a
         # right-to-left pan would be read as reversing on every single frame.
@@ -343,8 +346,8 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
         if route_path is None:
             raise ValueError(
                 f"check_episode needs a route for {path_path}: the sidecar says this path "
-                "was tracked (pan=false), but route_path is None — pass the route.json "
-                "reframe used, or re-render with a pan")
+                "was tracked (pan=false, still=false), but route_path is None — pass the "
+                "route.json reframe used, or re-render with a pan")
         route = [p.to_dict() for p in route_from_json(route_path)]
         _, direction = classify(route, src_w, src_h)
         # static/head-on routes carry no direction of their own. reframe does NOT
@@ -356,17 +359,17 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     # Independent of the branch above: a pan has no observation to sample the
     # subject from (route_pts stays None) regardless of whether a route_path
     # was also handed over — same "ignored, not refused" stance as `route` above.
-    route_pts = None if (meta.pan or route_path is None) else route_from_json(route_path)
+    route_pts = None if (generated or route_path is None) else route_from_json(route_path)
     checks = {}
 
-    if meta.pan:
+    if generated:
         # NOT "no horizontal freedom" — a pan needs freedom and has it. Nobody is
         # being composed because nobody was observed, which is a different fact and
         # deserves a different reason. Judging composition here would compare the
-        # crop against a subject derived from that same crop.
+        # crop against a subject derived from that same crop — for a photo, against
+        # the planner's own box.
         checks["framing"] = CheckResult("framing", None,
-                                        {"status": "editorial-only",
-                                         "reason": "generated path — no tracked subject"})
+                                        {"status": "editorial-only", "reason": why})
     elif meta.freedom == 0 and not meta.zoomed:
         # the crop is as wide as the source: nobody controls composition, so it
         # can neither be failed nor silently passed (design 2026-07-10 §6). A ZOOM
@@ -403,12 +406,11 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
                            route=route or None, route_window=_route_window(route),
                            crop_ws=crop_ws)
     checks["jitter"] = CheckResult("jitter", dj["pass"], {k: v for k, v in dj.items() if k != "pass"})
-    if meta.pan:
+    if generated:
         # checks.continuity([]) returns pass=True — its zip never iterates — so the
         # honest answer has to be stated, not left to fall through to a green tick.
         checks["continuity"] = CheckResult("continuity", None,
-                                           {"status": "not-checked",
-                                            "reason": "generated path — no tracked subject"})
+                                           {"status": "not-checked", "reason": why})
     else:
         dc = checks_mod.continuity(route, src_w)
         checks["continuity"] = CheckResult("continuity", dc["pass"],

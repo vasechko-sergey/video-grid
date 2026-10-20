@@ -25,9 +25,9 @@ from scripts.lib import ffbin, fonts, preflight
 from scripts.lib.models import MODELS
 
 # The runtime modules the pipeline imports = requirements.txt runtime set (pytest
-# excluded, dev-only) + cv2 (a direct import of lib/flow.py; transitive via
-# ultralytics). Import NAMES, not pip names (Pillow→PIL, yt-dlp→yt_dlp).
-_DEPS = ("numpy", "scipy", "PIL", "cv2", "librosa", "ultralytics",
+# excluded, dev-only). Import NAMES, not pip names (Pillow→PIL, yt-dlp→yt_dlp,
+# pi-heif→pi_heif, opencv-python→cv2).
+_DEPS = ("numpy", "scipy", "PIL", "cv2", "pi_heif", "librosa", "ultralytics",
          "scenedetect", "imagehash", "yt_dlp", "requests", "certifi", "fontTools")
 
 _ROOT = Path(__file__).resolve().parent.parent   # repo root (bin/vg cd's here)

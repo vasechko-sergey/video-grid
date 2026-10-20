@@ -328,3 +328,43 @@ def test_the_guard_runs_even_with_no_colour_knob_set(monkeypatch):
                        pan=PanSpec(start=0.0, end=0.2))
     with pytest.raises(ValueError, match="pc"):
         reframe.plan_render(spec, "src.mp4", None)
+
+
+# --- still (design 2026-10-20 §5): the crop is the whole segment ---
+
+def _still_spec(**kw):
+    base = dict(composition="center", grid="thirds", canvas=(9, 16),
+                color_means=(110.0, 120.0, 130.0),
+                delivery=Delivery.from_spec("short_edge:1080"), still=True,
+                layout=LayoutSpec(mode="fill", crop_scale=0.8))
+    return ReframeSpec(**{**base, **kw})
+
+
+def test_a_still_crops_its_whole_segment_and_spends_no_crop_scale(monkeypatch):
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1080, 1920, 30.0, 2.0, "yuv420p", "tv"))
+    plan = reframe.plan_render(_still_spec(), "seg.mp4", None)
+    assert (plan.rl.crop_w, plan.rl.crop_h, plan.rl.freedom) == (1080, 1920, 0)
+    assert (plan.rl.out_w, plan.rl.out_h) == (1080, 1920)          # the scale is the identity
+    assert set(plan.path) == {0} and plan.cy == 0 and len(plan.path) == 60
+    meta = reframe.path_meta(plan, _still_spec(), stabilized=False)
+    assert meta.still is True and meta.pan is False
+
+
+def test_a_still_trims_an_evenness_pixel_centred(monkeypatch):
+    # a 9:16 crop of 1688x3000 is 1687 wide: one pixel of freedom, trimmed centred
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1688, 3000, 30.0, 2.0, "yuv420p", "tv"))
+    plan = reframe.plan_render(_still_spec(delivery=Delivery.from_spec("native")), "s.mp4", None)
+    assert plan.rl.freedom == 1 and set(plan.path) == {0}
+
+
+def test_a_still_cut_for_another_shape_is_refused(monkeypatch):
+    monkeypatch.setattr(reframe, "_probe", lambda src: (1920, 1080, 30.0, 2.0, "yuv420p", "tv"))
+    with pytest.raises(ValueError, match="not the shape of its layout's crop"):
+        reframe.plan_render(_still_spec(), "seg.mp4", None)
+
+
+def test_a_still_refuses_a_pan_or_a_zoom_before_probing(monkeypatch):
+    monkeypatch.setattr(reframe, "_probe", lambda src: (_ for _ in ()).throw(AssertionError))
+    for kw in (dict(pan=PanSpec(start=0.0, end=0.2)), dict(zoom=ZoomSpec(start=1.0, end=0.8))):
+        with pytest.raises(ValueError, match="cannot also pan or zoom"):
+            reframe.plan_render(_still_spec(**kw), "seg.mp4", None)

@@ -1,6 +1,6 @@
 """Compose one episode: route + rules → cropped/colored clip (spec §6)."""
 import argparse, json
-from dataclasses import dataclass, fields as _dc_fields
+from dataclasses import dataclass, fields as _dc_fields, replace
 from pathlib import Path
 import numpy as np
 from scripts.lib import geometry as g
@@ -11,6 +11,9 @@ from scripts.lib.layout import ResolvedLayout
 from scripts.lib.motion import classify, travel_direction as classify_direction
 from scripts.lib.models import (ReframeSpec, CropPath, route_from_json, Delivery,
                                 PathMeta, LayoutSpec, BACKGROUNDS, PanSpec, ZoomSpec)
+
+STILL_TRIM = 2   # px a still's crop may trim off its own segment: the evenness of two
+                 # integer crops of one shape (design 2026-10-20 §5). More is a mismatch.
 
 
 def compute_path(route: list[dict[str, float]], composition: str, grid: str,
@@ -457,6 +460,11 @@ def plan_render(spec: ReframeSpec, src: str, route_path: str | None) -> RenderPl
             "zoom and pan on one episode: a zoom anchors the rect to a tracked subject "
             "and a pan declares there is none. Keep the zoom (and let the route place "
             "the crop), or keep the pan and drop the zoom")
+    if spec.still and (spec.pan is not None or spec.zoom is not None):
+        raise ValueError(
+            "a still episode cannot also pan or zoom: its move was rendered into the "
+            "segment (design 2026-10-20 §5), so reframe crops the whole segment. Author "
+            "the move as the EDL episode's `still`")
     # NEVER assume dims/fps: real footage is 4K/60. `dur` bounds a solid filler's
     # synthesized background so the render is exactly as long as the source (§4).
     src_w, src_h, fps, dur, pix_fmt, color_range = _probe(src)
@@ -466,13 +474,33 @@ def plan_render(spec: ReframeSpec, src: str, route_path: str | None) -> RenderPl
     # every knob reads the same plane and check_episode compares episodes to each
     # other — an ungraded pc episode is still the wrong pixels.
     color.refuse_ungradeable_plane(pix_fmt, color_range, src)
-    rl = layout_lib.resolve(spec.layout, spec.canvas, (src_w, src_h), spec.delivery)
+    # A still's segment was cut at its layout's crop, crop_scale included, so the crop
+    # here is the whole segment: crop_scale is spent, not applied twice.
+    layout = replace(spec.layout, crop_scale=1.0) if spec.still else spec.layout
+    rl = layout_lib.resolve(layout, spec.canvas, (src_w, src_h), spec.delivery)
     crop_ws = crop_hs = crop_ys = None    # only a zoom fills all three. Under a pan (no route
                                           # to sample) all three stay None; under a plain
                                           # tracked route (no zoom) crop_hs/crop_ys stay None
                                           # but crop_ws is reassigned just below to a constant-
                                           # width series — it does NOT stay None there
-    if spec.pan is not None:
+    if spec.still:
+        # The camera is in the pixels. What is left is the evenness of two integer
+        # crops of one shape — the segment's own and the layout's — so a pixel or two
+        # is trimmed, centred; more means the two disagree about the shape, which is
+        # what an EDL or canvas edited after the cut looks like.
+        slack = (rl.freedom, src_h - rl.crop_h)
+        if max(slack) > STILL_TRIM:
+            raise ValueError(
+                f"the still segment {src} ({src_w}x{src_h}) is not the shape of its "
+                f"layout's crop ({rl.crop_w}x{rl.crop_h}): {slack[0]}px of width and "
+                f"{slack[1]}px of height to spare, past the {STILL_TRIM}px evenness "
+                f"allows. The segment was cut for another layout or canvas — re-run "
+                f"edl_to_reel so extract cuts it again")
+        n = max(2, round(dur * fps))
+        times = [k * dur / (n - 1) for k in range(n)]
+        path = [rl.freedom // 2] * n
+        cy = (src_h - rl.crop_h) // 2
+    elif spec.pan is not None:
         # A GENERATED path: no route is read, and none is written. See
         # generate_pan_path for why it is neither smoothed nor rate-limited.
         path, times = generate_pan_path(spec.pan, rl.freedom, fps, dur, spec.max_speed)
@@ -630,7 +658,7 @@ def path_meta(plan: RenderPlan, spec: ReframeSpec, *, stabilized: bool) -> PathM
                     canvas=spec.canvas, out_dims=(plan.rl.out_w, plan.rl.out_h),
                     rect_px=plan.rl.rect_px, freedom=plan.rl.freedom,
                     background=plan.rl.background,
-                    pan=spec.pan is not None, stabilized=stabilized,
+                    pan=spec.pan is not None, stabilized=stabilized, still=spec.still,
                     crop_ws=plan.crop_ws if spec.zoom is not None else None,
                     crop_hs=plan.crop_hs if spec.zoom is not None else None,
                     crop_ys=plan.crop_ys if spec.zoom is not None else None,

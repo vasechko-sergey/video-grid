@@ -163,3 +163,8 @@ only when true, so existing sidecars do not change):
   deterministic but not free (one model load per run, a fraction of a second per photo).
 - A HEIC whose colour is described only by an `nclx` box with P3 primaries, and no ICC
   profile, reads as sRGB. Apple writes an ICC profile.
+- The backlog row said the same renderer would remove the integer residual of the
+  video zoom. It could, but this slice does not wire it into reframe: the video zoom
+  still runs through `zoompan`, where the moving footage hides the steps.
+- The fit layout's blurred field is reframe's own, made from the moving segment, so it
+  zooms with the photo rather than holding still behind it.

@@ -12,6 +12,7 @@ _Last updated: 2026-10-19._
 
 ## Done
 
+- **Photos — ingest, fit, a sub-pixel move (2026-10-20, 0.26.0)** — branch `feat/photos-ingest-fit-move`, [design](specs/2026-10-20-photos-design.md). Backlog U4+U5+U6: `lib/still.py` (decode, people, subject, render), `lib/kenburns.py` (the move, pure), `proc.feed`, `assembly.probe_rate`, `FootageClip.kind`, `EDLEpisode.still` + `StillSpec`, `Manifest`/`ReframeSpec`/`PathMeta.still`, `extract.render_photo`, `edit_plan.photo_layout`; route-less arms in `process_episode`, `check_episode`, `check_reel`, `edl_to_reel`; real-ffmpeg proofs of the segment contract, the colour (with the untagged control), the stair-step (against `zoompan`), a photo through `process_episode`, and a photo-only reel delivered with music.
 - **Music in the app (2026-10-20, 0.25.0)** — branch `feat/music-in-app`, [design](specs/2026-10-20-music-in-app-design.md). Backlog U3: `SPEC/EDL/ReelManifest.music_in_app`, `reel_brief --music-in-app`, `mix(without_music=)` + `_nomusic_graph`/`_layout`, `build_reel._deliver_without_music`, `lib/soundnote.py`, `fetch.track_meta` (shared with `reel_review`); five real-ffmpeg proofs.
 - **Shot length as a suggestion (2026-10-20, 0.24.0)** — branch `feat/asl-suggestion`, no design (the mood-contract design §4 is amended in place). Backlog U2: `reel_brief.shot_length_hint` + `hint` subcommand, `write_edit_plan` refuses `length-band` for a brief band only, `reconcile_band`'s mood message reads as a suggestion; skills reel-brief / edit-plan / footage-intake.
 - **Trends removed (2026-10-20, 0.23.0)** — branch `chore/remove-trends`, no design (the main design is corrected in place). Backlog U1: `trend-scan` + the `deferred` kind, `trend_flavor`, `Spec.style_lean` + `--style-lean`, the trend layer of the design and the skills; an old `SPEC.json` still loads and `montage status`/`verify` still read an old `REVIEW.json` (both pinned; `Review.from_json`, which no production code calls, now refuses a `trend_flavor` finding). Backlog U1–U10 filed from the 2026-10-20 photo and trend research.
@@ -7103,7 +7104,7 @@ _Last updated: 2026-10-19._
 
 ## Next action
 
-> **2026-10-20: the user's research asks are filed as U1–U10 (backlog).** U1 (remove trends) is done in 0.23.0, U2 (shot length as a suggestion) in 0.24.0, U3 (music in the app) in 0.25.0; next is the photo epic U4–U9, first slice U4+U5+U6. Every blockquote below this one is history.
+> **2026-10-20: the user's research asks are filed as U1–U10 (backlog).** U1 (remove trends) is done in 0.23.0, U2 (shot length as a suggestion) in 0.24.0, U3 (music in the app) in 0.25.0, the photo epic's first slice U4+U5+U6 in 0.26.0; next is U7+U8 (a photo's length from the music grid; photos among video) when the user asks. Every blockquote below this one is history.
 
 > **2026-10-19: the second run's rows S1–S13 and S18 are fixed (0.15.2–0.21.0).** S19 (found by the S13 review) is fixed in 0.21.1, S15–S17 in 0.21.2, S14 in 0.22.0. P0–P2 are empty. The user re-runs `bash setup.sh` (it now installs `font-noto-emoji`), updates the plugin and pushes before the next run. Every blockquote below this one is history.
 

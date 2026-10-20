@@ -58,7 +58,8 @@ def build_reframe_spec(m: manifest_lib.Manifest, delivery: Delivery, params: dic
                        shadow_red=m.shadow_red, mid_blue=m.mid_blue, dip=m.dip,
                        tone_src=m.tone_src, tone_dst=m.tone_dst,
                        pan=PanSpec.from_dict(m.pan) if m.pan is not None else None,
-                       zoom=ZoomSpec.from_dict(m.zoom) if m.zoom is not None else None)
+                       zoom=ZoomSpec.from_dict(m.zoom) if m.zoom is not None else None,
+                       still=m.still)
 
 
 def rendered_params(meta_json: str | Path | None) -> dict | None:
@@ -375,6 +376,12 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     # loudly, rather than silently drop the marks or apply them to the wrong pixels.
     # Together they are one invariant: --keyframes drives the raw, unpinned,
     # unstabilized, un-pre-routed segment — nothing else (design 2026-07-21 §2).
+    if m.still and (keyframes_path is not None or route_path is not None):
+        # A still's move is in its segment and nothing is tracked on it (design
+        # 2026-10-20 §5): a route or marks for it would describe pixels it never had.
+        return {"status": "needs_input", "attempt": 0, "problems": [
+            "a still episode takes no --route or --keyframes: its move was rendered into "
+            "the segment, so there is nothing to track or to mark. Drop them"]}
     if keyframes_path is not None:
         if m.hero is not None:
             # A hero pin and hand-authored keyframes both answer "which subject": the
@@ -462,11 +469,12 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
 
     # 1. tracking — or a supplied frozen route (answer channel / determinism, §5.10),
     #    or NOTHING AT ALL when the path is generated.
-    if pan is not None:
+    if pan is not None or m.still:
         # A pan follows nobody, so there is nothing to track and no route to write.
         # This is a real saving (a whole YOLO pass) and the honest statement that
         # no observation exists — see design 2026-07-19 §6.1 for why an empty
-        # route.json would be a fabricated one.
+        # route.json would be a fabricated one. A still is the same case: its camera
+        # was generated at extract (design 2026-10-20 §5).
         route, track_meta, rp = [], {"ambiguous": False}, None
         timings["track"] = 0.0
     elif route_path is None:
@@ -549,7 +557,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
     # with no observation there is nothing to contradict. Running it on the empty
     # route would fire `no-track`, whose remedy ("check the segment, model size, or
     # hero pin") misdescribes a deliberate authoring choice.
-    if pan is None:
+    if pan is None and not m.still:
         findings = orch.detect_contradictions(m.motion, route, track_meta,
                                               src_w, src_h, composition=m.composition)
         if findings:
@@ -604,7 +612,7 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
             # reading the SAME path.meta.json sidecar the checks read so the
             # marker maps into canvas coords under any layout (Task 8), not just
             # fill.
-            route_pts = None if pan is not None else route_from_json(rp)
+            route_pts = None if (pan is not None or m.still) else route_from_json(rp)
             path_obj = CropPath.from_json(path_out)
             path_meta = PathMeta.from_json(Path(path_out).with_suffix(".meta.json"))
             sspec = StoryboardSpec(n=6, grids=(m.grid,))
@@ -636,6 +644,11 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
             # (unfixable-by-reframe, conflicting-framing-fails) still win where
             # they apply; this only catches what it would have retried.
             esc = {"escalate_to": "edit-plan", "reason": "pan-not-retryable",
+                   "fail_reasons": report.fail_reasons}
+        if esc is None and m.still:
+            # The same reason a pan's is, more strongly: a still's path is a constant,
+            # so every retry renders the same pixels.
+            esc = {"escalate_to": "edit-plan", "reason": "still-not-retryable",
                    "fail_reasons": report.fail_reasons}
         if esc:
             result = {"status": "escalate", **esc, "report": report.to_dict(),

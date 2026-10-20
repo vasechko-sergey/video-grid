@@ -202,7 +202,7 @@ def refuse_output_in_footage(footage_root: str, out_dir: str, what: str) -> None
     raise ValueError(
         f"{what} resolves to the footage folder itself ({root}) — the conveyor "
         f"would write its output into the directory intake scans for source "
-        f"clips, and any .mp4 landing there is taken as footage by the next scan "
+        f"clips, and any video or image landing there is taken as footage by the next scan "
         f"(draft.mp4 already did, and went unnoticed). Point it at "
         f"{root / RUN_DIRNAME} instead.")
 

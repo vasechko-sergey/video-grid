@@ -1,6 +1,6 @@
 ---
 name: footage-intake
-description: "Conveyor stage — scan a folder of raw clips into scored moment-windows (FOOTAGE.json/.md) and, when people matter, name the heroes into cast.json. Needs project.json. Required — feeds edit-plan. Conveyor position: after project-init, before contact-sheet. Tool index: references/tools.md."
+description: "Conveyor stage — scan a folder of raw clips and photos into scored moment-windows (FOOTAGE.json/.md) and, when people matter, name the heroes into cast.json. Needs project.json. Required — feeds edit-plan. Conveyor position: after project-init, before contact-sheet. Tool index: references/tools.md."
 ---
 
 # footage-intake
@@ -86,6 +86,15 @@ guessing a path.
    quarantined rather than killing the scan — it is named in
    `<out_dir>/intake_report.json` and a `## Failed clips` section of
    `FOOTAGE.md`, and a re-run retries exactly the failed clips.
+
+   **Photos are footage too** (design 2026-10-20). JPEG, PNG and HEIC/HEIF in the
+   same folder are scanned beside the clips: each becomes one `photo` clip with
+   one window of 2.0 s it may be held up to 8.0 s, its people and shot size read
+   by the same YOLO, decoded upright and in sRGB (a Display P3 iPhone photo is
+   converted, not desaturated). Photos surface no cast candidates. The scan logs
+   what it skipped by extension (`.dng`, `.webp` …) — say so to the user when it
+   does — and names photo+video pairs sharing a name: those are usually iPhone
+   Live Photos, and both halves enter as separate sources for now.
 
    `--win-min`/`--win-max` set the window length band a scan carves with —
    default `(1.2, 4.0)` seconds. The floor is the shortest shot the cut can have:

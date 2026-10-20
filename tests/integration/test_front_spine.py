@@ -136,7 +136,8 @@ def test_edl_with_a_pan_episode_drives_a_reel_without_the_route_it_never_wrote(
     # not that geometry was simply withheld
     assert res["report"]["checks"]["safe_zones"] == {
         "status": "not-checked", "advisory": True,
-        "reason": "every episode is a generated pan — no tracked subject to project"}
+        "reason": "every episode is a generated pan or a photo — no tracked subject to "
+                  "project"}
 
 
 @pytest.mark.integration
