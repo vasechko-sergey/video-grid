@@ -10,6 +10,10 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.22.2 — 2026-10-20
+
+- The README's example links to the reel it describes, on Instagram.
+
 ## 0.22.1 — 2026-10-19
 
 - **A README for the public repository**: what a run looks like stage by stage,
