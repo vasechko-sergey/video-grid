@@ -7,6 +7,7 @@ version-keyed install path let episode-qc stay missing for 316 commits.
 import importlib.util
 from pathlib import Path
 
+from scripts import montage
 from scripts.lib import toolindex
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -92,7 +93,7 @@ def test_the_script_to_stage_map_names_only_real_stages():
 def test_every_built_stage_is_claimed_by_some_script():
     """A stage nobody runs would show as an index row that never appears."""
     from scripts import montage
-    built = {s.key for s in montage.V1_STAGES if s.kind != "deferred"}
+    built = {s.key for s in montage.V1_STAGES}
     claimed = {k for keys in toolindex.STAGES_OF_SCRIPT.values() for k in keys}
     assert built - claimed == set(), (
         f"{sorted(built - claimed)} are built stages that no script claims in "
@@ -145,7 +146,7 @@ def test_the_router_table_covers_every_live_stage_once():
     is circular — the identical mistake test_every_help_surface_has_a_row
     exists to avoid."""
     from scripts import montage
-    live = [s.key for s in montage.V1_STAGES if s.kind != "deferred"]
+    live = [s.key for s in montage.V1_STAGES]
     table = _generated_block(SKILL.read_text())
     rows = [l for l in table.splitlines() if l.startswith("| ") and "---" not in l][1:]
     assert len(rows) == len(live) == 15
@@ -153,7 +154,8 @@ def test_the_router_table_covers_every_live_stage_once():
         assert f"`{key}`" in row, f"row for {key} missing or out of order: {row}"
 
 
-def test_a_deferred_stage_gets_no_row():
-    """trend-scan is `deferred` and must not appear: the table is what the
-    router runs, and a row for an unbuilt stage is an instruction to run it."""
+def test_the_removed_trend_stage_gets_no_row():
+    """trend-scan was removed on 2026-10-20 (backlog U1): no row, and no stage
+    under that name for a row to come from."""
     assert "trend-scan" not in toolindex.render_stages()
+    assert "trend-scan" not in [s.key for s in montage.V1_STAGES]

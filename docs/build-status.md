@@ -12,6 +12,7 @@ _Last updated: 2026-10-19._
 
 ## Done
 
+- **Trends removed (2026-10-20, 0.23.0)** — branch `chore/remove-trends`, no design (the main design is corrected in place). Backlog U1: `trend-scan` + the `deferred` kind, `trend_flavor`, `Spec.style_lean` + `--style-lean`, the trend layer of the design and the skills; old `SPEC.json`/`REVIEW.json` still load. Backlog U1–U10 filed from the 2026-10-20 photo and trend research.
 - **README reel link (2026-10-20, 0.22.2)** — branch `docs/readme-reel-link`, docs only. The example links to the published reel.
 - **Public README (2026-10-19, 0.22.1)** — branch `docs/public-readme`, docs only. README rewritten for a public audience: the run stage by stage, requirements, install over HTTPS, honest limits. A fact-check against the code found `setup.sh` never fetching the YOLO weights `verify_runtime` requires (a fresh clone dead-ended at step 0); setup now fetches `MODELS[0]` from the clone root, pinned by `tests/test_setup_runtime.py`.
 - **Filled prompts (2026-10-19, 0.22.0)** — branch `fix/qc-prompts`, no design. S14: `lib/prompts.py` (`body`/`tokens`/`fill`/`render`, `JUDGE_TOKENS`/`REVIEWER_TOKENS`); both templates rewritten to exact tokens; `episode_qc.judge_prompt` + `pack` writes `judge_prompt.md`; `reel_review.still_times`/`pack` + the `pack` subcommand (stills via one `frames_rgb` decode, attestation-bound report); skills episode-qc step 2 and reel-review steps 1–2 shrink to "dispatch the file verbatim".
@@ -7099,6 +7100,8 @@ _Last updated: 2026-10-19._
     see an argv reordering — landmine-lint design §5).
 
 ## Next action
+
+> **2026-10-20: the user's research asks are filed as U1–U10 (backlog).** U1 (remove trends) is done in 0.23.0; next is U2 (shot length as a recommendation), then U3 (music-less delivery), then the photo epic U4–U9. Every blockquote below this one is history.
 
 > **2026-10-19: the second run's rows S1–S13 and S18 are fixed (0.15.2–0.21.0).** S19 (found by the S13 review) is fixed in 0.21.1, S15–S17 in 0.21.2, S14 in 0.22.0. P0–P2 are empty. The user re-runs `bash setup.sh` (it now installs `font-noto-emoji`), updates the plugin and pushes before the next run. Every blockquote below this one is history.
 

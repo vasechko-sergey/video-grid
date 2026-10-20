@@ -12,7 +12,7 @@ build this reel — judge only what the artifacts show. Your final message is no
 read by a human; your deliverable is the file you write.
 
 ## The brief (intent)
-SPEC.md and SPEC.json — idea, mood, hook, ending, style_lean, length, platform.
+SPEC.md and SPEC.json — idea, mood, hook, ending, length, shot length, platform.
 When there is no brief this says so: judge against the EDL and say that you did.
 
 {SPEC}
@@ -62,19 +62,17 @@ the plan + signals + stills, NOT full playback — say so in your summary.
 - ending           — ending right, last ~3s?                    (last-ep + ending still + SPEC.ending)
 - spine            — cuts along the energy spine?                (PACING slots vs EDL beat_slot/dur; the Energy agreement number; beat advisory)
 - edl_completeness — anything from the EDL missing/weak?         (EDL episodes vs SPEC; variety/transitions signals)
-- trend_flavor     — classic base AND trend flavor?              (general knowledge — NO source of truth)
 - colour           — do the episodes read as ONE grade?          (the per-episode mid stills side by side + EDL.md's shot descriptions + report.json's chroma_spread)
 
 ## Rules
-- axis ∈ (idea, mood, hook, ending, spine, edl_completeness, trend_flavor, colour) — the
-  eight axes judged above, and only those. A finding on any other axis has no stage to
+- axis ∈ (idea, mood, hook, ending, spine, edl_completeness, colour) — the
+  seven axes judged above, and only those. A finding on any other axis has no stage to
   be routed to and reel_review refuses the whole review over it.
 - severity ∈ (blocking, important, minor). blocking = the reel does NOT deliver the brief.
 - route ∈ (edit-plan, pacing, music, reprocess, titles, match-grade, none) — the fixer stage to re-run.
 - confidence ∈ (high, medium, low).
 - suggestion — REQUIRED, non-empty: the concrete change. A finding that names no change
   is not actionable, and reel_review refuses the whole review over it.
-- trend_flavor: ALWAYS confidence "low", NEVER blocking, and name §5.4 (no TRENDS.md source) in evidence.
 - colour: judge the episodes side by side, and read EDL.md first — a shot of open
   water SHOULD look different from a shot of bright sand. Flag only a difference the
   content does not explain. You have ONE frame per episode: a wave, a cloud or a

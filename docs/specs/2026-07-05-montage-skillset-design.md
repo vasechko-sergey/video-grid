@@ -20,8 +20,8 @@ The design was reverse-engineered from a real session (Jul 3–5 2026) that prod
 
 1. **Scripts do the heavy lifting; the agent fills a tiny manifest.** Each stage is a deterministic python/ffmpeg script. The agent doesn't reason over every ffmpeg call — it prepares parameters, the script executes. Saves context and removes errors.
 2. **Artifacts are the contracts between skills.** Plain markdown/json in `docs/montage/<project>/`, under git. Raw footage is never touched.
-3. **Every parameter is a tunable default, not a hardcode.** Canvas, layout, composition, motion, style-lean, thresholds, trend sources.
-4. **Rules = classic canon as base ⊕ trend as a light lean.** Strict where consistency is needed; flexible where taste is needed.
+3. **Every parameter is a tunable default, not a hardcode.** Canvas, layout, composition, motion, thresholds.
+4. **Rules = classic canon as the base, the brief as the override.** Strict where consistency is needed; flexible where taste is needed. (The "⊕ trend as a light lean" half was removed 2026-10-20 — see §5.4.)
 5. **Per-episode processing runs in subagents.** Episodes are independent → parallel; the main thread never loads per-episode detail.
 6. **Two checks at every level:** mechanical (numeric thresholds) + editorial (matches the original idea, like code review).
 7. **Self-contained environment.** The skill installs its own venv; it never pollutes the shared environment.
@@ -233,7 +233,7 @@ Entry point. The "if there's a 1% chance a skill applies → invoke it" rule. St
 > `docs/plans/2026-07-12-footage-intake.md`.
 
 ### 5.3 reel-brief → `SPEC.md` (= brainstorming)
-Our own skill that copies the brainstorming approach (context recon first, one question at a time, HARD-GATE before processing, spec self-review) — see §14. Dialogue about the idea: reel count, platform(s)+canvas, length, mood, track, hook intent, text, ending, **style-lean** (classic↔trend). Different reels = different clips (minimal repeats), different endings.
+Our own skill that copies the brainstorming approach (context recon first, one question at a time, HARD-GATE before processing, spec self-review) — see §14. Dialogue about the idea: reel count, platform(s)+canvas, length, mood, track, hook intent, text, ending, shot length. Different reels = different clips (minimal repeats), different endings.
 **Gate:** mood + platform/canvas + length + hook locked.
 
 > **Built (2026-07-12):** `scripts/lib/spec.py` (`Spec` config-spec + `to_markdown`)
@@ -244,7 +244,12 @@ Our own skill that copies the brainstorming approach (context recon first, one q
 > deferred — `SPEC` records `music`/`music_mode`/`reel_count` but nothing consumes
 > them yet. See `docs/plans/2026-07-12-reel-brief.md`.
 
-### 5.4 trend-scan → `TRENDS.md` (cache TTL 7–10d)
+### 5.4 trend-scan → `TRENDS.md` — removed
+
+**Removed 2026-10-20 (backlog U1).** A trend study found no platform promising a reach gain for a trending sound or format and the one test with statistics finding none; a trend's median life is about five days and regional, shorter than this cache's TTL; and no legal machine source exposes formats (TikTok Creative Center has no API and its terms forbid scraping). `style_lean` was read by no code and `trend_flavor` was judged with no source, so both went too. The one piece kept is the rights half of §5.14 — a music-less delivery so a licensed sound is attached in the app — filed as backlog U3.
+
+The original text, kept as the record of what was planned:
+
 `trends.py`. Layered source (see §8). Cache stamped with fetch date: fresh → reuse; older than 7–10d → refetch. Output is a **short list of checkable directives**, not a blob. Manual override: user writes lines in, the agent treats them as locked.
 **Gate:** fresh cache or manual input.
 
@@ -253,7 +258,7 @@ Our own skill that copies the brainstorming approach (context recon first, one q
 **Track-fragment selection:** the track **need not start at 0:00** — pick the strongest segment of the melody (by sections/energy/drop) for the reel length, don't force 0:00 (session: ODESZA `-ss 15`, Billie `-ss 13`). Record `start_offset`.
 **Vocal-aware start:** if the chosen window has vocals, the in-point must never land mid-word. **v1 rule:** snap the in-point to a section boundary's downbeat — section starts almost never begin mid-word; no vocals → any downbeat. **Optional upgrade (not v1):** demucs vocal stem → RMS phrase gaps → snap to the nearest phrase boundary.
 **Autonomous find + download** — the skill can source the track itself, in three stages:
-- **Discovery** (`music_find.py`): trend-sound candidates from `TRENDS.md` (TikTok/IG trending sounds) + mood-match against catalog metadata (Spotify `audio-features` valence/energy/tempo — ideal for the mood cosine; iTunes Search API needs no key; Deezer) → rank = mood-cosine × tempo-fit × trend-presence → shortlist. Metadata + 30s previews only at this stage.
+- **Discovery** (`music_find.py`): mood-match (the trend-sound half was removed with §5.4, 2026-10-20; a popular song is `--popular`) against catalog metadata (Spotify `audio-features` valence/energy/tempo — ideal for the mood cosine; iTunes Search API needs no key; Deezer) → rank = mood-cosine × tempo-fit × trend-presence → shortlist. Metadata + 30s previews only at this stage.
 - **Resolve + download** (`music_fetch.py`): `yt-dlp` resolves the chosen track to an audio source (YouTube/YT Music/SoundCloud/Bandcamp) → `bestaudio` → cache `music/cache/` with metadata (title/artist/source-url/date). Beats/mood then run on the **real file**, not the preview. Cache → reuse across runs.
 - **`SPEC.music.mode` (default `free`, overridable at skill invocation)** — the rights lane: `local` (user's own folder) · `free` (royalty-free APIs: YouTube Audio Library, Pixabay, Uppbeat, Free Music Archive, ccMixter — legal search+download; safe default for distribution) · `any` (full autonomous discovery+download incl. copyrighted via yt-dlp; user accepts responsibility — auto-downloading copyrighted audio is legally gray and jurisdiction-dependent, so this is a responsibility switch, not a baked-in default). Beat detection is **always local**.
 
@@ -529,7 +534,7 @@ Out of scope, documented: face recognition (faces are small/wet/blurred in actio
 
 **Reuse:** take the stack (YOLO/ByteTrack/PySceneDetect/madmom/essentia/ffmpeg), write our own glue (`reframe.py`) for our rules + color + stabilization. [auto-vertical-reframe](https://github.com/KazKozDev/auto-vertical-reframe) (MIT) is a reference/fallback (its path optimizer, but we don't bend its CLI: it can't do thirds-bias or our color).
 
-### 6.2 Composition = per-episode intent (canon ⊕ trend, overridable)
+### 6.2 Composition = per-episode intent (canon, overridable)
 
 Composition is a **default, not a law**. Each episode gets `composition` + `grid` + `motion`:
 
@@ -557,7 +562,12 @@ v1 classifier (`lib/motion.py`): lateral = net |dx| ≥ 15% of source width AND 
 
 Defaults from shot-type (overridable): action-follow→`lead`+`thirds` · establishing/atmospheric/wade→`center` · anything you flag→`break`.
 
-### 6.3 Rules = classic canon ⊕ trend lean
+### 6.3 Rules = classic canon (the trend lean is removed)
+
+**Removed 2026-10-20 (backlog U1).** A trend study found no platform promising a reach gain for a trending sound or format and the one test with statistics finding none; a trend's median life is about five days and regional, shorter than this cache's TTL; and no legal machine source exposes formats (TikTok Creative Center has no API and its terms forbid scraping). `style_lean` was read by no code and `trend_flavor` was judged with no source, so both went too. The one piece kept is the rights half of §5.14 — a music-less delivery so a licensed sound is attached in the app — filed as backlog U3.
+
+The original text:
+
 
 - **Base — `references/editing-canon.md`** (in the skill): thirds, headroom, lead room, the 180° rule, cut-on-action, match cut, J/L cuts, continuity, contrast. Read by edit-plan, process-episode, the checks.
 - **Trend layer — `TRENDS.md`** (composition section): current deviations (center punch-ins, jump cuts, extreme crops, whip transitions, hook patterns, text style).
@@ -648,7 +658,12 @@ See [the layouts design](2026-07-10-layouts-design.md) for the geometry, the
 
 ---
 
-## 8. Trend sources (default, overridable)
+## 8. Trend sources — removed
+
+**Removed 2026-10-20 (backlog U1).** A trend study found no platform promising a reach gain for a trending sound or format and the one test with statistics finding none; a trend's median life is about five days and regional, shorter than this cache's TTL; and no legal machine source exposes formats (TikTok Creative Center has no API and its terms forbid scraping). `style_lean` was read by no code and `trend_flavor` was judged with no source, so both went too. The one piece kept is the rights half of §5.14 — a music-less delivery so a licensed sound is attached in the app — filed as backlog U3.
+
+The original text:
+
 
 The user is unsure where to look → a proposed default, layered, cached in `TRENDS.md` (TTL 7–10d):
 
@@ -721,7 +736,7 @@ Numbers make the mandatory checks **automatic** rather than eyeballed. Against t
 - **whip / match-cut** — a couple of dynamic transitions for energy/continuity.
 - **J/L audio cuts** — audio leads/lags the picture across a cut.
 
-The palette is a floor to build from, not a ceiling — `TRENDS.md` can add more, the editor can override. `reel-final-check` doesn't fail a reel for using or not using any of these; it only flags jarring/overused transitions.
+The palette is a floor to build from, not a ceiling — the editor can override. `reel-final-check` doesn't fail a reel for using or not using any of these; it only flags jarring/overused transitions.
 
 **Nice-to-have:**
 - **Speed-ramp to beat**: ramped slow-mo timed to the drop (extends the slow-mo palette item).

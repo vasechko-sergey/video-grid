@@ -95,5 +95,6 @@ fetch — Lock it directly.
 
 - **A local folder** the user already has → **music-match** (the `local` lane), not this.
 - **Writing `MUSIC.json`** → `beats --auto-start` (step 5), not this skill.
-- **Trend-sound presence** in the ranking → deferred with 5.4 trend-scan; sourcing ranks
-  by mood, or by the catalog's own popularity with `--popular`.
+- **"Trending" sounds** → not a lane: trend scanning was removed on 2026-10-20. Sourcing
+  ranks by mood, or by the catalog's own popularity with `--popular` — call that
+  "popular", never "trending".

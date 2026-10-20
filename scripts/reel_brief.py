@@ -15,7 +15,7 @@ from scripts.lib.spec import Spec
 
 def build_spec(project_path: str, *, length_s: float, mood: str, hook: str,
                reel_count: int = 1, music: str = "auto", music_mode: str = "free",
-               style_lean: str = "balanced", platform: str = "", text: str = "",
+               platform: str = "", text: str = "",
                ending: str = "", cast: tuple = (), notes: str = "",
                tone_bias: tuple | None = None, cast_share: dict | None = None,
                asl: tuple | None = None, music_known: bool = False) -> Spec:
@@ -39,7 +39,7 @@ def build_spec(project_path: str, *, length_s: float, mood: str, hook: str,
         platform = ""
     return Spec(canvas=cfg.canvas, length_s=length_s, mood=mood, hook=hook,
                 reel_count=reel_count, music=music, music_mode=music_mode,
-                style_lean=style_lean, platform=platform, text=text,
+                platform=platform, text=text,
                 ending=ending, cast=tuple(cast), notes=notes, tone_bias=tone_bias,
                 cast_share=cast_share, asl=asl, music_known=music_known)
 
@@ -95,9 +95,8 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--music-mode", default="free", help="local / free (default) / any — "
                    "the LICENCE lane only")
     b.add_argument("--music-known", action="store_true",
-                   help="the brief wants a known track (a hit, a trend), not just one that "
+                   help="the brief wants a known track (a hit, a popular song), not just one that "
                         "fits the mood — music_find then searches and sorts by popularity")
-    b.add_argument("--style-lean", default="balanced", help="classic / balanced (default) / trend")
     b.add_argument("--platform", default="",
                    help="the app: reels/tiktok/shorts, or its own name ('Instagram Reels', "
                         "'YouTube Shorts'); stored as the safe zone it resolves to, refused "
@@ -132,7 +131,7 @@ def main() -> None:
     tone_bias = tuple(float(v) for v in a.tone_bias.split(",")) if a.tone_bias else None
     spec = build_spec(a.project, length_s=a.length, mood=a.mood, hook=a.hook,
                       reel_count=a.reel_count, music=a.music, music_mode=a.music_mode,
-                      style_lean=a.style_lean, platform=a.platform, text=a.text,
+                      platform=a.platform, text=a.text,
                       ending=a.ending, cast=tuple(a.cast or ()), notes=a.notes,
                       tone_bias=tone_bias,
                       cast_share=parse_cast_share(a.cast_share, tuple(a.cast or ())),
