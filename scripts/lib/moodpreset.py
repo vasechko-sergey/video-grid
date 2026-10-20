@@ -259,8 +259,10 @@ def evaluate(available: dict[str, int], used: dict[str, int], asl: float,
 
 def reconcile_band(preset: MoodPreset, carved: tuple | None,
                    asl_from: str = "preset") -> str | None:
-    """The preset's asl band against the band the footage was CARVED with.
-    None = compatible, or uncheckable; a string = the refusal's problem text.
+    """The asl band against the band the footage was CARVED with.
+    None = compatible, or uncheckable; a string = the problem text. The CALLER
+    decides what it costs (backlog U2): a band the brief chose (`asl_from="brief"`)
+    refuses the build; a mood's band is only a suggestion and is logged.
 
     Only the LOWER bound is checkable, and that asymmetry is the whole check
     (design 2026-09-03 §4). edit_plan joins adjacent windows through its span
@@ -290,13 +292,10 @@ def reconcile_band(preset: MoodPreset, carved: tuple | None,
                 f"brief, or re-scan with `--win-min {preset.asl[0]:g}`. (The CEILING is "
                 f"not checked: span merge joins adjacent windows, so a longer shot is "
                 f"always reachable.)")
-    return (f"preset {preset.name!r} wants shots from {preset.asl[0]:.1f}s, but the "
-            f"footage was carved with a {carved[0]:.1f}s floor, so nothing splits a "
-            f"window to manufacture one shorter than {carved[0]:.1f}s on demand (the "
-            f"one exception is a whole clip that was itself shorter than the floor, "
-            f"kept as a single undersized window rather than dropped — not a source "
-            f"a selection can rely on). Re-scan with `--win-min {preset.asl[0]:g}`, "
-            f"choose a mood whose band starts at or above {carved[0]:.1f}s, or drop "
-            f"--spec to run without a preset. (The preset's CEILING is not checked: "
-            f"span merge joins adjacent windows, so a longer shot is always "
-            f"reachable.)")
+    # A mood's band is a suggestion the brief offers (backlog U2, 2026-10-20): the caller
+    # LOGS this one and builds on, so it names the gap and how to close it, never a stop.
+    return (f"the {preset.name} mood suggests shots from {preset.asl[0]:.1f}s, but the "
+            f"footage was carved with a {carved[0]:.1f}s floor, so no shot can be cut "
+            f"shorter than {carved[0]:.1f}s (nothing splits a window). To reach the "
+            f"suggestion, re-scan with `--win-min {preset.asl[0]:g}`; to set a band of "
+            f"your own, answer the brief's shot-length question (--asl).")

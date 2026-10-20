@@ -165,6 +165,11 @@ honest, and it is paid once.
 
 ## §4 · C — the two bands are reconciled before the cut (R1.3)
 
+> **Amended 2026-10-20 (backlog U2, 0.24.0):** a mood preset's band is now a
+> *suggestion* the brief offers (`reel_brief hint`), never a rule. A preset floor
+> below the carved floor is logged and the build goes on; only a band the brief
+> chose (`SPEC.asl`, retro 2026-10-16 S5) still refuses as described below.
+
 There are now two bands: what the mood wants (`MoodPreset.asl`) and what
 was carved (`Footage.band`). `write_edit_plan` reconciles them before the
 variety gate.

@@ -199,3 +199,40 @@ def test_the_brief_refuses_a_platform_no_zone_answers_to(tmp_path):
     msg = str(e.value)
     assert "'facebook'" in msg and "generic zone" in msg
     assert "reels" in msg and "tiktok" in msg and "shorts" in msg
+
+
+# --- backlog U2: the shot-length question offers the mood's band as a suggestion ---
+
+def _footage_json(tmp_path, band):
+    from scripts.lib.footage import Footage, FootageClip
+    clip = FootageClip(source="a.mp4", dur=10.0, res=(1920, 1080), fps=30.0)
+    path = tmp_path / "FOOTAGE.json"
+    path.write_text(json.dumps(Footage(clips=[clip], band=band).to_dict()))
+    return str(path)
+
+
+def test_the_hint_offers_the_moods_band_and_the_carve_floor(tmp_path):
+    hint = reel_brief.shot_length_hint("calm and nostalgic",
+                                       _footage_json(tmp_path, (1.2, 4.0)))
+    preset = reel_brief.moodpreset.resolve("calm and nostalgic")
+    assert hint == {"mood": "calm and nostalgic", "preset": preset.name,
+                    "suggested_asl": list(preset.asl), "carved": [1.2, 4.0],
+                    "note": reel_brief.HINT_NOTE}
+
+
+def test_a_mood_nothing_matches_suggests_no_band(tmp_path):
+    hint = reel_brief.shot_length_hint("zzz", None)
+    assert hint["preset"] == "balanced" and hint["suggested_asl"] is None
+    assert hint["carved"] is None
+
+
+def test_a_footage_written_before_the_carve_band_reports_none(tmp_path):
+    assert reel_brief.shot_length_hint("nostalgic", _footage_json(tmp_path, None))["carved"] is None
+
+
+def test_the_hint_cli_prints_the_hint(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["reel_brief", "hint", "--mood", "nostalgic"])
+    with pytest.raises(SystemExit) as e:
+        reel_brief.main()
+    assert e.value.code == 0
+    assert json.loads(capsys.readouterr().out)["preset"] == "nostalgic"

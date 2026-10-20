@@ -62,7 +62,8 @@ episodes there). `start_offset` still applies, moving the merged in-point later.
 
 **Plan to the brief's shot-length band** — `SPEC.md`'s **Shot length** line
 (`SPEC.asl`) before the first build; the build log's `length band: the brief asks …`
-confirms it. With no brief band, the mood preset's is a default nobody chose. A window is only 1–4 s, so a shot
+confirms it. With no brief band, the mood's band is only a suggestion — it never
+refuses the build — so cut to whole actions. A window is only 1–4 s, so a shot
 inside a 6–10 s band IS a span; size every span to the whole action, not to the
 window grid. The build says so when the cut's ASL falls outside the band — re-plan
 before CP2 rather than show it (the second real run's first plan cut longboard rides
@@ -246,11 +247,11 @@ guessing a path.
    cut, not one row, so "the named episode" is never the fix — `variety-gap`'s
    remedy is in step 2 above; `constraint-violation`'s is in Editorial rules
    below (revise `selection.json` to satisfy the rule, or have the user
-   change/delete it in `CONSTRAINTS.json`); `length-band`'s is to re-scan
-   footage-intake with a lower `--win-min`, choose a mood whose `asl` band
-   starts at or above the carved floor the refusal names, or drop `--spec`
-   (never fired by the `balanced` fallback itself — an absent or unmatched
-   brief must not refuse a cut).
+   change/delete it in `CONSTRAINTS.json`); `length-band` fires only for a band
+   the brief chose (`SPEC.asl`) whose floor is under the carved floor, and its
+   remedy is to raise the brief's `--asl` floor or re-scan footage-intake with a
+   lower `--win-min`. A mood's band never fires it — since 2026-10-20 it is a
+   suggestion, logged as one.
 
 4. **Review.** Show the user `EDL.md`. On edits, revise `selection.json` and
    re-run step 3. `EDL.json` is regenerated every time — never patched by hand.

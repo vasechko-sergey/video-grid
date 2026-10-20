@@ -8,9 +8,15 @@ import argparse
 import json
 from pathlib import Path
 
-from scripts.lib import safezones
+from scripts.lib import moodpreset, safezones
+from scripts.lib.footage import Footage
 from scripts.lib.project import ProjectConfig
 from scripts.lib.spec import Spec
+
+HINT_NOTE = ("a suggestion, not a rule: offer the mood's band beside your own estimate of "
+             "how long one action runs in the contact sheets, ask the user, and record the "
+             "answer with --asl. The carve floor is the shortest shot the footage can give; "
+             "a band below it is refused at edit-plan.")
 
 
 def build_spec(project_path: str, *, length_s: float, mood: str, hook: str,
@@ -68,6 +74,22 @@ def parse_cast_share(values: list[str] | None, cast: tuple) -> dict | None:
     return share
 
 
+def shot_length_hint(mood: str, footage_path: str | None = None) -> dict:
+    """What the brief's shot-length question offers (backlog U2, 2026-10-20): the band
+    the mood suggests and the floor the footage was carved with. A suggestion only —
+    the mood used to impose its band, and the second real run's first plan cut
+    longboard rides to `nostalgic`'s 2–4 s. The action length itself is judged from the
+    contact sheets: FOOTAGE.json's windows are activity units, not a tiling, so runs of
+    them do not measure a ride. `suggested_asl` is None when no preset matched (the
+    `balanced` fallback is resolve()'s artifact, not a taste); `carved` is None without
+    a FOOTAGE.json or with one written before the band was recorded (2026-09-03)."""
+    preset = moodpreset.resolve(mood)
+    band = Footage.from_json(footage_path).band if footage_path else None
+    return {"mood": mood, "preset": preset.name,
+            "suggested_asl": None if preset.name == "balanced" else list(preset.asl),
+            "carved": None if band is None else list(band), "note": HINT_NOTE}
+
+
 def write_reel_brief(spec: Spec, out_dir: str) -> dict:
     """Write SPEC.json + SPEC.md together into out_dir. Returns a status dict."""
     Path(out_dir).mkdir(parents=True, exist_ok=True)
@@ -119,11 +141,22 @@ def build_parser() -> argparse.ArgumentParser:
                         "taste; pass 0,0,0 to keep the mood and leave colour alone. The "
                         "two are different answers (design 2026-09-03 §2)")
     b.add_argument("--out-dir", required=True, help="dir for SPEC.json + SPEC.md")
+    h = sub.add_parser("hint", help="what the shot-length question should offer",
+                       description="print the shot-length band the mood suggests and the "
+                                   "floor the footage was carved with — a suggestion to "
+                                   "offer the user before recording their answer with "
+                                   "build --asl, never a rule.")
+    h.add_argument("--mood", required=True, help="the reel's mood, as the user said it")
+    h.add_argument("--footage", default=None,
+                   help="FOOTAGE.json, for the carve floor (the shortest shot it can give)")
     return ap
 
 
 def main() -> None:
     a = build_parser().parse_args()
+    if a.cmd == "hint":
+        print(json.dumps(shot_length_hint(a.mood, a.footage), indent=2, ensure_ascii=False))
+        raise SystemExit(0)
     # Same shape as reframe's --rect: an omitted flag stays None, which Spec reads as
     # "not authored, take the preset's taste" — never a zero triple, which says the
     # opposite (design 2026-09-03 §2). A malformed triple fails loud in Spec's own
