@@ -1,6 +1,6 @@
 # video-grid
 
-**A folder of raw footage plus a few sentences in, a finished vertical reel out.**
+**A folder of raw footage and a few sentences in, a finished vertical reel out.**
 
 video-grid is a skill set for [Claude Code](https://claude.com/claude-code). You
 describe the video you want in plain language. Claude then works through the edit:
