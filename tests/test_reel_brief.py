@@ -246,3 +246,13 @@ def test_the_hint_reads_footage_through_its_validated_loader(tmp_path):
     bad.write_text(json.dumps({"clips": "not a list", "band": [1.2, 4.0]}))
     with pytest.raises(ValueError):
         reel_brief.shot_length_hint("nostalgic", str(bad))
+
+
+def test_the_brief_records_music_in_app(tmp_path):
+    spec = build_spec(_project(tmp_path), length_s=30, mood="calm", hook="h",
+                      music_in_app=True)
+    assert spec.music_in_app is True
+    a = reel_brief.build_parser().parse_args(
+        ["build", "--project", "p", "--length", "30", "--mood", "m", "--hook", "h",
+         "--out-dir", "o", "--music-in-app"])
+    assert a.music_in_app is True

@@ -431,7 +431,7 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
               rules: Constraints | None = None, platform: str = "",
               look: LookSpec | None = None, music: MusicSpec | None = None,
               brief_len: float | None = None, cast_share: dict | None = None,
-              asl_from: str = "preset") -> EDL:
+              asl_from: str = "preset", music_in_app: bool = False) -> EDL:
     """Assemble an EDL from a selection dict; when a pacing Spine is supplied, bind each
     episode to its slot (beat_slot + the FITTED dur, which is the episode's own length plus
     at most a half-beat snap — binding applies a fit, it does not re-time). Each selection
@@ -628,7 +628,7 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     return EDL(episodes=tuple(episodes), music=selection.get("music"), cast=cast,
                cap=cap if cap is not None else 3, platform=platform, look=resolved_look,
                target_dur=target, variety=variety, constraints=cons, outro=fit,
-               brief_len=brief_len, cast_share=cast_share)
+               brief_len=brief_len, cast_share=cast_share, music_in_app=music_in_app)
 
 
 def _log_screen_time(edl: EDL, *, spec_given: bool) -> None:
@@ -770,7 +770,8 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
                     aspect=tuple(cfg.canvas), preset=preset, rules=rules,
                     platform=plat, look=fallback_look,
                     music=ms, brief_len=sp.length_s if sp else None,
-                    cast_share=sp.cast_share if sp else None, asl_from=asl_from)
+                    cast_share=sp.cast_share if sp else None, asl_from=asl_from,
+                    music_in_app=sp.music_in_app if sp else False)
     _log_screen_time(edl, spec_given=sp is not None)
     c = edl.constraints
     if c is not None and not c.ok:

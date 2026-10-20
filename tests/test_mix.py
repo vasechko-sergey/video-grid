@@ -243,3 +243,71 @@ def test_a_custom_fade_reaches_both_ends(tmp_path, monkeypatch):
 def test_overlapping_fades_are_refused_with_the_authored_number(tmp_path):
     with pytest.raises(ValueError, match="1.5s"):
         mix.mix(_ms(tmp_path), str(tmp_path / "out"), 2.0, fade=1.5)
+
+
+# --- the music-less stem (design 2026-10-20 §2, backlog U3) ------------------
+
+_FADES = ["afade=t=in:st=0:d=0.02", "afade=t=out:st=5.0:d=1.0"]
+
+
+def test_the_music_less_graph_is_the_music_stem_with_the_track_muted():
+    """No key and no compressor; each layer keeps the 1/N weight the music mix's amix gave
+    it (N = 3: music + ambient + sfx), summed with normalize=0; the music stem's own gain,
+    not a second loudnorm; the same fades; a ceiling that does NOT auto-level."""
+    g = mix._nomusic_graph(True, True, 6.0, _FADES, 6.0)
+    assert g == ("[0:a]volume=0.200000[amb];[1:a]volume=0.333333[sfx];"
+                 "[amb][sfx]amix=inputs=2:duration=longest:normalize=0[nm];"
+                 "[nm]apad,atrim=0:6.0,volume=6.000dB,"
+                 "afade=t=in:st=0:d=0.02,afade=t=out:st=5.0:d=1.0,"
+                 "alimiter=limit=0.8414:level=0:latency=1[out]")
+    assert "sidechaincompress" not in g and "loudnorm" not in g
+
+
+def test_one_layer_keeps_the_weight_it_had_beside_the_music():
+    g = mix._nomusic_graph(True, False, -3.0, _FADES, 6.0)
+    assert g.startswith("[0:a]volume=0.300000[amb];[amb]apad,atrim=0:6.0,volume=-3.000dB,")
+
+
+def test_the_music_less_graph_refuses_an_empty_reel():
+    with pytest.raises(ValueError, match="silence"):
+        mix._nomusic_graph(False, False, 0.0, _FADES, 6.0)
+
+
+def _run_with_layout(calls):
+    """proc.run stand-in: loudnorm stats on stderr, and a 48 kHz stereo layout for the
+    one ffprobe _layout asks."""
+    def run(cmd, **k):
+        calls.append(cmd)
+        return _R(stdout=b"48000,2\n", stderr=_loudnorm_stderr())
+    return run
+
+
+def test_mix_renders_the_music_less_stem_with_the_music_stems_gain(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(mix.proc, "run", _run_with_layout(calls))
+    monkeypatch.setattr(mix, "_build_ambient", lambda segs, d: d + "/ambient.wav")
+    nm = str(tmp_path / "out" / "no_music.m4a")
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0, segments=[("s0.mp4", 6.0)],
+            without_music=nm)
+    last = " ".join(map(str, calls[-1]))
+    # _loudnorm_stderr measures -20 LUFS, so the music stem was lifted 6 dB: the same 6 dB
+    assert last.endswith(nm) and "volume=6.000dB" in last
+    assert "[0:a]volume=0.300000[amb]" in last and "sidechaincompress" not in last
+    assert "-ac 2 -ar 48000" in last                 # the music stem's layout, probed
+
+
+def test_a_reel_with_nothing_but_music_gets_a_silent_music_less_stem(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(mix.proc, "run", _run_with_layout(calls))
+    nm = str(tmp_path / "out" / "no_music.m4a")
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0, without_music=nm)
+    last = " ".join(map(str, calls[-1]))
+    assert "anullsrc" in last and "-t 6.0" in last and last.endswith(nm)
+
+
+def test_no_music_less_stem_unless_asked(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(mix.proc, "run",
+                        lambda cmd, **k: (calls.append(cmd), _R(stderr=_loudnorm_stderr()))[1])
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0)
+    assert not any("alimiter" in " ".join(map(str, c)) for c in calls)

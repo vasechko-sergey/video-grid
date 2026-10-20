@@ -303,9 +303,16 @@ class EDL:
                                      # own screen time beside them at CP2 (retro
                                      # 2026-10-16 S9). A report, never a gate. None =
                                      # the brief did not ask.
+    music_in_app: bool = False      # SPEC.music_in_app — deliver also writes the reel
+                                    # without the song and a note for attaching it in
+                                    # the app (design 2026-10-20). Omitted when False.
     provenance: dict = field(default_factory=dict)   # design §4; empty = unstamped
 
     def __post_init__(self) -> None:
+        if not isinstance(self.music_in_app, bool):
+            raise ValueError(f"EDL.music_in_app must be true or false, got "
+                             f"{self.music_in_app!r} — it comes from SPEC.music_in_app; "
+                             f"re-run edit_plan build --spec")
         eps = tuple(self.episodes)
         if not eps:
             raise ValueError("EDL.episodes is empty — an EDL needs at least one episode")
@@ -399,6 +406,7 @@ class EDL:
                    brief_len=d.get("brief_len"),
                    tone_target=tuple(d["tone_target"]) if d.get("tone_target") else None,
                    cast_share=d.get("cast_share"),
+                   music_in_app=d.get("music_in_app", False),
                    provenance=d.get(provenance.PROV_KEY) or {})
 
     @classmethod
@@ -435,6 +443,8 @@ class EDL:
              "tone_target": list(self.tone_target) if self.tone_target is not None else None}
         if self.cast_share is not None:    # absent when unasked: older EDLs stay byte-identical
             d["cast_share"] = dict(self.cast_share)
+        if self.music_in_app:              # absent when unasked, for the same reason
+            d["music_in_app"] = True
         if self.provenance:
             d[provenance.PROV_KEY] = dict(self.provenance)
         return d

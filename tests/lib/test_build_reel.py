@@ -1,5 +1,6 @@
 import dataclasses
 import json
+from pathlib import Path
 
 import pytest
 from scripts import build_reel
@@ -1154,3 +1155,60 @@ def test_a_fitted_outro_without_a_look_keeps_mixs_default_opening(tmp_path, monk
                 "rung": "no-gap", "moved": 0.0}
     got = _mix_kwargs(tmp_path, monkeypatch, rm)
     assert (got["fade"], got["fade_in"]) == (1.5, build_reel.mix._FADE)
+
+
+# --- music in the app: the music-less delivery and its note (design 2026-10-20) ---
+
+def _wire_in_app(monkeypatch, tmp_path, mixed, runs):
+    """_wire_music's world plus what the music-less arm touches: the mux (a fake proc.run
+    that writes its output file, so os.replace has something to move) and the digest."""
+    delivered = tmp_path / "out" / "REEL_v3.mp4"
+    delivered.parent.mkdir(parents=True)
+    delivered.write_bytes(b"reel")
+    monkeypatch.setattr(build_reel.assembly, "probe_stream", lambda p: _si())
+    monkeypatch.setattr(build_reel.assembly, "assemble", lambda *a, **k: None)
+    monkeypatch.setattr(build_reel.check_reel, "_probe_dur",
+                        lambda p: 3.0 if Path(p).name.startswith("c") else 6.0)
+    reports = [_passing(), _passing()]
+    monkeypatch.setattr(build_reel.check_reel, "run", lambda *a, **k: reports.pop(0))
+    monkeypatch.setattr(build_reel.mix, "mix",
+                        lambda mus, wd, dur, segments=None, ambient=True, sfx=False, **k:
+                        (mixed.append(k), "stem.m4a")[1])
+    monkeypatch.setattr(build_reel.deliver, "deliver", lambda *a, **k: str(delivered))
+
+    def fake_run(cmd, **k):
+        runs.append(cmd)
+        Path(cmd[-1]).write_bytes(b"muxed")
+    monkeypatch.setattr(build_reel.proc, "run", fake_run)
+    monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
+    return delivered
+
+
+def test_a_reel_for_the_app_also_ships_without_its_song_and_with_a_note(tmp_path, monkeypatch):
+    mixed, runs = [], []
+    delivered = _wire_in_app(monkeypatch, tmp_path, mixed, runs)
+    rm = dataclasses.replace(_rm_music(music=str(tmp_path / "MUSIC.json")), music_in_app=True)
+    res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "work"))
+    assert res["status"] == "delivered"
+    # the stem without the song was asked for alongside the music stem
+    assert mixed == [{"without_music": str(tmp_path / "work" / "audio_no_music.m4a")}]
+    nm = tmp_path / "out" / "no-music" / "REEL_v3.mp4"
+    note = tmp_path / "out" / "no-music" / "REEL_v3.sound.md"
+    assert res["no_music"] == str(nm) and res["sound_note"] == str(note)
+    assert nm.read_bytes() == b"muxed" and not list(nm.parent.glob(".*part*"))
+    mux = runs[-1]
+    assert mux[mux.index("-c") + 1] == "copy" and mux[mux.index("-map") + 1] == "0:v"
+    assert str(delivered) in mux
+    text = note.read_text()
+    assert "Start in the track | 0:00.0" in text and "| Cuts | 3.0 s |" in text
+    # the music-less file sits in a subfolder, so no delivery reader can mistake it
+    assert sorted(p.name for p in (tmp_path / "out").glob("REEL_v*")) == ["REEL_v3.mp4"]
+
+
+def test_a_reel_not_for_the_app_ships_exactly_as_before(tmp_path, monkeypatch):
+    mixed, runs = [], []
+    _wire_in_app(monkeypatch, tmp_path, mixed, runs)
+    res = build_reel.build_reel(_rm_music(music=str(tmp_path / "MUSIC.json")),
+                                str(tmp_path / "out"), str(tmp_path / "work"))
+    assert "no_music" not in res and mixed == [{}] and runs == []
+    assert not (tmp_path / "out" / "no-music").exists()

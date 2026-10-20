@@ -343,6 +343,9 @@ def _reel_manifest(mds: list[dict], results: list[dict], routes: list[str | None
                       # come from the cut, so it is the only one check_reel's length
                       # arithmetic cannot be circular about (design 2026-09-07 §4)
                       brief_len=edl.brief_len,
+                      # SPEC.music_in_app: the deliver arm also writes the reel without
+                      # the song and its sound note (design 2026-10-20)
+                      music_in_app=edl.music_in_app,
                       **extra)
     # The run's record, assembled where all three parts are in hand (design §6). The
     # override list is a DIFF of the effective check spec against a default one, so a

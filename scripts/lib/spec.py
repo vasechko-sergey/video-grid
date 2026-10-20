@@ -46,6 +46,11 @@ class Spec:
     # rights and the search returned niche artists (retro 2026-10-16 S8). music_find
     # reads it as --popular.
     music_known: bool = False
+    # The user will attach the licensed track inside the app (backlog U3): deliver then
+    # also writes the reel with the song removed and a note naming the track and where
+    # the reel's music starts in it (design 2026-10-20). A `yt-dlp` track baked into an
+    # upload can be muted; the in-app sound carries the licence.
+    music_in_app: bool = False
 
     def __post_init__(self) -> None:
         if not (isinstance(self.canvas, (tuple, list)) and len(self.canvas) == 2
@@ -99,6 +104,13 @@ class Spec:
                 f"{self.music_mode!r}: the free (Creative-Commons) and local lanes have no "
                 f"catalog of hits to search. Pass --music-mode any with --music-known, or "
                 f"drop --music-known")
+        if not isinstance(self.music_in_app, bool):
+            raise ValueError(f"Spec.music_in_app must be true or false — will the user attach "
+                             f"the track in the app? Got {self.music_in_app!r}")
+        if self.music_in_app and self.music == "none":
+            raise ValueError("Spec.music_in_app asks for a note naming the track to attach in "
+                             "the app, but music is 'none' — there is nothing to attach. Drop "
+                             "--music-in-app, or give the reel music")
         if self.asl is not None:
             if not (isinstance(self.asl, (tuple, list)) and len(self.asl) == 2
                     and all(isinstance(v, (int, float)) and not isinstance(v, bool)
@@ -140,7 +152,8 @@ class Spec:
             platform=opt("platform", ""), text=opt("text", ""),
             ending=opt("ending", ""), cast=opt("cast", ()), notes=opt("notes", ""),
             tone_bias=d.get("tone_bias"), cast_share=d.get("cast_share"),
-            asl=d.get("asl"), music_known=opt("music_known", False))
+            asl=d.get("asl"), music_known=opt("music_known", False),
+            music_in_app=opt("music_in_app", False))
 
     def to_dict(self) -> dict:
         return {"canvas": list(self.canvas), "length_s": self.length_s,
@@ -152,7 +165,7 @@ class Spec:
                 "tone_bias": None if self.tone_bias is None else list(self.tone_bias),
                 "cast_share": None if self.cast_share is None else dict(self.cast_share),
                 "asl": None if self.asl is None else list(self.asl),
-                "music_known": self.music_known}
+                "music_known": self.music_known, "music_in_app": self.music_in_app}
 
     @classmethod
     def from_json(cls, path: str | Path) -> "Spec":
@@ -187,7 +200,8 @@ class Spec:
             f"- **Tone bias:** {tone_bias}",
             f"- **Hook:** {self.hook}",
             f"- **Music:** {self.music} (mode: {self.music_mode}"
-            f"{', known tracks' if self.music_known else ''})",
+            f"{', known tracks' if self.music_known else ''}"
+            f"{', attached in the app' if self.music_in_app else ''})",
             f"- **Platform:** {self.platform or '–'}",
             f"- **Cast:** {cast}",
             f"- **Cast share:** {share_line(self.cast_share) if self.cast_share else '–'}",

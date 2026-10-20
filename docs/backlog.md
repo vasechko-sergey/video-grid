@@ -36,11 +36,7 @@ Rows S1–S17 come from the second real run — evidence and measurements in
 
 ## P2 — friction
 
-S14–S17 closed 2026-10-19 (0.21.2, 0.22.0), see the archive.
-
-| | Item | Size | Source |
-|---|------|------|--------|
-| ○ | **U3 · A music-less delivery plus a sound note** — a second delivery with the track removed and the ambient bed re-mixed (today it is ducked against the music, so cutting the music leaves it pumping to a song that is not there, and −14 LUFS would lift wind noise), plus a note naming the track, the start offset and the length, so the licensed sound is attached in the app. Why: rights, not trends — a `yt-dlp` track baked into the file can be muted; the second run's reel is exactly that case. This is the parked §5.14 row. | M | user, 2026-10-20 |
+**P2 is empty** — S14–S17 closed 2026-10-19 (0.21.2, 0.22.0), U3 on 2026-10-20 (0.25.0), see the archive.
 
 ## Photos — asked 2026-10-20
 

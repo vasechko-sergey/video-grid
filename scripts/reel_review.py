@@ -12,7 +12,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from scripts.lib import assembly, prompts, provenance, runlayout
+from scripts.lib import assembly, fetch, prompts, provenance, runlayout
 from scripts.lib.look import LookSpec
 from scripts.lib.models import MusicSpec, ReelManifest
 from scripts.lib.review import Finding, Review
@@ -147,12 +147,8 @@ def _spec_block(reel_dir: Path, intent: str) -> str:
 def _track_name(track: str) -> str:
     """The track's identity from music_fetch's record beside the file it downloaded,
     else the file's own name — which is still true, just less said."""
-    meta = Path(track).with_suffix(".json")
-    try:
-        t = json.loads(meta.read_text()) if meta.is_file() else None
-    except json.JSONDecodeError:
-        t = None
-    if isinstance(t, dict) and t.get("artist") and t.get("title"):
+    t = fetch.track_meta(track)
+    if t is not None:
         return (f"{t['artist']} — {t['title']} ({t.get('source', '?')}, licence: "
                 f"{t.get('license', '?')})")
     return f"{Path(track).name} (no music_fetch record beside it)"

@@ -290,3 +290,22 @@ def test_a_brief_written_before_style_lean_was_removed_still_loads():
     d["style_lean"] = "trend"
     s = Spec.from_dict(d)
     assert "style_lean" not in s.to_dict() and not hasattr(s, "style_lean")
+
+
+# --- backlog U3: music attached in the app ---
+
+def test_music_in_app_is_recorded_and_said_in_the_brief():
+    s = Spec(**{**GOOD, "music_in_app": True})
+    assert Spec.from_dict(s.to_dict()).music_in_app is True
+    assert "attached in the app" in s.to_markdown()
+    assert "attached in the app" not in Spec(**GOOD).to_markdown()
+
+
+def test_music_in_app_with_no_music_is_refused():
+    with pytest.raises(ValueError, match="nothing to attach"):
+        Spec(**{**GOOD, "music": "none", "music_in_app": True})
+
+
+def test_music_in_app_must_be_a_bool():
+    with pytest.raises(ValueError, match="music_in_app"):
+        Spec(**{**GOOD, "music_in_app": "yes"})

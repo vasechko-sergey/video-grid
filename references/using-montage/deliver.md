@@ -23,6 +23,16 @@ in `draft.mp4` and in every check that ran before this point — Checkpoint
 3, right here, is the first place anyone actually sees it (design
 2026-08-13 §11.1).
 
+**Music in the app (`SPEC.music_in_app`).** When the brief recorded it, the
+delivery also writes `deliveries/no-music/REEL_v{n}.mp4` — the same picture,
+stream-copied, with the song removed and the natural sound and whooshes kept —
+and `deliveries/no-music/REEL_v{n}.sound.md`, naming the track, where the reel's
+music starts in it and the cut times. At CP3 show the user both, and say the one
+thing the note cannot settle: the start was measured on the downloaded file, so
+the app's version may sit a little earlier or later — the first cut should land
+on a beat (design 2026-10-20). The music-less file is not attested; `check_reel`
+judged the version with the music.
+
 **Authored bars (`GATES.json`) are shown here, not decided here.** Phase 2 judges
 the reel by the set phase 1b froze into `EPISODES.json` and never re-reads
 `GATES.json`: that set is the record of which bars judged these clips, and

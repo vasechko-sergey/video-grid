@@ -1958,3 +1958,13 @@ def test_a_track_with_no_bar_grid_still_ends_on_a_beat(capsys):
     assert fit.grid == "beat" and fit.rung in ("gap", "no-gap") and fit.line in beats
     assert sum(e.play_dur() for e in out) == pytest.approx(fit.reel_dur)
     assert "beat grid" in capsys.readouterr().err
+
+
+def test_the_briefs_music_in_app_reaches_the_edl(tmp_path):
+    """Backlog U3: SPEC.music_in_app rides the same pipe platform and brief_len ride, so
+    a re-cut keeps it without a flag to forget (design 2026-10-20 §1)."""
+    fp, sp, pp = _write_inputs(tmp_path, _plain_selection())
+    result = edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path),
+                                       spec=_write_spec(tmp_path, music_in_app=True))
+    assert result["status"] == "written", result
+    assert EDL.from_json(str(tmp_path / "EDL.json")).music_in_app is True

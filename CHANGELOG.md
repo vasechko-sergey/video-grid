@@ -10,6 +10,15 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.25.0 — 2026-10-20
+
+- **A reel can ship without its song, for attaching the music in the app.** A brief
+  recorded with `--music-in-app` makes the delivery also write
+  `deliveries/no-music/REEL_v{n}.mp4` — the same picture, the natural sound and
+  whooshes kept, not ducked and not pushed up to −14 LUFS — and a `.sound.md` note
+  naming the track, where the reel's music starts in it, and the cut times to check
+  it by ear.
+
 ## 0.24.0 — 2026-10-20
 
 - **Shot length is a suggestion from the mood, decided in the brief.** The new

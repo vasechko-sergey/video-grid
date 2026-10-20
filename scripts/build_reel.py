@@ -13,12 +13,13 @@ rather than risk replaying it against the wrong coordinate system
 import argparse
 import dataclasses
 import json
+import os
 import sys
 from pathlib import Path
 
 from scripts import check_reel, color_measure, deliver, mix, probe, process_episode
-from scripts.lib import (assembly, color, color_fidelity, episode_qc as qc_lib,
-                         gates as gates_lib, reel_orchestration)
+from scripts.lib import (assembly, color, color_fidelity, episode_qc as qc_lib, fetch, ffbin,
+                         gates as gates_lib, proc, provenance, reel_orchestration, soundnote)
 from scripts.lib.models import ReelManifest, MusicSpec, REEL_H264
 from scripts.lib.outro import OutroFit
 
@@ -73,6 +74,31 @@ def _predict(rm: ReelManifest) -> list:
             _log(f"build_reel: no grade prediction for {e.clip}: {ex}")
             out.append(None)
     return out
+
+
+def _deliver_without_music(delivered: str, stem: str, music: MusicSpec,
+                           rm: ReelManifest) -> dict:
+    """deliveries/no-music/REEL_v{n}.<ext> and its sound note (design 2026-10-20 §3/§4).
+
+    A SUBFOLDER, not a sibling: every delivery reader keys on REEL_v* in the deliveries
+    bucket, and a sibling with the same number would read as an unattested delivery and
+    could be taken for the newest one. The picture is the delivered file's own video
+    stream, copied, so it is byte-identical to the attested reel's."""
+    src = Path(delivered)
+    nm_dir = src.parent / "no-music"
+    nm_dir.mkdir(parents=True, exist_ok=True)
+    target = nm_dir / src.name
+    part = nm_dir / f".{src.stem}.part{src.suffix}"      # the extension tells ffmpeg the muxer
+    proc.run([ffbin.ffmpeg(), "-y", "-i", str(src), "-i", stem, "-map", "0:v", "-map", "1:a",
+              "-c", "copy", "-shortest", "-movflags", "+faststart", str(part)])
+    os.replace(part, target)
+    durs = [check_reel._probe_dur(e.clip) for e in rm.episodes]
+    cuts = [sum(durs[:k + 1]) for k in range(len(durs) - 1)]
+    note = nm_dir / f"{src.stem}.sound.md"
+    note.write_text(soundnote.render(music, fetch.track_meta(music.track), src.name,
+                                     provenance.digest_file(str(src)),
+                                     check_reel._probe_dur(str(src)), cuts, rm.platform))
+    return {"no_music": str(target), "sound_note": str(note)}
 
 
 def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None = None) -> dict:
@@ -190,6 +216,10 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                     # fit's 1.5 and held full level 0.7s past the line (retro 2026-10-16 S18).
                     fade_kw = {"fade_in": mix._FADE, **fade_kw,
                                "fade": OutroFit.from_dict(rm.outro).fade}
+                if rm.music_in_app:
+                    # the same reel with the track muted, from the same beds and the same
+                    # measurement as the stem above (design 2026-10-20 §2)
+                    fade_kw["without_music"] = str(Path(work_dir) / "audio_no_music.m4a")
                 audio = mix.mix(music, work_dir, check_reel._probe_dur(master),
                                 segments=segments, ambient=rm.ambient, sfx=rm.sfx, **fade_kw)
                 continue                             # need_assemble stays False — clips unchanged, no re-assemble
@@ -226,8 +256,12 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                                   scratch_dir=work_dir,   # build/reel — never the deliveries bucket
                                   audio=audio, titles=titles, platform=rm.platform,
                                   look=rm.look, run_provenance=prov)
-            return {"status": "delivered", "output": out, "report": report.to_dict(),
-                    "reprocessed": sorted(reprocessed)}
+            result = {"status": "delivered", "output": out, "report": report.to_dict(),
+                      "reprocessed": sorted(reprocessed)}
+            if rm.music_in_app and music is not None:
+                result.update(_deliver_without_music(
+                    out, str(Path(work_dir) / "audio_no_music.m4a"), music, rm))
+            return result
         if action.kind == "escalate":
             return {"status": "stop_and_report", "finding": action.finding,
                     "report": report.to_dict(), "attempts": dict(attempts)}

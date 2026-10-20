@@ -2558,3 +2558,16 @@ def test_a_400_digit_integer_is_a_value_error_and_not_an_overflow():
         ReelCheckSpec(target_dur=1.0, beat_tol=huge)
     with pytest.raises(ValueError, match=r"^ReelManifest\.gates entry 'loudness_tol'"):
         _reel_with(gates={"loudness_tol": {"value": huge, "why": "x"}})
+
+
+# --- backlog U3: music attached in the app rides the reel manifest ---
+
+def test_reel_manifest_carries_music_in_app_and_omits_it_when_unasked():
+    rm = m.ReelManifest.from_dict(_reel_dict(music="MUSIC.json", music_in_app=True))
+    assert rm.music_in_app is True and rm.to_dict()["music_in_app"] is True
+    assert "music_in_app" not in m.ReelManifest.from_dict(_reel_dict()).to_dict()
+
+
+def test_reel_manifest_refuses_music_in_app_without_music():
+    with pytest.raises(ValueError, match="edl_to_reel --music"):
+        m.ReelManifest.from_dict(_reel_dict(music_in_app=True))

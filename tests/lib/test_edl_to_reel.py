@@ -2171,3 +2171,21 @@ def test_the_cut_summary_names_the_track_and_its_offset(tmp_path):
     (tmp_path / "bad.json").write_text("{")
     assert "music: bad.json (unreadable)" in edl_to_reel._cut_summary(
         edl, 45.66, str(tmp_path / "bad.json"))
+
+
+# --- backlog U3: EDL.music_in_app -> ReelManifest.music_in_app (design 2026-10-20 §1) ---
+
+def test_the_manifest_carries_music_in_app_off_the_edl(monkeypatch, tmp_path):
+    _wire(monkeypatch)
+    music = tmp_path / "MUSIC.json"
+    music.write_text("{}")
+    edl_path = _edl_file(tmp_path, episodes=[_plain_episode().to_dict()], music_in_app=True)
+    rm, stop = edl_to_reel._build_manifest(edl_path, _project(tmp_path), str(tmp_path),
+                                           str(tmp_path / "w"), str(tmp_path / "out"),
+                                           music=str(music))
+    assert stop is None and rm.music_in_app is True
+
+
+def test_music_in_app_without_music_is_refused_with_the_flag_to_pass(monkeypatch, tmp_path):
+    with pytest.raises(ValueError, match="edl_to_reel --music"):
+        _manifest_for(monkeypatch, tmp_path, [_plain_episode()], music_in_app=True)
