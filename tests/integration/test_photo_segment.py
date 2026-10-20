@@ -5,6 +5,8 @@ is decoded and compared against what was drawn, and the move is compared frame b
 against zoompan's — the premise U6 was filed on."""
 import json
 
+import cv2
+
 import numpy as np
 import pytest
 from PIL import Image
@@ -149,3 +151,26 @@ def test_the_float_warp_rides_a_smooth_curve_where_zoompan_stair_steps(tmp_path)
     print(f"wobble off a smooth curve: float warp {warp:.3f} px, zoompan {zoompan:.3f} px")
     assert warp < 0.06
     assert zoompan > 0.2 and zoompan > 5 * warp
+
+
+def test_the_level_change_is_blended_not_a_jump_in_sharpness(tmp_path):
+    """The re-review's Minor: a hard switch between pyramid levels read as one frame
+    suddenly sharper than the last (Laplacian variance 719 -> 2269 between neighbours).
+    Blended, sharpness changes smoothly frame to frame. Measured 2026-10-20 on this
+    fixture: 1.28 blended, 6.40 with the hard switch put back."""
+    st = _texture(1600, 900)
+    n, W, H = 60, 320, 180
+    pl = kenburns.plan(st.dims, (16, 9), 1.0, None, "center", "thirds", StillSpec(1.0, 0.3), n)
+    out = tmp_path / "big.mp4"
+    still.render(st, pl.frames, (W, H), "30/1", str(out))
+    sharp = [float(cv2.Laplacian(f.astype(np.float64), cv2.CV_64F).var())
+             for f in _gray_frames(out, W, H)]
+    jumps = [max(a, b) / min(a, b) for a, b in zip(sharp, sharp[1:])]
+    print(f"worst frame-to-frame sharpness ratio {max(jumps):.2f}")
+    assert max(jumps) < 2.0
+
+
+def _gray_frames(path, w, h) -> np.ndarray:
+    raw = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", str(path), "-f", "rawvideo",
+                    "-pix_fmt", "gray", "-"]).stdout
+    return np.frombuffer(raw, np.uint8).reshape(-1, h, w).astype(np.int16)

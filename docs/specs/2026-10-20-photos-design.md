@@ -100,14 +100,21 @@ on a photo source, and a photo refuses `zoom`, `pan`, `ramp`, `stabilize`, `hero
   sets no limit (nothing can give it back); on every other side the tightest frame keeps
   a gap of `SUBJECT_MARGIN = 0.05` of the held box's size or half the gap the base frame
   had, whichever is smaller — so a head 100 px under the top of the photo still lets the
-  frame move, and one touching it does not. A move that would break this is shortened,
-  and the sidecar's note says so; a base frame that cuts the subject is noted as such.
+  frame move, and one with no room left inside the picture does not. A side within
+  `PHOTO_EDGE = 0.5 %` of the photo's own border is cut, not held: a detector box stops
+  at the image edge, so the person goes on past it (the re-review found a selfie with
+  the head at the top edge, and a person at the left edge, each freezing the move). A
+  move that would break the rule is shortened — or, when no tighter frame works,
+  cancelled — and the sidecar's note says which; a base frame or a photo edge that cuts
+  the subject is noted as such.
 
 `lib/still.render` draws it: the raster is pre-scaled once (`INTER_AREA`) so the
 tightest frame lands at 1:1 — the pre-scale never throws away detail the tightest frame
 could show — and a frame that would sample more than `MAX_DENSITY = 2` source pixels per
-output pixel (an authored 1.0 → 0.3) takes a half-size level instead, since a cubic warp
-does no area filtering and would shimmer. Each output frame is one `cv2.warpAffine` with
+output pixel (an authored 1.0 → 0.3) is drawn from half-size levels instead, since a
+cubic warp does no area filtering and would shimmer — blended between the two levels
+around its density, because a hard switch read as one frame suddenly sharper than the
+last (Laplacian variance up 6.4× between neighbours; 1.28× blended). Each output frame is one `cv2.warpAffine` with
 a float matrix (`INTER_CUBIC`), and the frames stream as `rgb24` into one x264 encode
 (`proc.feed`, the stdin twin of `proc.run`, with the same argv lint).
 
@@ -123,7 +130,10 @@ window is cut into, on the video segment's contract:
   review measured a landscape photo first setting a 1600×2844 reel and the 1080p video
   beside it upscaled 2.6×. So under `native` a photo is sized to the canvas the first
   video episode delivers at, or, in a reel of photos alone, to a fill crop of the first
-  photo;
+  photo. That canvas is written into the segment's record (`canvas_px`), and reframe lays
+  a still out on it rather than re-deriving one from the segment's width: 606 ×
+  even(606·16/9) is 606×1076, not the video's 606×1080, and the reel would have squashed
+  every video to match;
 - **rate and timebase**: the EDL's first video segment's exact `r_frame_rate` and track
   timescale (30/1 when there is no video), because `build_reel` takes the reel's rate from
   the first episode and `assemble` would otherwise conform;
@@ -170,8 +180,9 @@ only when true, so existing sidecars do not change):
   safe-zone and key-action checks skip photo episodes by name.
 - The subject is a person detector's union box. A photo of a dog, a dish or a landmark has
   no subject and gets a centred push; a crowd's union can be most of the frame.
-- `PHOTO_HOLD`, `PHOTO_ROOM`, `FILL_KEEP`, `SUBJECT_KEEP`, `SUBJECT_MARGIN` and the
-  default move are conventions from the research, not measured on a real photo run.
+- `PHOTO_HOLD`, `PHOTO_ROOM`, `FILL_KEEP`, `SUBJECT_KEEP`, `SUBJECT_MARGIN`,
+  `HOLD_TOP`, `PHOTO_EDGE` and the default move are conventions from the research, not
+  measured on a real photo run.
 - Photo scoring: `motion` 0 ranks a photo lowest on motion and `shake` 0 highest on
   stability, so a photo lands mid-pool; choosing photos among video is U8, holding them on
   the music grid U7, Live Photos U9.

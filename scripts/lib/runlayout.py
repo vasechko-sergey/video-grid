@@ -11,6 +11,7 @@ So the run gets its own folder, `<footage_root>/montage/`, and the two stages
 that know the footage root and write into a caller-chosen directory refuse to
 be pointed at the footage root itself.
 """
+import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +23,22 @@ VIDEO_EXTS = frozenset({".mp4", ".mov", ".m4v", ".avi"})
 PHOTO_EXTS = frozenset({".jpg", ".jpeg", ".png", ".heic", ".heif"})
 FOOTAGE_EXTS = VIDEO_EXTS | PHOTO_EXTS   # what intake scans for, and so what marks a
                                          # directory as footage
+
+
+STILL_SIDECAR = ".still.json"   # beside a rendered photo segment: how extract cut it
+
+
+def still_canvas(segment: str | Path) -> tuple[int, int] | None:
+    """The canvas (w, h) a photo segment was sized for, read off the record extract wrote
+    beside it, or None when there is no record (a hand-made still manifest). reframe
+    lays the segment out on THIS canvas, not on one re-derived from the segment's width:
+    under a native delivery the two differ by the evening of a 9:16 crop (606x1076
+    against the video's 606x1080), and the reel would squash every video to match."""
+    rec = Path(segment).with_suffix(STILL_SIDECAR)
+    if not rec.is_file():
+        return None
+    sized = json.loads(rec.read_text()).get("canvas_px")
+    return None if sized is None else (int(sized[0]), int(sized[1]))
 
 
 def is_photo(name: str | Path) -> bool:

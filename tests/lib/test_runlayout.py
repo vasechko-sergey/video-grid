@@ -227,3 +227,12 @@ def test_intake_and_the_refusal_share_one_extension_list():
     ("dir/IMG_2.heic", True)])
 def test_is_photo_reads_the_extension_only(name, photo):
     assert runlayout.is_photo(name) is photo
+
+
+def test_still_canvas_reads_the_record_beside_a_photo_segment(tmp_path):
+    seg = tmp_path / "ep0_raw.mp4"
+    assert runlayout.still_canvas(seg) is None                     # no record: a hand-made still
+    seg.with_suffix(runlayout.STILL_SIDECAR).write_text('{"frames": 30}')
+    assert runlayout.still_canvas(seg) is None                     # a record from before the field
+    seg.with_suffix(runlayout.STILL_SIDECAR).write_text('{"canvas_px": [606, 1080]}')
+    assert runlayout.still_canvas(seg) == (606, 1080)

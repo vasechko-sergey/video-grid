@@ -8,6 +8,7 @@ render()  a planned move (lib/kenburns) warped in float and streamed into one x2
           encode on the video segment's contract (§4).
 """
 import io
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -170,28 +171,40 @@ def render(still: Still, frames: list[Rect], out_dims: tuple[int, int], rate: st
                           interpolation=cv2.INTER_AREA)
     levels = [base]
 
-    def level_for(r: Rect) -> np.ndarray:
-        """The finest level that samples this frame at no more than MAX_DENSITY source
-        pixels per output pixel: an authored 1.0->0.3 move would otherwise sample its
-        widest frame at 3.3:1, and a cubic warp does no area filtering — it shimmers."""
-        k = 0
-        while r.w * levels[k].shape[1] / sw / W > MAX_DENSITY and min(levels[k].shape[:2]) > 2:
-            if k + 1 == len(levels):
-                lv = levels[k]
-                levels.append(cv2.resize(lv, (lv.shape[1] // 2, lv.shape[0] // 2),
-                                         interpolation=cv2.INTER_AREA))
-            k += 1
+    def level(k: int) -> np.ndarray:
+        while len(levels) <= k:
+            lv = levels[-1]
+            levels.append(cv2.resize(lv, (max(1, lv.shape[1] // 2), max(1, lv.shape[0] // 2)),
+                                     interpolation=cv2.INTER_AREA))
         return levels[k]
+
+    def warp(src: np.ndarray, r: Rect) -> np.ndarray:
+        fx, fy = src.shape[1] / sw, src.shape[0] / sh
+        ax, ay = r.w * fx / W, r.h * fy / H
+        m = np.array([[ax, 0.0, r.x * fx + 0.5 * ax - 0.5],
+                      [0.0, ay, r.y * fy + 0.5 * ay - 0.5]], dtype=np.float64)
+        return cv2.warpAffine(src, m, (W, H), flags=cv2.INTER_CUBIC | cv2.WARP_INVERSE_MAP,
+                              borderMode=cv2.BORDER_REPLICATE)
+
+    def frame(r: Rect) -> np.ndarray:
+        """Past MAX_DENSITY source pixels per output pixel a cubic warp does no area
+        filtering and shimmers, so the frame is drawn from half-size levels — blended
+        between the two around its density (a mipmap's trilinear step), because a hard
+        switch read as a jump in sharpness between two frames (the re-review measured
+        Laplacian variance 719 -> 2269 across one switch)."""
+        lod = math.log2(r.w * base.shape[1] / sw / W / MAX_DENSITY)
+        if lod <= 0:
+            return warp(base, r)
+        k, frac = int(lod), lod - int(lod)
+        a = warp(level(k), r)
+        if frac < 1e-3:
+            return a
+        b = warp(level(k + 1), r)
+        return cv2.addWeighted(a, 1.0 - frac, b, frac, 0.0)
 
     def chunks():
         for r in frames:
-            src = level_for(r)
-            fx, fy = src.shape[1] / sw, src.shape[0] / sh
-            ax, ay = r.w * fx / W, r.h * fy / H
-            m = np.array([[ax, 0.0, r.x * fx + 0.5 * ax - 0.5],
-                          [0.0, ay, r.y * fy + 0.5 * ay - 0.5]], dtype=np.float64)
-            yield cv2.warpAffine(src, m, (W, H), flags=cv2.INTER_CUBIC | cv2.WARP_INVERSE_MAP,
-                                 borderMode=cv2.BORDER_REPLICATE).tobytes()
+            yield frame(r).tobytes()
 
     cmd = [ffbin.ffmpeg(), "-y", "-v", "error",
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-framerate", rate,

@@ -113,6 +113,8 @@ def test_the_gap_kept_is_the_margin_or_half_the_room_whichever_is_smaller():
         (1300 - 750) / 1300)
     touching = Rect(500, 0, 1000, 1000)             # no room at all: no move keeps it
     assert kenburns.hold_scale(base, (1000.0, 500.0), touching) == 1.0
+    # ...unless the photo's own edge is what it touches: then it is cut, not held
+    assert kenburns.hold_scale(base, (1000.0, 500.0), touching, frozenset({"top"})) < 1.0
 
 
 def test_a_side_the_base_frame_already_cuts_sets_no_limit():
@@ -148,3 +150,30 @@ def test_still_spec_wire_form_and_its_refusals():
     for d in ({"from": 1.0}, {"from": 1, "to": 1, "x": 1}, [1, 0.9]):
         with pytest.raises(ValueError, match="StillSpec.from_dict"):
             StillSpec.from_dict(d)
+
+
+@pytest.mark.parametrize("subj, photo, aspect", [
+    (Rect(800, 0, 1400, 3000), PORTRAIT, (9, 16)),          # a selfie, head clipped at the top
+    (Rect(0, 600, 900, 3000), PORTRAIT, (9, 16)),           # a person cut by the left edge
+    (Rect(1200, 0, 1200, 2500), LANDSCAPE, (4, 3)),         # fit: head clipped at the top
+])
+def test_a_subject_clipped_by_the_photos_own_edge_does_not_freeze_the_move(subj, photo, aspect):
+    """The re-review's case: a YOLO box stops at the image border, and the person goes on
+    past it — that side is cut by the photographer, not something to hold whole."""
+    pl = kenburns.plan(photo, aspect, 1.0, subj, "center", "thirds", StillSpec(1.0, 0.92), 30)
+    assert pl.applied.end < 1.0
+    assert "photo's own edge cuts the subject" in pl.note and "cancelled" not in pl.note
+
+
+def test_a_move_no_frame_can_honour_says_it_was_cancelled():
+    # the subject's width IS the base frame's, mid-photo: any tighter frame cuts it
+    subj = Rect(1156.25, 1000, 1687.5, 1500)
+    pl = kenburns.plan(LANDSCAPE, (9, 16), 1.0, subj, "center", "thirds", StillSpec(1.0, 0.92), 30)
+    assert pl.base.x == pytest.approx(1156.25)
+    assert pl.applied == StillSpec(1.0, 1.0) and "the move was cancelled" in pl.note
+
+
+def test_a_subject_enclosing_the_frame_is_not_called_outside_it():
+    subj = Rect(62, 0, 2900, 4032)                           # wider and taller than a 0.4 frame
+    pl = kenburns.plan(PORTRAIT, (9, 16), 0.4, subj, "center", "thirds", StillSpec(1.0, 0.92), 10)
+    assert "outside" not in pl.note and "already cuts" in pl.note

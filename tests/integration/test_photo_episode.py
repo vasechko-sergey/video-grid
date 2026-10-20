@@ -123,10 +123,18 @@ def test_under_native_a_photo_takes_the_videos_canvas_not_its_own_pixels(run, tm
     """The review's I3: native keeps a crop's own pixels, and a photo's are thousands
     wide — first in the reel it set the canvas and every video was upscaled to it."""
     cfg = _project(tmp_path, delivery="native")
-    segs = extract.extract_edl(_edl(_pho("IMG_L.png", layout="fit"), _vid()), str(run),
-                               str(tmp_path / "s"), project=cfg)
+    edl = _edl(_pho("IMG_L.png", layout="fit"), _vid())
+    segs = extract.extract_edl(edl, str(run), str(tmp_path / "s"), project=cfg)
     p = _probe(segs[0])
     assert (p["width"], p["height"]) == (606, 454)   # the 1080p clip's native 9:16 width
+    # ...and laid out on the video's 606x1080 canvas, not on 606 x even(606*16/9) = 1076,
+    # which would have the reel squash every video episode to match (the re-review)
+    mds, stop = preflight(edl, cfg, str(tmp_path / "s"), str(tmp_path / "o"))
+    (tmp_path / "o").mkdir()
+    res = process_episode.process_episode(mds[0], tmp_path / "ep0")
+    assert res["status"] == "mechanical_pass", res
+    o = _probe(mds[0]["out_path"])
+    assert (o["width"], o["height"]) == (606, 1080)
 
 
 def test_a_reel_of_photos_alone_under_native_takes_the_first_photos_fill_canvas(run, tmp_path):
@@ -137,6 +145,10 @@ def test_a_reel_of_photos_alone_under_native_takes_the_first_photos_fill_canvas(
     a, b = _probe(segs[0]), _probe(segs[1])
     assert (a["width"], a["height"]) == (450, 800)   # a 9:16 crop of 600x800
     assert b["width"] == 450                         # the same canvas, not 800 wide
+    plan = process_episode.plan_for(
+        preflight(_edl(_pho("IMG_P.png", layout="fill"), _pho("IMG_L.png", layout="fit")),
+                  cfg, str(tmp_path / "s"), str(tmp_path / "o"))[0][1], segs[1], None)
+    assert (plan.rl.out_w, plan.rl.out_h) == (450, 800)
 
 
 def test_a_photo_without_the_project_is_refused(run, tmp_path):

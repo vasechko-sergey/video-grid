@@ -2235,3 +2235,11 @@ def test_a_photo_rendered_straight_through_has_no_route_either(tmp_path, monkeyp
     assert stop is None
     assert rm.episodes[0].route is None
     assert rm.episodes[1].route == str(Path(work) / "ep1" / "route.json")
+
+
+def test_an_explicit_default_move_is_the_same_cut_as_an_absent_one():
+    from scripts.lib.edl import EDL, EDLEpisode
+    absent = EDL(episodes=(EDLEpisode(**_ep(source="IMG_1.jpg")),))
+    explicit = EDL(episodes=(EDLEpisode(**_ep(source="IMG_1.jpg",
+                                              still={"from": 1.0, "to": 0.92})),))
+    assert edl_to_reel._cut_identity(absent) == edl_to_reel._cut_identity(explicit)

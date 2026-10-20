@@ -21,7 +21,7 @@ from pathlib import Path
 from scripts import build_reel, extract, process_episode, track
 from scripts.lib import (color_fidelity, episode_qc as qc_lib, gates as gates_lib,
                         hero as hero_lib, manifest as manifest_lib, provenance, reid,
-                        runlayout)
+                        kenburns, runlayout)
 from scripts.lib.edl import EDL, preflight
 from scripts.lib.episode_qc import ReelQC
 from scripts.lib.footage import Cast
@@ -478,7 +478,8 @@ def _cut_identity(edl: EDL) -> list[dict]:
     and does not cross either (design 2026-10-20 §4) — so it joins the identity, for
     photos only: a GEOMETRY.json written before photos keeps comparing equal."""
     return [{"source": ep.source, "start": ep.start, "dur": ep.dur, "ramp": ep.ramp,
-             **({"still": ep.still} if runlayout.is_photo(ep.source) else {})}
+             **({"still": ep.still or kenburns.DEFAULT_MOVE.to_dict()}
+                if runlayout.is_photo(ep.source) else {})}
             for ep in edl.episodes]
 
 

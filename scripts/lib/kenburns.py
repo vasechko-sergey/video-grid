@@ -22,6 +22,8 @@ DEFAULT_MOVE = StillSpec(start=1.0, end=0.92)   # an 8.7% push-in: the craft sou
 SUBJECT_MARGIN = 0.05   # of the held box's own size, per side: the most gap the tightest
                         # frame keeps around it (never more than half the base frame's own
                         # gap there — see hold_scale). A convention.
+PHOTO_EDGE = 0.005      # of the photo's side: a box this close to the photo's border is
+                        # clipped by it (YOLO boxes stop at the image edge). A convention.
 HOLD_TOP = 0.5          # the share of a person box, from its TOP, the move keeps whole and
                         # aims at: heads and faces. A push toward a whole standing figure
                         # could not move at all without cutting someone's head (the 2026-10-20
@@ -120,12 +122,25 @@ def _sides_cut(base: Rect, box: Rect) -> list[str]:
                                    ("bottom", box.y + box.h > base.y + base.h + eps)) if out]
 
 
-def hold_scale(base: Rect, p: tuple[float, float], box: Rect) -> float:
+def _at_photo_edge(photo: tuple[int, int], box: Rect) -> list[str]:
+    """Sides of `box` within PHOTO_EDGE of the photo's own border. A detector box there
+    is CLIPPED: the person goes on past the edge of the picture, so that side is already
+    cut — by the photographer — and holding it whole is not something a move can do."""
+    pw, ph = photo
+    tx, ty = pw * PHOTO_EDGE, ph * PHOTO_EDGE
+    return [name for name, at in (("left", box.x <= tx), ("right", box.x + box.w >= pw - tx),
+                                  ("top", box.y <= ty), ("bottom", box.y + box.h >= ph - ty))
+            if at]
+
+
+def hold_scale(base: Rect, p: tuple[float, float], box: Rect,
+               open_sides: frozenset[str] = frozenset()) -> float:
     """The smallest s whose frame P + (base - P)*s still holds `box` whole, decided per
-    side. A side the base frame already cuts is lost at s = 1 and sets no limit. On every
-    other side the frame keeps a gap of SUBJECT_MARGIN of the box's size, or half the gap
-    the base frame had there, whichever is smaller — so a head 100 px under the top of
-    the photo still lets the frame move, and a head touching it does not. Every frame lies
+    side. A side the base frame already cuts, or one named in `open_sides` (cut by the
+    photo's own edge), sets no limit. On every other side the frame keeps a gap of
+    SUBJECT_MARGIN of the box's size, or half the gap the base frame had there,
+    whichever is smaller — so a head 100 px under the top of the frame still lets it
+    move, and a head with no room at all inside the picture does not. Every frame lies
     inside the base frame, so the answer is at most 1.0, meaning no move keeps it whole."""
     eps = 1e-6
     mx, my = box.w * SUBJECT_MARGIN, box.h * SUBJECT_MARGIN
@@ -133,13 +148,13 @@ def hold_scale(base: Rect, p: tuple[float, float], box: Rect) -> float:
     x0, y0, x1, y1 = box.x, box.y, box.x + box.w, box.y + box.h
     px, py = p
     need = 0.0
-    if x0 >= bx0 - eps:
+    if x0 >= bx0 - eps and "left" not in open_sides:
         need = max(need, _ratio(px - (x0 - min(mx, (x0 - bx0) / 2)), px - bx0))
-    if x1 <= bx1 + eps:
+    if x1 <= bx1 + eps and "right" not in open_sides:
         need = max(need, _ratio((x1 + min(mx, (bx1 - x1) / 2)) - px, bx1 - px))
-    if y0 >= by0 - eps:
+    if y0 >= by0 - eps and "top" not in open_sides:
         need = max(need, _ratio(py - (y0 - min(my, (y0 - by0) / 2)), py - by0))
-    if y1 <= by1 + eps:
+    if y1 <= by1 + eps and "bottom" not in open_sides:
         need = max(need, _ratio((y1 + min(my, (by1 - y1) / 2)) - py, by1 - py))
     return min(need, 1.0)
 
@@ -164,17 +179,24 @@ def plan(photo: tuple[int, int], aspect: tuple[int, int], crop_scale: float,
     if subject is not None:
         h = held(subject)
         cut = _sides_cut(base, h)
-        if len(cut) == 4 or not (h.x < base.x + base.w and base.x < h.x + h.w
-                                 and h.y < base.y + base.h and base.y < h.y + h.h):
+        edge = _at_photo_edge(photo, h)
+        if not (h.x < base.x + base.w and base.x < h.x + h.w
+                and h.y < base.y + base.h and base.y < h.y + h.h):
             notes.append("the subject lies outside the frame")
         elif cut:
             notes.append(f"the base frame already cuts the subject's upper half on the "
                          f"{'/'.join(cut)}")
-        need = hold_scale(base, p, h)
+        if edge:
+            notes.append(f"the photo's own edge cuts the subject on the {'/'.join(edge)}")
+        need = hold_scale(base, p, h, frozenset(edge))
         if min(a, b) < need:
             tight = math.ceil(need * 1e4) / 1e4
-            notes.append(f"the move was shortened to {tight} so the subject's upper half "
-                         f"stays whole (planned {a}->{b})")
+            if tight >= max(a, b):
+                notes.append(f"the move was cancelled: no frame tighter than the base "
+                             f"keeps the subject's upper half whole (planned {a}->{b})")
+            else:
+                notes.append(f"the move was shortened to {tight} so the subject's upper "
+                             f"half stays whole (planned {a}->{b})")
             a, b = (max(a, tight), max(b, tight))
     note = "; ".join(notes)
     frames = []

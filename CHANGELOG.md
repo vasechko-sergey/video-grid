@@ -25,9 +25,9 @@ file is the short "what changed for someone who installs it" list.
   log-scale and eased, rendered with a float warp: a tracked dot strays 0.02 px
   from a smooth curve where `zoompan`'s whole-pixel crop strays 0.46 px. The
   segment lands on the video's own clock, tagged BT.709, and under the default
-  `native` delivery at the video's own size, so a photo first in the reel no longer
-  sets a 4032-wide canvas. The push keeps the people's heads whole, shortening itself
-  rather than cut them.
+  `native` delivery on the video's own canvas, so a photo first in the reel no longer
+  sets a 4032-wide one. The push keeps the people's heads whole, shortening itself
+  rather than cut them, and a person cut off by the photo's own edge does not stop it.
 - New runtime imports, both already installed: `pi-heif` and `opencv-python` are now
   declared, and `verify_runtime` checks `pi_heif`. Run `bash setup.sh` anyway.
 

@@ -402,14 +402,17 @@ def _apply_outro(episodes: list[EDLEpisode], footage: Footage, music: MusicSpec,
 
 
 def _delivered(clip: FootageClip, w: FootageWindow, aspect: tuple[int, int],
-               layout: str | None = None) -> str:
+               layout: str | None = None, rect: tuple | None = None) -> str:
     """A window's shot size as it will read on the canvas. A photo laid out with `fit`
     (its default unless it fills, design 2026-10-20 §2) spans the canvas width instead of
     being cropped to it, so its subject keeps its width and loses height to the field
-    around it; delivered_shot's crop arithmetic is for what is cropped."""
-    if clip.kind == "photo" and (layout or photo_layout(clip.res, aspect)) != "fill":
+    around it; an `insert` shrinks both by its rect's width. delivered_shot's crop
+    arithmetic is for what is cropped."""
+    layout = layout or photo_layout(clip.res, aspect)
+    if clip.kind == "photo" and layout != "fill":
+        scale = rect[2] if layout == "insert" and rect else 1.0
         band = (clip.res[1] / clip.res[0]) * (aspect[0] / aspect[1])   # photo height / canvas
-        return shot_type(min(1.0, w.subject_w), min(1.0, w.subject_h * band))
+        return shot_type(min(1.0, w.subject_w * scale), min(1.0, w.subject_h * band * scale))
     return delivered_shot(w.subject_w, w.subject_h, clip.res, aspect)
 
 
@@ -566,7 +569,7 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
                              f"episode's — set it in project.json")
         ep = window_to_episode(clip, fw, start_offset=start_offset, canvas=aspect, **ed)
         if aspect is not None:
-            used[_delivered(clip, fw, aspect, ep.layout)] += 1
+            used[_delivered(clip, fw, aspect, ep.layout, ep.rect)] += 1
         episodes.append(ep)
         placed.append(_placed(clip, ep))
     # the reel's bookend fade, resolved exactly as EDL.look is (selection.json wins over

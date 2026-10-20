@@ -4,7 +4,7 @@ from dataclasses import dataclass, fields as _dc_fields, replace
 from pathlib import Path
 import numpy as np
 from scripts.lib import geometry as g
-from scripts.lib import pathsmooth, color, ffbin, proc
+from scripts.lib import pathsmooth, color, ffbin, proc, runlayout
 from scripts.lib import layout as layout_lib
 from scripts.lib import zoom as zoom_lib
 from scripts.lib.layout import ResolvedLayout
@@ -494,7 +494,14 @@ def plan_render(spec: ReframeSpec, src: str, route_path: str | None) -> RenderPl
                 f"{spec.canvas[0]}:{spec.canvas[1]} canvas ({off:+.1%}): it was cut for "
                 f"another layout or canvas — re-run edl_to_reel so extract cuts it again")
         canvas = (src_w, src_h)
-    rl = layout_lib.resolve(layout, canvas, (src_w, src_h), spec.delivery)
+    delivery = spec.delivery
+    if spec.still:
+        # the canvas extract sized the photo for, so a fit/insert still lands on the same
+        # pixels as the video beside it (runlayout.still_canvas says why)
+        sized = runlayout.still_canvas(src)
+        if sized is not None:
+            delivery = Delivery.from_spec(f"exact:{sized[0]}x{sized[1]}")
+    rl = layout_lib.resolve(layout, canvas, (src_w, src_h), delivery)
     crop_ws = crop_hs = crop_ys = None    # only a zoom fills all three. Under a pan (no route
                                           # to sample) all three stay None; under a plain
                                           # tracked route (no zoom) crop_hs/crop_ys stay None

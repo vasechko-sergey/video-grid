@@ -118,6 +118,7 @@ def render_photo(ep: EDLEpisode, src: str, out: str, project: ProjectConfig,
                        m.grid, move, max(1, round(ep.dur * num / den)))
     facts = still.render(st, pl.frames, tuple(out_dims), rate[0], out, timescale=rate[1])
     return {"source": ep.source, "decode": st.record, "people": len(boxes),
+            "canvas_px": [rl.out_w, rl.out_h],
             "subject": None if subject is None else subject.to_list(),
             "layout": rl.mode, "aspect": list(rl.crop_aspect), "out_dims": list(out_dims),
             "rate": rate[0], "frames": len(pl.frames), "base": pl.base.to_list(),
@@ -191,7 +192,7 @@ def extract_edl(edl: EDL, footage_root: str, seg_dir: str,
             out = str(Path(seg_dir) / f"ep{i}_raw.mp4")
             record = render_photo(ep, str(Path(footage_root) / ep.source), out, project, rate,
                                   delivery)
-            Path(out).with_suffix(".still.json").write_text(json.dumps(record, indent=2))
+            Path(out).with_suffix(runlayout.STILL_SIDECAR).write_text(json.dumps(record, indent=2))
             probed = _probe_dur(out)
             num, den = (float(v) for v in rate[0].split("/"))
             if probed + den / num + _LEN_EPS < ep.dur:
