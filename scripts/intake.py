@@ -61,7 +61,8 @@ PHOTO_HOLD = 2.0         # a photo window's length: the research's 1-2 s per pho
                          # 2-4 s in a post (design 2026-10-20 §1). A convention; U7 will take
                          # a photo's length from the music grid instead.
 PHOTO_ROOM = 8.0         # how long a photo MAY be held — its clip `dur`, the room the pacing
-                         # fitter and an author can stretch it into. A convention.
+                         # fitter can stretch it into (selection.json has no length field for
+                         # a photo; U7). A convention.
 DEFAULT_JOBS = 2          # 3 parallel full-clip passes pin every P-core (3x libx264 proxy
                           # alone is ~400s of CPU) and thermally throttle a laptop; 2 is the
                           # sustainable default. --jobs raises it on a cooled/desktop box or

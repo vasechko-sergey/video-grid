@@ -89,7 +89,7 @@ guessing a path.
 
    **Photos are footage too** (design 2026-10-20). JPEG, PNG and HEIC/HEIF in the
    same folder are scanned beside the clips: each becomes one `photo` clip with
-   one window of 2.0 s it may be held up to 8.0 s, its people and shot size read
+   one window of 2.0 s that pacing may stretch to 8.0 s, its people and shot size read
    by the same YOLO, decoded upright and in sRGB (a Display P3 iPhone photo is
    converted, not desaturated). Photos surface no cast candidates. The scan logs
    what it skipped by extension (`.dng`, `.webp` …) — say so to the user when it

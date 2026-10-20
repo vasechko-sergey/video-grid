@@ -472,8 +472,13 @@ def _cut_identity(edl: EDL) -> list[dict]:
     frozen route was measured on — and NOT ONE of them crosses `to_manifest_dict`, so
     the stripped-manifest comparison cannot see any of them. Phase 1b deliberately
     does not re-extract, so without this an author who nudged a window would get the
-    old one back, silently: the reel would ship a cut the EDL no longer describes."""
-    return [{"source": ep.source, "start": ep.start, "dur": ep.dur, "ramp": ep.ramp}
+    old one back, silently: the reel would ship a cut the EDL no longer describes.
+
+    A photo's `still` move is the same kind of input — it is rendered into the segment
+    and does not cross either (design 2026-10-20 §4) — so it joins the identity, for
+    photos only: a GEOMETRY.json written before photos keeps comparing equal."""
+    return [{"source": ep.source, "start": ep.start, "dur": ep.dur, "ramp": ep.ramp,
+             **({"still": ep.still} if runlayout.is_photo(ep.source) else {})}
             for ep in edl.episodes]
 
 

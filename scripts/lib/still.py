@@ -25,7 +25,8 @@ MAX_LONG_SIDE = 4096     # a 9:16 crop of a capped 4:3 photo is 2304x4096, 2.1x 
 SUBJECT_KEEP = 0.25      # a person box this fraction of the largest one's area joins the
                          # subject; smaller is a background figure. A convention (§6).
 DETECT_IMGSZ = 960       # the inference size track.py and intake use
-HEIF_EXTS = frozenset({".heic", ".heif"})
+MAX_DENSITY = 2.0        # source pixels per output pixel a frame is warped from at most;
+                         # past it the renderer drops to a half-size level (render)
 _SRGB = ImageCms.createProfile("sRGB")
 
 
@@ -43,7 +44,8 @@ class Still:
 def load(path: str | Path) -> Still:
     """Decode a photo upright, in 8-bit sRGB, with the long side capped (design §1).
 
-    Orientation: a JPEG/PNG carries it as the EXIF tag, applied here. A HEIF carries it
+    Orientation: a JPEG/PNG carries it as the EXIF tag, applied here. A HEIF (told by
+    its decoder, never by its file name) carries it
     as the irot/imir properties, which libheif applies while decoding, and pi_heif then
     resets the EXIF tag to 1 (measured on a rotated HEIC) — so the tag is never applied
     a second time. An embedded ICC profile is converted to sRGB; none reads as sRGB. The
@@ -56,7 +58,9 @@ def load(path: str | Path) -> Still:
     except (OSError, ValueError) as e:
         raise ValueError(f"{p.name}: not a photo this engine can decode — {e}") from e
     with im:
-        heif = p.suffix.lower() in HEIF_EXTS
+        # the DECODER, not the name: a JPEG saved as .heic still carries an EXIF tag
+        # that nothing else will apply
+        heif = im.format == "HEIF"
         rec: dict = {"decoder": im.format, "source_dims": list(im.size)}
         icc = im.info.get("icc_profile")
         if heif:
@@ -66,8 +70,21 @@ def load(path: str | Path) -> Still:
         else:
             rec["orientation"] = int(im.getexif().get(0x0112, 1))
             up = ImageOps.exif_transpose(im)
-        if up.mode not in ("RGB", "L", "CMYK"):
-            rec["mode"] = f"{up.mode} read as RGB"     # RGBA/P/LA/I;16 — any alpha is dropped
+        mode = up.mode
+        if mode.startswith("I;16"):
+            # Pillow's convert() CLIPS a 16-bit value at 255 rather than scaling it, so a
+            # 16-bit grey PNG came back almost white (the 2026-10-20 review's I4)
+            up = Image.fromarray((np.asarray(up, dtype=np.uint16) >> 8).astype(np.uint8), "L")
+            rec["mode"] = f"{mode} scaled to 8 bits"
+        elif mode in ("I", "F"):
+            raise ValueError(f"{p.name}: a {'32-bit integer' if mode == 'I' else 'floating-point'} "
+                             f"image, whose value range this engine cannot know — re-export "
+                             f"it as an 8-bit JPEG or PNG")
+        elif mode in ("LA", "La"):
+            rec["mode"] = f"{mode} read as L"          # the alpha is dropped
+            up = up.convert("L")
+        elif mode not in ("RGB", "L", "CMYK"):
+            rec["mode"] = f"{mode} read as RGB"        # RGBA/P/… — any alpha is dropped
             up = up.convert("RGB")
         w, h = up.size
         if max(w, h) > MAX_LONG_SIDE:
@@ -79,6 +96,11 @@ def load(path: str | Path) -> Still:
             try:
                 prof = ImageCms.ImageCmsProfile(io.BytesIO(icc))
                 rec["icc"] = ImageCms.getProfileDescription(prof).strip()
+                # the profile's own colour space decides the input mode: a monochrome
+                # HEIC decodes to RGB beside a grey profile, a grey PNG with an RGB one
+                want = {"GRAY": "L", "RGB": "RGB"}.get(prof.profile.xcolor_space.strip())
+                if want and up.mode in ("L", "RGB") and up.mode != want:
+                    up = up.convert(want)
                 up = ImageCms.profileToProfile(
                     up, prof, _SRGB, renderingIntent=ImageCms.Intent.RELATIVE_COLORIMETRIC,
                     outputMode="RGB")
@@ -126,9 +148,10 @@ def render(still: Still, frames: list[Rect], out_dims: tuple[int, int], rate: st
     """Encode `frames` (photo-pixel rects, one per output frame) into `out`.
 
     The raster is pre-scaled once with INTER_AREA so the TIGHTEST frame lands at 1:1 —
-    no pixel is invented by the move, and the widest frame samples at 1/(tight/wide),
-    mild for any move this engine plans. Each frame is then one float affine warp, so
-    the frame moves by fractions of a pixel instead of zoompan's whole ones.
+    the pre-scale never throws away detail the tightest frame could show — and the
+    widest frame samples at wide/tight, under 1.1 for the default move. A frame past
+    MAX_DENSITY takes a half-size level instead. Each frame is then one float affine
+    warp, so the frame moves by fractions of a pixel instead of zoompan's whole ones.
 
     The encode is the video segment's contract (design §4): yuv420p, tv range, SAR 1:1,
     RGB→YUV through BT.709, and all four colour tags stamped on the FRAMES by
@@ -141,14 +164,29 @@ def render(still: Still, frames: list[Rect], out_dims: tuple[int, int], rate: st
     sw, sh = still.dims
     tight = min(r.w for r in frames)
     f = min(1.0, W / tight)
-    src = still.rgb
+    base = still.rgb
     if f < 1.0:
-        src = cv2.resize(src, (max(1, round(sw * f)), max(1, round(sh * f))),
-                         interpolation=cv2.INTER_AREA)
-    fx, fy = src.shape[1] / sw, src.shape[0] / sh
+        base = cv2.resize(base, (max(1, round(sw * f)), max(1, round(sh * f))),
+                          interpolation=cv2.INTER_AREA)
+    levels = [base]
+
+    def level_for(r: Rect) -> np.ndarray:
+        """The finest level that samples this frame at no more than MAX_DENSITY source
+        pixels per output pixel: an authored 1.0->0.3 move would otherwise sample its
+        widest frame at 3.3:1, and a cubic warp does no area filtering — it shimmers."""
+        k = 0
+        while r.w * levels[k].shape[1] / sw / W > MAX_DENSITY and min(levels[k].shape[:2]) > 2:
+            if k + 1 == len(levels):
+                lv = levels[k]
+                levels.append(cv2.resize(lv, (lv.shape[1] // 2, lv.shape[0] // 2),
+                                         interpolation=cv2.INTER_AREA))
+            k += 1
+        return levels[k]
 
     def chunks():
         for r in frames:
+            src = level_for(r)
+            fx, fy = src.shape[1] / sw, src.shape[0] / sh
             ax, ay = r.w * fx / W, r.h * fy / H
             m = np.array([[ax, 0.0, r.x * fx + 0.5 * ax - 0.5],
                           [0.0, ay, r.y * fy + 0.5 * ay - 0.5]], dtype=np.float64)
@@ -165,4 +203,4 @@ def render(still: Still, frames: list[Rect], out_dims: tuple[int, int], rate: st
            *(["-video_track_timescale", str(timescale)] if timescale else []),
            "-an", out]
     proc.feed(cmd, chunks())
-    return {"prescale": round(f, 4), "upscale": round(W / tight, 3)}
+    return {"prescale": round(f, 4), "upscale": round(W / tight, 3), "levels": len(levels)}

@@ -157,3 +157,49 @@ def test_people_asks_yolo_for_persons_at_the_trackers_size(monkeypatch):
     assert got == [(50.0, 50.0, 20.0, 30.0), (10.0, 10.0, 4.0, 4.0)]     # largest first
     assert seen["path"] == "m.pt" and seen["classes"] == [0] and seen["imgsz"] == 960
     assert isinstance(seen["img"], Image.Image)        # PIL = RGB; a bare array reads as BGR
+
+
+def test_a_16_bit_grey_png_is_scaled_not_clipped_to_white(tmp_path):
+    """The 2026-10-20 review's I4: Pillow's convert() clips 16-bit values at 255."""
+    ramp = (np.linspace(0, 65535, 256, dtype=np.float64)[None, :].repeat(8, 0)).astype(np.uint16)
+    p = tmp_path / "g16.png"
+    Image.fromarray(ramp).save(p)
+    assert Image.open(p).mode.startswith("I;16")
+    st = still.load(p)
+    assert st.rgb.shape == (8, 256, 3)
+    assert abs(float(st.rgb.mean()) - 127.5) < 2 and st.rgb[0, 0, 0] == 0
+    assert st.record["mode"].endswith("scaled to 8 bits")
+
+
+def test_a_32_bit_image_is_refused_by_name(tmp_path):
+    p = tmp_path / "i32.tif"
+    Image.fromarray(np.zeros((4, 4), np.int32), "I").save(p)
+    with pytest.raises(ValueError, match="32-bit integer"):
+        still.load(p)
+
+
+def test_a_grey_photo_with_alpha_reads_as_grey(tmp_path):
+    p = tmp_path / "la.png"
+    Image.new("LA", (10, 6), (90, 255)).save(p)
+    st = still.load(p)
+    assert tuple(st.rgb[2, 2]) == (90, 90, 90) and st.record["mode"] == "LA read as L"
+
+
+def test_an_rgb_decode_beside_a_grey_profile_is_converted_not_refused(tmp_path):
+    """A monochrome HEIC decodes to RGB with a grey ICC profile; a JPEG is the stand-in."""
+    gray_icc = Path("/System/Library/ColorSync/Profiles/Generic Gray Gamma 2.2 Profile.icc")
+    if not gray_icc.exists():
+        pytest.skip("macOS grey profile")
+    p = tmp_path / "mono.png"
+    Image.new("RGB", (10, 6), (120, 120, 120)).save(p, icc_profile=gray_icc.read_bytes())
+    st = still.load(p)
+    assert st.rgb.shape == (6, 10, 3) and abs(int(st.rgb[2, 2, 0]) - 120) <= 6
+
+
+def test_a_jpeg_named_heic_is_still_turned_by_its_exif_tag(tmp_path):
+    src = _oriented_jpeg(tmp_path / "o6.jpg", 6)
+    named = tmp_path / "IMG_9.HEIC"
+    named.write_bytes(src.read_bytes())
+    st = still.load(named)
+    assert st.dims == (800, 1200) and _near(st.rgb[5, 800 - 6], RED)
+    assert st.record["orientation"] == 6

@@ -20,7 +20,8 @@ from pathlib import Path
 from scripts.lib import edl as edl_lib, gridfit, moodpreset, outro, ramp as ramp_mod, safezones
 from scripts.lib.constraints import Constraints, Placed, evaluate as check_constraints
 from scripts.lib.edl import EDL, EDLEpisode, preflight, write_edl
-from scripts.lib.footage import Footage, FootageClip, FootageWindow, SHOT_TYPES, delivered_shot
+from scripts.lib.footage import (Footage, FootageClip, FootageWindow, SHOT_TYPES, delivered_shot,
+                                 shot_type)
 from scripts.lib.look import LookSpec
 from scripts.lib.models import HERO_RULES, MusicSpec, RampSpec
 from scripts.lib.moodpreset import MoodPreset
@@ -400,6 +401,18 @@ def _apply_outro(episodes: list[EDLEpisode], footage: Footage, music: MusicSpec,
     return out, fit
 
 
+def _delivered(clip: FootageClip, w: FootageWindow, aspect: tuple[int, int],
+               layout: str | None = None) -> str:
+    """A window's shot size as it will read on the canvas. A photo laid out with `fit`
+    (its default unless it fills, design 2026-10-20 §2) spans the canvas width instead of
+    being cropped to it, so its subject keeps its width and loses height to the field
+    around it; delivered_shot's crop arithmetic is for what is cropped."""
+    if clip.kind == "photo" and (layout or photo_layout(clip.res, aspect)) != "fill":
+        band = (clip.res[1] / clip.res[0]) * (aspect[0] / aspect[1])   # photo height / canvas
+        return shot_type(min(1.0, w.subject_w), min(1.0, w.subject_h * band))
+    return delivered_shot(w.subject_w, w.subject_h, clip.res, aspect)
+
+
 def _available_census(footage: Footage, aspect: tuple[int, int]) -> tuple[dict[str, int], int]:
     """Every window the footage offers, bucketed in DELIVERED geometry (design §6).
 
@@ -423,7 +436,7 @@ def _available_census(footage: Footage, aspect: tuple[int, int]) -> tuple[dict[s
     unmeasured = 0
     for clip in footage.clips:
         for w in clip.windows:
-            counts[delivered_shot(w.subject_w, w.subject_h, clip.res, aspect)] += 1
+            counts[_delivered(clip, w, aspect)] += 1
             if w.subject_w * w.subject_h == 0.0:
                 unmeasured += 1
     return counts, unmeasured
@@ -436,7 +449,7 @@ def _candidates(footage: Footage, aspect: tuple[int, int], want: str,
     rows = [(clip.source, i, w.score)
             for clip in footage.clips
             for i, w in enumerate(clip.windows)
-            if delivered_shot(w.subject_w, w.subject_h, clip.res, aspect) == want]
+            if _delivered(clip, w, aspect) == want]
     return sorted(rows, key=lambda r: r[2], reverse=True)[:limit]
 
 
@@ -548,9 +561,12 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
             raise ValueError(f"selection episode {k}: source {source!r} not in FOOTAGE — "
                              f"have {sorted(by_source)}")
         fw = _resolve_window(clip, window, source, k)
-        if aspect is not None:
-            used[delivered_shot(fw.subject_w, fw.subject_h, clip.res, aspect)] += 1
+        if "canvas" in ed:
+            raise ValueError(f"selection episode {k}: `canvas` is the project's, not an "
+                             f"episode's — set it in project.json")
         ep = window_to_episode(clip, fw, start_offset=start_offset, canvas=aspect, **ed)
+        if aspect is not None:
+            used[_delivered(clip, fw, aspect, ep.layout)] += 1
         episodes.append(ep)
         placed.append(_placed(clip, ep))
     # the reel's bookend fade, resolved exactly as EDL.look is (selection.json wins over

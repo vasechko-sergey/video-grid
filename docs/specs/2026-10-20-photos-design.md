@@ -53,7 +53,8 @@ JSON for video, so every existing FOOTAGE.json and cache entry is byte-identical
 - The window: `start 0`, `dur PHOTO_HOLD = 2.0` s (the research's 1–2 s per photo in a
   reel, 2–4 s in a post). `motion` and `shake` are 0; `people`, `subject_w/h` and
   `present` come from one YOLO pass on the still (the largest box, as for video).
-- The clip: `dur PHOTO_ROOM = 8.0` s — how long the fitter or the author may hold it —
+- The clip: `dur PHOTO_ROOM = 8.0` s — how long the pacing fitter may hold it
+  (`selection.json` has no field for a photo's length; U7 is that row) —
   `fps 0.0` (a photo has no rate; video keeps `fps > 0`), no scene cuts.
 - A photo surfaces no cast candidates in this slice.
 
@@ -84,22 +85,31 @@ on a photo source, and a photo refuses `zoom`, `pan`, `ramp`, `stabilize`, `hero
   composition's x — centred for `center`, on the grid line nearer the subject's own
   position in the photo for `lead` (the photographer's composition is kept), the photo's
   centre for `break` — and vertically centred on it, clamped inside the photo.
-- **The move is a homothety about the subject's centre P.** Every frame is
+- **What it aims at is the top half of the subject** (`HOLD_TOP = 0.5`): heads and
+  faces, so a push toward a standing figure cuts the feet first. The review found the
+  first rule — the whole box, plus a margin that gave up entirely whenever it crossed
+  the photo's edge — cutting 65 px off the head of a person standing on the bottom edge.
+- **The move is a homothety about P, the centre of that half.** Every frame is
   `P + (base − P)·s`, so P holds still on screen while the frame closes in around it,
   and every frame is a convex combination of the base frame and P, so it never leaves
   the photo.
 - **Log-scale zoom with eased ends.** `s = a·(b/a)^q`, `q = 3p² − 2p³`: equal ratios of
   scale read as equal speed, and the move starts and stops without a jolt. Position and
   scale ride the same q, which the homothety gives for free.
-- **The subject stays whole.** When the tightest frame would cut the subject box (plus
-  `SUBJECT_MARGIN = 0.05` of its size), the move is shortened to the tightest frame that
-  holds it, and the sidecar says so.
+- **The upper half stays whole.** Decided per side: a side the base frame already cuts
+  sets no limit (nothing can give it back); on every other side the tightest frame keeps
+  a gap of `SUBJECT_MARGIN = 0.05` of the held box's size or half the gap the base frame
+  had, whichever is smaller — so a head 100 px under the top of the photo still lets the
+  frame move, and one touching it does not. A move that would break this is shortened,
+  and the sidecar's note says so; a base frame that cuts the subject is noted as such.
 
 `lib/still.render` draws it: the raster is pre-scaled once (`INTER_AREA`) so the
-tightest frame lands at 1:1 and no pixel is invented, each output frame is one
-`cv2.warpAffine` with a float matrix (`INTER_CUBIC`), and the frames stream as `rgb24`
-into one x264 encode (`proc.feed`, the stdin twin of `proc.run`, with the same argv
-lint).
+tightest frame lands at 1:1 — the pre-scale never throws away detail the tightest frame
+could show — and a frame that would sample more than `MAX_DENSITY = 2` source pixels per
+output pixel (an authored 1.0 → 0.3) takes a half-size level instead, since a cubic warp
+does no area filtering and would shimmer. Each output frame is one `cv2.warpAffine` with
+a float matrix (`INTER_CUBIC`), and the frames stream as `rgb24` into one x264 encode
+(`proc.feed`, the stdin twin of `proc.run`, with the same argv lint).
 
 ## §4 · The segment contract (U4)
 
@@ -108,7 +118,12 @@ window is cut into, on the video segment's contract:
 
 - **size**: what reframe would scale it to — the delivered canvas for `fill`, the content
   rect for `fit`/`insert` (`layout.resolve` over the photo's dims), so reframe's scale is
-  the identity;
+  the identity. Under the default `native` delivery a crop keeps its own pixels, and a
+  photo's are thousands wide while the reel takes its size from its FIRST episode: the
+  review measured a landscape photo first setting a 1600×2844 reel and the 1080p video
+  beside it upscaled 2.6×. So under `native` a photo is sized to the canvas the first
+  video episode delivers at, or, in a reel of photos alone, to a fill crop of the first
+  photo;
 - **rate and timebase**: the EDL's first video segment's exact `r_frame_rate` and track
   timescale (30/1 when there is no video), because `build_reel` takes the reel's rate from
   the first episode and `assemble` would otherwise conform;
@@ -136,10 +151,12 @@ crop must be the whole segment. `to_manifest_dict` sets `still: true` for a phot
 source (by extension); it rides `Manifest` → `ReframeSpec` → `PathMeta.still` (written
 only when true, so existing sidecars do not change):
 
-- `reframe.plan_render` forces `crop_scale 1.0` (the move already consumed it), centres
-  the crop and refuses a segment that leaves more than `STILL_TRIM = 2` px of freedom —
-  the layout and the segment would disagree, which means the EDL or the canvas changed
-  after the cut. A still refuses `pan` and `zoom` here too.
+- `reframe.plan_render` forces `crop_scale 1.0` (the move already consumed it). A fill
+  still is resolved against its own shape, because the canvas a delivery evens is not
+  the canvas aspect to the pixel (606×1080 under native, where a 9:16 crop would shave
+  three rows), and refused past `STILL_ASPECT_TOL = 1 %`; a fit/insert still trims at
+  most `STILL_TRIM = 2` px, centred. Either refusal means the segment was cut for
+  another layout or canvas. A still refuses `pan` and `zoom` here too.
 - `process_episode` skips tracking and the contradiction gate, refuses a supplied route
   or keyframes, and does not retry: a re-render of a fixed path is the same pixels.
 - `check_episode` reports framing `editorial-only` and continuity `not-checked`, named
@@ -160,7 +177,7 @@ only when true, so existing sidecars do not change):
   the music grid U7, Live Photos U9.
 - No cast from photos, no hero pin on a photo, no pan across a photo's long side.
 - The YOLO pass runs twice on the same decoded still (intake, then extract), which is
-  deterministic but not free (one model load per run, a fraction of a second per photo).
+  deterministic but not free (one model load per photo in each, a fraction of a second).
 - A HEIC whose colour is described only by an `nclx` box with P3 primaries, and no ICC
   profile, reads as sRGB. Apple writes an ICC profile.
 - The backlog row said the same renderer would remove the integer residual of the
@@ -168,3 +185,7 @@ only when true, so existing sidecars do not change):
   still runs through `zoompan`, where the moving footage hides the steps.
 - The fit layout's blurred field is reframe's own, made from the moving segment, so it
   zooms with the photo rather than holding still behind it.
+- `HOLD_TOP` assumes upright people, which is what a person detector boxes; a lying or
+  upside-down figure is held by the wrong half.
+- A photo segment is always tagged BT.709, whatever the video beside it carries; after
+  reframe's re-encode the measured difference is about 4 codes.

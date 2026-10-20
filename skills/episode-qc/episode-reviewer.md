@@ -16,7 +16,7 @@ read by a human; your deliverable is the file you write.
 
 ## This episode's declared intent
 composition (center / lead / break), grid, hero (the pin, if any), target_dur,
-layout, pan, stabilize, canvas:
+layout, pan, stabilize, still, canvas:
 
 {INTENT}
 
@@ -150,11 +150,12 @@ judge reads it.
   or lurch? A still strip only shows gross jumps; if you cannot tell from
   what you have, say so at `confidence: "low"` rather than guess.
 - **hero** — is the followed subject the INTENDED one, not a bystander the
-  tracker latched onto? **NOT JUDGEABLE when `intent.pan` is set** — a
-  generated path follows nobody, so there is no marker to check. When that is
-  the case, still emit a finding: `severity: "minor"`, `route: "none"`,
-  evidence naming that `intent.pan` is set and no marker exists. Not-judgeable
-  is REPORTED, never silently passed.
+  tracker latched onto? **NOT JUDGEABLE when `intent.pan` or `intent.still` is
+  set** — a generated path follows nobody, and a photo's move was rendered into
+  it with nothing tracked, so there is no marker to check. When that is the
+  case, still emit a finding: `severity: "minor"`, `route: "none"`, evidence
+  naming which of the two is set and that no marker exists. Not-judgeable is
+  REPORTED, never silently passed.
 
 ## Rules
 - `severity` ∈ (blocking, important, minor). `blocking` means this episode is

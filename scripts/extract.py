@@ -57,22 +57,58 @@ def extract(src: str, start: float, dur: float, out: str, crf: int = 18) -> str:
     return out
 
 
+def _layout_of(m: Manifest) -> LayoutSpec:
+    return LayoutSpec(mode=m.layout, crop_aspect=m.crop_aspect, crop_scale=m.crop_scale,
+                      rect=m.rect, background=m.background,
+                      background_color=m.background_color, border_px=m.border_px,
+                      border_color=m.border_color)
+
+
+def _manifest(ep: EDLEpisode, segment: str, project: ProjectConfig) -> Manifest:
+    return Manifest.from_dict(resolve_manifest(to_manifest_dict(ep, segment, segment), project))
+
+
+def _photo_delivery(edl: EDL, photos: list[int], segments: dict[int, str],
+                    footage_root: str, project: ProjectConfig) -> Delivery | None:
+    """The delivery a photo segment is sized against, when the project's own does not
+    fix a size (the 2026-10-20 review's I3). `native` keeps a crop's own pixels, and a
+    photo's own pixels are thousands wide — while the reel takes its size from its
+    FIRST episode, so a photo there would set a 4032-wide canvas and every video
+    episode would be upscaled to it. Under native a photo is therefore sized to the
+    canvas the first video episode delivers at, or, in a reel of photos alone, to the
+    canvas a fill crop of the first photo gives. None: the project's delivery already
+    fixes the size, and every photo resolves to the same canvas through it."""
+    if Delivery.from_spec(project.delivery).mode != "native":
+        return None
+    native = Delivery.from_spec("native")
+    if segments:
+        j = min(segments)
+        m = _manifest(edl.episodes[j], segments[j], project)
+        info = assembly.probe_stream(segments[j])
+        rl = layout_lib.resolve(_layout_of(m), m.canvas, (info.w, info.h), native)
+    else:
+        first = edl.episodes[photos[0]]
+        m = _manifest(first, "", project)
+        rl = layout_lib.resolve(LayoutSpec(mode="fill"), m.canvas,
+                                still.load(str(Path(footage_root) / first.source)).dims,
+                                native)
+    return Delivery.from_spec(f"exact:{rl.out_w}x{rl.out_h}")
+
+
 def render_photo(ep: EDLEpisode, src: str, out: str, project: ProjectConfig,
-                 rate: tuple[str, int]) -> dict:
+                 rate: tuple[str, int], delivery: Delivery | None = None) -> dict:
     """One photo episode into `out` (design 2026-10-20 §2-§4), and the record of it.
 
     The layout comes through the SAME bridge every episode's manifest does
     (to_manifest_dict + resolve_manifest), so the frame cut here is the frame reframe
     will find: the segment is sized to what reframe would scale it to — the delivered
     canvas for fill, the content rect for fit/insert — and shaped to the layout's crop
-    aspect, so reframe's crop is the whole segment."""
-    m = Manifest.from_dict(resolve_manifest(to_manifest_dict(ep, out, out), project))
-    lspec = LayoutSpec(mode=m.layout, crop_aspect=m.crop_aspect, crop_scale=m.crop_scale,
-                       rect=m.rect, background=m.background,
-                       background_color=m.background_color, border_px=m.border_px,
-                       border_color=m.border_color)
+    aspect, so reframe's crop is the whole segment. `delivery` overrides the project's
+    for the sizing only (_photo_delivery)."""
+    m = _manifest(ep, out, project)
     st = still.load(src)
-    rl = layout_lib.resolve(lspec, m.canvas, st.dims, Delivery.from_spec(m.delivery))
+    rl = layout_lib.resolve(_layout_of(m), m.canvas, st.dims,
+                            delivery or Delivery.from_spec(m.delivery))
     out_dims = (rl.out_w, rl.out_h) if rl.mode == "fill" else rl.rect_px[2:]
     boxes = still.people(st.rgb, track.MODEL)
     subject = still.subject(boxes)
@@ -148,11 +184,13 @@ def extract_edl(edl: EDL, footage_root: str, seg_dir: str,
         segments[i] = out
     if photos:
         rate = assembly.probe_rate(segments[min(segments)]) if segments else PHOTO_RATE
+        delivery = _photo_delivery(edl, photos, segments, footage_root, project)
         track.ensure_model(track.MODEL)     # the subject pass needs the weights on disk
         for i in photos:
             ep = edl.episodes[i]
             out = str(Path(seg_dir) / f"ep{i}_raw.mp4")
-            record = render_photo(ep, str(Path(footage_root) / ep.source), out, project, rate)
+            record = render_photo(ep, str(Path(footage_root) / ep.source), out, project, rate,
+                                  delivery)
             Path(out).with_suffix(".still.json").write_text(json.dumps(record, indent=2))
             probed = _probe_dur(out)
             num, den = (float(v) for v in rate[0].split("/"))

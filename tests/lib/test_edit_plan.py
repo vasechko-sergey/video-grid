@@ -2013,3 +2013,23 @@ def test_a_ramp_on_a_photo_meets_the_photo_refusal_not_the_judder_gate():
         edit_plan.window_to_episode(clip, clip.windows[0], canvas=(9, 16),
                                     composition="center", grid="thirds",
                                     ramp={"at": 1.0, "factor": 0.5, "ease": 0.2, "hold": 0.2})
+
+
+def test_a_fit_photo_is_censused_by_the_band_it_fills_not_as_a_crop():
+    """The review's M3: delivered_shot reads a landscape photo as if cropped to 9:16,
+    which multiplies its subject's width 2.4x; fit keeps the width and shrinks the
+    height to the photo's band on the canvas."""
+    clip = _photo_clip((4032, 3024))                       # fit by default on 9:16
+    w = FootageWindow(start=0.0, dur=2.0, shot_type="medium", people=1, motion=0.0,
+                      shake=0.0, subject_w=0.4, subject_h=0.9)
+    # as a crop: (0.4 * 2.37, 0.9) -> close; on the band: (0.4, 0.9 * 0.42) -> medium
+    assert edit_plan._delivered(clip, w, (9, 16)) == "medium"
+    assert edit_plan._delivered(clip, w, (9, 16), "fill") == "close"
+
+
+def test_a_canvas_in_selection_is_refused_by_name():
+    f = Footage(clips=[_photo_clip((3024, 4032))])
+    sel = {"episodes": [{"source": "IMG_1.HEIC", "window": 0, "composition": "center",
+                         "grid": "thirds", "canvas": [9, 16]}]}
+    with pytest.raises(ValueError, match="`canvas` is the project's"):
+        edit_plan.build_edl(f, sel, aspect=(9, 16))

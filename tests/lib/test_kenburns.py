@@ -75,21 +75,51 @@ def test_a_still_without_a_move_repeats_the_base_frame():
     assert {f for f in pl.frames} == {pl.base}
 
 
-def test_the_move_is_shortened_rather_than_cut_the_subject():
+def _keeps(frame: Rect, box: Rect, eps=1e-6) -> bool:
+    return (frame.x <= box.x + eps and frame.y <= box.y + eps
+            and frame.x + frame.w >= box.x + box.w - eps
+            and frame.y + frame.h >= box.y + box.h - eps)
+
+
+def test_the_move_is_shortened_rather_than_cut_the_subjects_upper_half():
     subj = Rect(400, 500, 1400, 3000)              # most of a 2268-wide portrait frame
-    pl = kenburns.plan(PORTRAIT, (9, 16), 1.0, subj, "center", "thirds", StillSpec(1.0, 0.7), 30)
-    assert pl.applied.end > 0.7 and "shortened" in pl.note
-    last = pl.frames[-1]
-    m = kenburns.SUBJECT_MARGIN
-    assert last.x <= subj.x - subj.w * m + 1e-6
-    assert last.x + last.w >= subj.x + subj.w * (1 + m) - 1e-6
-    assert pl.planned == StillSpec(1.0, 0.7)       # what was asked stays on the record
+    pl = kenburns.plan(PORTRAIT, (9, 16), 1.0, subj, "center", "thirds", StillSpec(1.0, 0.5), 30)
+    assert pl.applied.end > 0.5 and "shortened" in pl.note
+    assert all(_keeps(f, kenburns.held(subj)) for f in pl.frames)
+    assert pl.planned == StillSpec(1.0, 0.5)       # what was asked stays on the record
 
 
-def test_a_subject_wider_than_the_frame_is_noted_and_the_move_kept():
+def test_a_standing_figure_on_the_bottom_edge_keeps_its_head():
+    """The 2026-10-20 review's case: a person whose box runs to the bottom of the photo.
+    The old rule gave up when the margin crossed the edge, ran the full push and cut
+    65 px off the head; the feet are what a portrait push may cut."""
+    subj = Rect(900, 100, 1200, 3932)
+    for move in (StillSpec(1.0, 0.92), StillSpec(1.0, 0.8)):
+        pl = kenburns.plan(PORTRAIT, (9, 16), 1.0, subj, "center", "thirds", move, 40)
+        head = kenburns.held(subj)
+        assert all(_keeps(f, head) for f in pl.frames), move
+        assert pl.frames[-1].y <= head.y - 50 + 1e-6      # half the 100 px it had
+        assert pl.applied.end < 0.96 and "shortened" in pl.note   # it still moves
+        assert "outside" not in pl.note and "already cuts" not in pl.note
+
+
+def test_the_gap_kept_is_the_margin_or_half_the_room_whichever_is_smaller():
+    base = Rect(0, 0, 2268, 4032)
+    tight = Rect(500, 30, 1000, 1000)               # 30 px of room above: keep 15
+    assert kenburns.hold_scale(base, (1000.0, 530.0), tight) == pytest.approx(
+        (530 - 15) / 530)
+    roomy = Rect(1084, 800, 100, 1000)              # 800 px above: keep the 50 px margin
+    assert kenburns.hold_scale(base, (1134.0, 1300.0), roomy) == pytest.approx(
+        (1300 - 750) / 1300)
+    touching = Rect(500, 0, 1000, 1000)             # no room at all: no move keeps it
+    assert kenburns.hold_scale(base, (1000.0, 500.0), touching) == 1.0
+
+
+def test_a_side_the_base_frame_already_cuts_sets_no_limit():
     subj = Rect(100, 500, 2900, 3000)              # wider than the 2268 frame
     pl = kenburns.plan(PORTRAIT, (9, 16), 1.0, subj, "center", "thirds", StillSpec(1.0, 0.9), 10)
-    assert pl.applied == StillSpec(1.0, 0.9) and "larger than the frame" in pl.note
+    assert pl.applied == StillSpec(1.0, 0.9)
+    assert "already cuts the subject's upper half on the left/right" in pl.note
 
 
 def test_break_clamps_the_anchor_into_the_frame_so_no_frame_leaves_the_photo():

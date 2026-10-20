@@ -106,7 +106,7 @@ def _wire(monkeypatch, pe_results=None, build_result=None):
             # where the tracker would have left one, and the stabilize pre-stage's output
             # when the episode asks for one. A pan gets neither — it follows nobody.
             Path(project_dir).mkdir(parents=True, exist_ok=True)
-            rp = (None if manifest.get("pan") is not None
+            rp = (None if (manifest.get("pan") is not None or manifest.get("still"))
                   else str(Path(project_dir) / "route.json"))
             if rp is not None:
                 Path(rp).write_text(json.dumps(
@@ -2194,3 +2194,44 @@ def test_music_in_app_without_music_is_refused_before_the_pool_renders(monkeypat
     with pytest.raises(ValueError, match="edl_to_reel --music"):
         edl_to_reel._build_manifest(edl_path, _project(tmp_path), str(tmp_path),
                                     str(tmp_path / "w"), str(tmp_path / "out"))
+
+
+def test_from_geometry_refuses_a_changed_photo_move(tmp_path, monkeypatch):
+    """The 2026-10-20 review's I2: a photo's `still` is rendered into its segment and
+    crosses no manifest, so without it in the cut identity phase 1b shipped the move
+    the geometry was frozen with."""
+    photo = _ep(source="IMG_1.jpg", still={"from": 1.0, "to": 0.9})
+    geo, ctx = _geometry_run(tmp_path, monkeypatch, episodes=[photo, _ep(start=2.0)])
+    _rewrite_edl(ctx["edl"], 0, still={"from": 1.0, "to": 0.7})
+    with pytest.raises(ValueError, match=r"geometry was frozen \(still\)"):
+        _render(ctx)
+
+
+def test_a_video_cut_identity_carries_no_still_key(tmp_path):
+    from scripts.lib.edl import EDL, EDLEpisode
+    edl = EDL(episodes=(EDLEpisode(**_ep()),))
+    assert edl_to_reel._cut_identity(edl) == [
+        {"source": "a.mp4", "start": 0.0, "dur": 2.0, "ramp": None}]
+
+
+def test_a_photo_reaches_the_reel_manifest_with_no_route(tmp_path, monkeypatch):
+    """The routes arm (design 2026-10-20 §5): a photo is route-less like a pan, on both
+    the straight-through path and the geometry split."""
+    photo = _ep(source="IMG_1.jpg", composition="center")
+    geo, ctx = _geometry_run(tmp_path, monkeypatch, episodes=[photo, _ep(start=2.0)])
+    assert geo.episodes[0].route is None and geo.episodes[1].route is not None
+    rm, stop = _render(ctx)
+    assert stop is None and rm.episodes[0].route is None
+    assert rm.episodes[1].route is not None
+
+
+def test_a_photo_rendered_straight_through_has_no_route_either(tmp_path, monkeypatch):
+    _wire(monkeypatch)
+    edl_path = _edl_file(tmp_path, episodes=[_ep(source="IMG_1.jpg", composition="center"),
+                                             _ep(start=2.0)])
+    work, out = _reel_dirs(tmp_path)
+    rm, stop = edl_to_reel._build_manifest(edl_path, _project(tmp_path), str(tmp_path),
+                                           work, out)
+    assert stop is None
+    assert rm.episodes[0].route is None
+    assert rm.episodes[1].route == str(Path(work) / "ep1" / "route.json")

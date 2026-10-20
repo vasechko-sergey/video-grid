@@ -53,7 +53,21 @@ def test_the_segment_is_on_the_video_contract(tmp_path):
     assert v["sample_aspect_ratio"] == "1:1"
     assert v["r_frame_rate"] == "30000/1001" and v["time_base"] == "1/30000"
     assert int(v["nb_read_frames"]) == 30
-    assert facts == {"prescale": 0.5, "upscale": 0.5}
+    assert facts == {"prescale": 0.5, "upscale": 0.5, "levels": 1}
+
+
+def test_a_big_move_drops_to_a_coarser_level_rather_than_alias(tmp_path):
+    """The review's M8: 1.0 -> 0.3 samples its widest frame at 3.3 source pixels per
+    output pixel from the 1:1-at-tight pre-scale; past MAX_DENSITY it takes a half level."""
+    st = _texture(1600, 900)
+    pl = kenburns.plan(st.dims, (16, 9), 1.0, None, "center", "thirds",
+                       StillSpec(1.0, 0.3), 30)
+    facts = still.render(st, pl.frames, (320, 180), "30/1", str(tmp_path / "big.mp4"))
+    assert facts["levels"] == 2
+    small = kenburns.plan(st.dims, (16, 9), 1.0, None, "center", "thirds",
+                          StillSpec(1.0, 0.92), 30)
+    assert still.render(st, small.frames, (320, 180), "30/1",
+                        str(tmp_path / "small.mp4"))["levels"] == 1
 
 
 def test_the_colour_survives_and_an_untagged_segment_would_not(tmp_path):
@@ -83,6 +97,11 @@ def test_the_colour_survives_and_an_untagged_segment_would_not(tmp_path):
                "-pix_fmt", "yuv420p", "-an", str(naive)], [st.rgb.tobytes()] * 2)
     assert worst(naive, "format=rgb24") <= 4          # ffmpeg agrees with itself...
     assert worst(naive, as709) > 12                   # ...a 709 reader does not
+
+
+def _texture(w: int, h: int, seed: int = 7) -> still.Still:
+    rng = np.random.default_rng(seed)
+    return still.Still(rgb=rng.integers(0, 256, (h, w, 3), dtype=np.uint8), record={})
 
 
 def _blob(w: int, h: int) -> still.Still:

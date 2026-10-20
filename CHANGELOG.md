@@ -16,7 +16,7 @@ file is the short "what changed for someone who installs it" list.
   (it skipped them in silence before) and says by extension what it did not read.
   Each photo is decoded upright and in sRGB — a Display P3 iPhone photo is
   converted, where ignoring its profile turns pure red into (234, 51, 35) — capped
-  at 4096 px, and becomes one window of 2.0 s it may be held up to 8.0 s.
+  at 4096 px, and becomes one window of 2.0 s that pacing may stretch to 8.0 s.
 - **A photo fills or fits by its shape.** A portrait photo fills the 9:16 canvas, a
   square or landscape one sits on a blurred field of itself; the frame is aimed at
   the people YOLO finds in it. Author `layout` to override.
@@ -24,7 +24,10 @@ file is the short "what changed for someone who installs it" list.
   people (`still: {"from": 1.0, "to": 0.92}` in the EDL, any other move by hand),
   log-scale and eased, rendered with a float warp: a tracked dot strays 0.02 px
   from a smooth curve where `zoompan`'s whole-pixel crop strays 0.46 px. The
-  segment lands on the video's own clock and colour tags.
+  segment lands on the video's own clock, tagged BT.709, and under the default
+  `native` delivery at the video's own size, so a photo first in the reel no longer
+  sets a 4032-wide canvas. The push keeps the people's heads whole, shortening itself
+  rather than cut them.
 - New runtime imports, both already installed: `pi-heif` and `opencv-python` are now
   declared, and `verify_runtime` checks `pi_heif`. Run `bash setup.sh` anyway.
 

@@ -1174,3 +1174,27 @@ def test_the_authored_record_rides_a_PASS_not_only_a_failure(tmp_path, monkeypat
     assert rep.checks["loudness"].detail["authored"][0]["value"] == 6.0
     at_default = _loudness_run(tmp_path, monkeypatch, ReelCheckSpec(target_dur=6.0), -10.0)
     assert at_default.checks["loudness"].passed is False
+
+
+def _write_geom_still(dir_path):
+    """A photo episode's sidecars: `still` true, `pan` false, and no route.json."""
+    d = Path(dir_path)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "path.json").write_text(json.dumps([0, 0]))
+    (d / "path.meta.json").write_text(json.dumps(
+        {"mode": "fill", "crop_w": 1000, "crop_h": 2000, "crop_y": 0, "src_dims": [1000, 2000],
+         "canvas": [1000, 2000], "out_dims": [1000, 2000], "rect_px": [0, 0, 1000, 2000],
+         "freedom": 0, "pan": False, "still": True}))
+    return (str(d / "route.json"), str(d / "path.json"), str(d / "path.meta.json"))
+
+
+def test_a_photo_beside_a_tracked_episode_is_named_skipped_not_read_for_a_route(
+        tmp_path, monkeypatch):
+    """design 2026-10-20 §5: a photo is route-less like a pan — before, check_reel
+    raised for a sidecar that said pan=false with no route."""
+    _Stub([3.0, 3.0], hashes={1.5: 0, 4.5: 1000}).install(monkeypatch)
+    geom = [_write_geom(tmp_path / "ep0", 500.0, 900.0), _write_geom_still(tmp_path / "ep1")]
+    rep = check_reel.run(_master(tmp_path), ["a.mp4", "b.mp4"], ReelCheckSpec(target_dur=6.0),
+                         str(tmp_path / "r.json"), geometry=geom, platform="tiktok")
+    assert rep.checks["safe_zones"].passed is True
+    assert rep.checks["safe_zones"].detail["skipped_episodes"] == [1]

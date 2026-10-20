@@ -85,7 +85,9 @@ target length, and order them **hook first**. For each episode assign:
   4:5) and `fit` with the blurred field otherwise (square, landscape); author
   `layout` to override. A photo refuses `zoom`, `pan`, `ramp`, `stabilize`,
   `hero`, `motion`, `smooth_window_s` and any `start_offset`, and a move faster
-  than `ZOOM_MAX_RATE` for its hold. Its `dur` may grow up to 8.0 s.
+  than `ZOOM_MAX_RATE` for its hold. Pacing may grow its `dur` up to 8.0 s; there is
+  no field to set it by hand. The move keeps the TOP half of the people whole (heads),
+  shortening itself rather than cut it.
 - `pan` (optional) — `{"from": f, "to": f}`, a **generated** constant-velocity
   camera move: two fractions of the crop's horizontal freedom (`0.0` hard
   left, `1.0` hard right; direction is the sign of `to - from`). It replaces

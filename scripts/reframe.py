@@ -12,8 +12,12 @@ from scripts.lib.motion import classify, travel_direction as classify_direction
 from scripts.lib.models import (ReframeSpec, CropPath, route_from_json, Delivery,
                                 PathMeta, LayoutSpec, BACKGROUNDS, PanSpec, ZoomSpec)
 
-STILL_TRIM = 2   # px a still's crop may trim off its own segment: the evenness of two
-                 # integer crops of one shape (design 2026-10-20 §5). More is a mismatch.
+STILL_TRIM = 2   # px a fit/insert still's crop may trim off its own segment: the evenness
+                 # of two integer crops of one shape (design 2026-10-20 §5). More is a
+                 # mismatch.
+STILL_ASPECT_TOL = 0.01   # a fill still's segment may differ from its canvas's shape by
+                          # this much — evenness is ~0.3% at 606x1080 — and more means it
+                          # was cut for another canvas.
 
 
 def compute_path(route: list[dict[str, float]], composition: str, grid: str,
@@ -475,9 +479,22 @@ def plan_render(spec: ReframeSpec, src: str, route_path: str | None) -> RenderPl
     # other — an ungraded pc episode is still the wrong pixels.
     color.refuse_ungradeable_plane(pix_fmt, color_range, src)
     # A still's segment was cut at its layout's crop, crop_scale included, so the crop
-    # here is the whole segment: crop_scale is spent, not applied twice.
+    # here is the whole segment: crop_scale is spent, not applied twice. A fill still is
+    # resolved against its OWN shape: the segment is the canvas a sized or native
+    # delivery evened (606x1080 is not 9:16 to the pixel), and crop_for on the canvas
+    # aspect would shave three rows off it — the canvas squash absorbs the residue, as
+    # it does for every fill.
     layout = replace(spec.layout, crop_scale=1.0) if spec.still else spec.layout
-    rl = layout_lib.resolve(layout, spec.canvas, (src_w, src_h), spec.delivery)
+    canvas = spec.canvas
+    if spec.still and layout.mode == "fill":
+        off = (src_w / src_h) / (spec.canvas[0] / spec.canvas[1]) - 1
+        if abs(off) > STILL_ASPECT_TOL:
+            raise ValueError(
+                f"the still segment {src} ({src_w}x{src_h}) is not the shape of its "
+                f"{spec.canvas[0]}:{spec.canvas[1]} canvas ({off:+.1%}): it was cut for "
+                f"another layout or canvas — re-run edl_to_reel so extract cuts it again")
+        canvas = (src_w, src_h)
+    rl = layout_lib.resolve(layout, canvas, (src_w, src_h), spec.delivery)
     crop_ws = crop_hs = crop_ys = None    # only a zoom fills all three. Under a pan (no route
                                           # to sample) all three stay None; under a plain
                                           # tracked route (no zoom) crop_hs/crop_ys stay None
@@ -496,9 +513,10 @@ def plan_render(spec: ReframeSpec, src: str, route_path: str | None) -> RenderPl
                 f"{slack[1]}px of height to spare, past the {STILL_TRIM}px evenness "
                 f"allows. The segment was cut for another layout or canvas — re-run "
                 f"edl_to_reel so extract cuts it again")
+        path_x = rl.freedom // 2
         n = max(2, round(dur * fps))
         times = [k * dur / (n - 1) for k in range(n)]
-        path = [rl.freedom // 2] * n
+        path = [path_x] * n
         cy = (src_h - rl.crop_h) // 2
     elif spec.pan is not None:
         # A GENERATED path: no route is read, and none is written. See
