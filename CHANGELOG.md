@@ -10,6 +10,14 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.24.0 — 2026-10-20
+
+- **Shot length is a suggestion from the mood, decided in the brief.** The new
+  `reel_brief hint --mood … --footage …` prints the band the mood suggests and the
+  shortest shot the footage can give; the brief offers it beside the agent's own
+  read of how long one action runs, and records the answer as `--asl`. A mood's
+  band no longer refuses a build — only a band the user chose can.
+
 ## 0.23.0 — 2026-10-20
 
 - **Trend scanning is gone.** The never-built `trend-scan` stage, the reviewer's

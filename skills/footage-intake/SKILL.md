@@ -88,10 +88,10 @@ guessing a path.
    `FOOTAGE.md`, and a re-run retries exactly the failed clips.
 
    `--win-min`/`--win-max` set the window length band a scan carves with —
-   default `(1.2, 4.0)` seconds. Raise `--win-min` for a mood that wants longer
-   shots than the default floor allows (edit-plan's length-band gate refuses a
-   mood preset whose `asl` floor sits below whatever `FOOTAGE.json` was actually
-   carved with, and names the remedy). The band is part of the per-clip cache
+   default `(1.2, 4.0)` seconds. The floor is the shortest shot the cut can have:
+   edit-plan's length-band gate refuses a brief's `--asl` floor below whatever
+   `FOOTAGE.json` was actually carved with, and names the remedy (a mood's band
+   is only a suggestion and is logged instead). The band is part of the per-clip cache
    key, so changing either flag is a cache **miss**, never a silently stale
    result carved under the old numbers — but that means the first scan after
    raising or lowering the band re-scans the **whole** pool, one time, because

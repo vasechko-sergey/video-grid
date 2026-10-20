@@ -32,9 +32,7 @@ Rows S1–S17 come from the second real run — evidence and measurements in
 
 ## P1 — the reel: what the operator asked for, or every review flagged
 
-| | Item | Size | Source |
-|---|------|------|--------|
-| ○ | **U2 · Shot length is a recommendation, not a mood rule** — the brief's shot-length question shows what the mood suggests and how long the footage's actions run, and the answer is recorded as `SPEC.asl`; a mood's band never refuses a build (`reconcile_band` becomes a log line for it) and only a band the user chose can. | S | user, 2026-10-20 |
+**P1 is empty** — U1 and U2 closed 2026-10-20 (0.23.0, 0.24.0), see the archive.
 
 ## P2 — friction
 

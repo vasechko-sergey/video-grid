@@ -49,7 +49,7 @@ def test_every_help_surface_has_a_row():
     expected = [label for name in cli_help.CLI
                 for label, _ in cli_help.surfaces(
                     importlib.import_module(f"scripts.{name}").build_parser(), name)]
-    assert len(expected) == 49, f"expected 49 help surfaces, the walk found {len(expected)}"
+    assert len(expected) == 50, f"expected 50 help surfaces, the walk found {len(expected)}"
     for label in expected:
         assert f"`{label}`" in text, f"{label} is a help surface with no index row"
 

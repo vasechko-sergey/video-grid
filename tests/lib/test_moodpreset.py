@@ -197,12 +197,14 @@ _FLOOR_PRESET = moodpreset.MoodPreset(
     "deep", None, {"close": 0.3, "medium": 0.4, "wide": 0.3}, (2.5, 5.0))
 
 
-def test_reconcile_refuses_a_preset_floor_below_the_carved_floor():
-    # The preset wants shots down to 2.5s; nothing in FOOTAGE.json is shorter
-    # than 3.0s, and no stage splits a window.
+def test_reconcile_names_a_mood_floor_below_the_carved_floor_as_a_suggestion():
+    # The mood suggests shots down to 2.5s; nothing in FOOTAGE.json is shorter
+    # than 3.0s, and no stage splits a window. Since 2026-10-20 (backlog U2) the
+    # caller only LOGS this for a mood band, so the text reads as a suggestion.
     msg = moodpreset.reconcile_band(_FLOOR_PRESET, (3.0, 4.0))
     assert msg is not None
-    assert "2.5" in msg and "3.0" in msg and "--win-min" in msg
+    assert msg.startswith("the deep mood suggests shots from 2.5s")
+    assert "3.0" in msg and "--win-min 2.5" in msg and "drop --spec" not in msg
 
 
 def test_reconcile_allows_a_preset_ceiling_above_the_carved_ceiling():

@@ -45,9 +45,22 @@ Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
 2. **Ask one question at a time** — do not batch. Cover: reel count · platform ·
    target length (seconds) · mood · hook (the opening) · music (a track / "auto" /
    "none") + `music.mode` (local / free / any — default free, the safe distribution
-   lane) · shot length · on-screen text · ending · cast. **Shot length** is its own question, asked in the genre's terms
-   (quick cuts 1–3 s · medium 3–6 s · whole actions 6–10 s) and recorded with
-   `--asl LO,HI`: it outranks the mood preset's band, which is a default nobody chose.
+   lane) · shot length · on-screen text · ending · cast.
+
+   **Shot length** is its own question, asked in the genre's terms (quick cuts
+   1–3 s · medium 3–6 s · whole actions 6–10 s), and the mood only *suggests* an
+   answer. Once the mood is known, run
+
+       "$VG" scripts.reel_brief hint --mood "…" --footage <run>/footage/FOOTAGE.json
+
+   It prints the band that mood suggests (`suggested_asl`, `null` when no mood
+   matched) and the shortest shot the footage can give (`carved`). Offer that
+   suggestion beside your own estimate of how long one action runs — a ride, a
+   wave — from the contact sheets you read, since nothing in `FOOTAGE.json`
+   measures it. Record the user's answer with `--asl LO,HI`, the suggestion
+   included when they take it, so it becomes their decision; omit `--asl` when they
+   would rather not choose. A mood band nobody chose never refuses a build; a
+   `--asl` floor under `carved` does.
    `hook` and `ending` describe **shots** for the editor; `--text` is the **literal
    words** the reel shows (the titles stage drafts exactly them) — ask for the
    exact wording, never record a description of it. When the reel has more than one

@@ -12,6 +12,7 @@ _Last updated: 2026-10-19._
 
 ## Done
 
+- **Shot length as a suggestion (2026-10-20, 0.24.0)** — branch `feat/asl-suggestion`, no design (the mood-contract design §4 is amended in place). Backlog U2: `reel_brief.shot_length_hint` + `hint` subcommand, `write_edit_plan` refuses `length-band` for a brief band only, `reconcile_band`'s mood message reads as a suggestion; skills reel-brief / edit-plan / footage-intake.
 - **Trends removed (2026-10-20, 0.23.0)** — branch `chore/remove-trends`, no design (the main design is corrected in place). Backlog U1: `trend-scan` + the `deferred` kind, `trend_flavor`, `Spec.style_lean` + `--style-lean`, the trend layer of the design and the skills; an old `SPEC.json` still loads and `montage status`/`verify` still read an old `REVIEW.json` (both pinned; `Review.from_json`, which no production code calls, now refuses a `trend_flavor` finding). Backlog U1–U10 filed from the 2026-10-20 photo and trend research.
 - **README reel link (2026-10-20, 0.22.2)** — branch `docs/readme-reel-link`, docs only. The example links to the published reel.
 - **Public README (2026-10-19, 0.22.1)** — branch `docs/public-readme`, docs only. README rewritten for a public audience: the run stage by stage, requirements, install over HTTPS, honest limits. A fact-check against the code found `setup.sh` never fetching the YOLO weights `verify_runtime` requires (a fresh clone dead-ended at step 0); setup now fetches `MODELS[0]` from the clone root, pinned by `tests/test_setup_runtime.py`.
@@ -7101,7 +7102,7 @@ _Last updated: 2026-10-19._
 
 ## Next action
 
-> **2026-10-20: the user's research asks are filed as U1–U10 (backlog).** U1 (remove trends) is done in 0.23.0; next is U2 (shot length as a recommendation), then U3 (music-less delivery), then the photo epic U4–U9. Every blockquote below this one is history.
+> **2026-10-20: the user's research asks are filed as U1–U10 (backlog).** U1 (remove trends) is done in 0.23.0, U2 (shot length as a suggestion) in 0.24.0; next is U3 (music-less delivery), then the photo epic U4–U9. Every blockquote below this one is history.
 
 > **2026-10-19: the second run's rows S1–S13 and S18 are fixed (0.15.2–0.21.0).** S19 (found by the S13 review) is fixed in 0.21.1, S15–S17 in 0.21.2, S14 in 0.22.0. P0–P2 are empty. The user re-runs `bash setup.sh` (it now installs `font-noto-emoji`), updates the plugin and pushes before the next run. Every blockquote below this one is history.
 

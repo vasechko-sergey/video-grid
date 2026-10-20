@@ -678,16 +678,18 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     no waiver: the rule is the user's, not the agent's to overrule.
 
     The footage's own carved length band (design 2026-09-03 §3/§4, `Footage.band`) is
-    reconciled against the preset's `asl` FLOOR right after constraints and before the
+    reconciled against the band's FLOOR right after constraints and before the
     variety gate — only the floor, never the ceiling, since edit_plan's own span merge
-    can always reach a taller shot but nothing splits a window into a shorter one. A
-    floor below the carved floor stops here with its own reason `length-band`
-    (`episode_idx: null`, like `variety-gap` and `constraint-violation`: it judges the
-    whole cut, not one episode). The band is `SPEC.asl` when the brief set one (retro
-    2026-10-16 S5), else the preset's. The `balanced` fallback is exempt exactly as
-    `look` is (`preset.name == "balanced"`) — unless the brief set `asl`: a skipped or
-    unmatched brief has no taste to hold the cut to, but a brief band is a decision. A FOOTAGE.json
-    written before this slice carries no recorded band; the check reports
+    can always reach a taller shot but nothing splits a window into a shorter one. The
+    band is `SPEC.asl` when the brief set one (retro 2026-10-16 S5), else the mood
+    preset's. Only a brief band below the carved floor stops here, with its own reason
+    `length-band` (`episode_idx: null`, like `variety-gap` and `constraint-violation`:
+    it judges the whole cut, not one episode); a mood's band is a suggestion the brief
+    offers, so its gap is logged and the build goes on (backlog U2, 2026-10-20). The
+    `balanced` fallback is not even compared, exactly as `look` is skipped for it
+    (`preset.name == "balanced"`) — unless the brief set `asl`: a skipped or unmatched
+    brief has no taste to hold the cut to, but a brief band is a decision. A
+    FOOTAGE.json written before the band was recorded carries none; the check reports
     `not-checked` rather than a silent pass.
 
     `music` (design 2026-08-14 §7, optional) is MUSIC.json — supplying it, together with
@@ -808,9 +810,14 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
              f"{preset.asl[0]:.1f}–{preset.asl[1]:.1f}s, footage carved "
              f"{footage.band[0]:.1f}–{footage.band[1]:.1f}s")
     if band_problem is not None:
-        return {"status": "stop_and_report",
-                "finding": {"reason": "length-band", "episode_idx": None,
-                            "problems": [band_problem]}}
+        if asl_from != "brief":
+            # Backlog U2 (2026-10-20): a mood's band is a recommendation the brief offers,
+            # never a rule — a default nobody chose must not stop a cut.
+            _log(f"length band: {band_problem} — a suggestion, so the build goes on")
+        else:
+            return {"status": "stop_and_report",
+                    "finding": {"reason": "length-band", "episode_idx": None,
+                                "problems": [band_problem]}}
     v = edl.variety
     lo, hi = v.asl_band
     side = "under" if v.asl < lo else "over"
@@ -823,8 +830,8 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
             _log(f"ASL {v.asl:.2f}s is {side} the brief's {lo:.1f}–{hi:.1f}s band — "
                  f"re-plan the spans before CP2, or say why not")
         elif v.preset != "balanced":
-            _log(f"ASL {v.asl:.2f}s is {side} the {v.preset} preset's {lo:.1f}–{hi:.1f}s "
-                 f"band — a default nobody chose; the brief's --asl is what sets one")
+            _log(f"ASL {v.asl:.2f}s is {side} the {v.preset} mood's suggested "
+                 f"{lo:.1f}–{hi:.1f}s — a suggestion; the brief's --asl is what sets a band")
     _log("variety: preset {} — footage offers {}{}".format(
         v.preset, ", ".join(f"{s} {v.available[s]}" for s in SHOT_TYPES),
         f" ({v.unmeasured} with no detected subject)" if v.unmeasured else ""))
