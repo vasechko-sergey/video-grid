@@ -24,7 +24,8 @@ def build_spec(project_path: str, *, length_s: float, mood: str, hook: str,
                platform: str = "", text: str = "",
                ending: str = "", cast: tuple = (), notes: str = "",
                tone_bias: tuple | None = None, cast_share: dict | None = None,
-               asl: tuple | None = None, music_known: bool = False) -> Spec:
+               asl: tuple | None = None, music_known: bool = False,
+               music_in_app: bool = False) -> Spec:
     """Read canvas from project.json (fail-loud if absent — reel-brief FOLLOWS
     project-init), then construct+validate a Spec. The project is the single source
     of aspect; build_spec never sources canvas itself.
@@ -47,7 +48,8 @@ def build_spec(project_path: str, *, length_s: float, mood: str, hook: str,
                 reel_count=reel_count, music=music, music_mode=music_mode,
                 platform=platform, text=text,
                 ending=ending, cast=tuple(cast), notes=notes, tone_bias=tone_bias,
-                cast_share=cast_share, asl=asl, music_known=music_known)
+                cast_share=cast_share, asl=asl, music_known=music_known,
+                music_in_app=music_in_app)
 
 
 def parse_cast_share(values: list[str] | None, cast: tuple) -> dict | None:
@@ -119,6 +121,10 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--music-known", action="store_true",
                    help="the brief wants a known track (a hit, a popular song), not just one that "
                         "fits the mood — music_find then searches and sorts by popularity")
+    b.add_argument("--music-in-app", action="store_true",
+                   help="the user will attach the licensed track inside the app — deliver "
+                        "then also writes the reel without the song plus a note naming the "
+                        "track and where the reel's music starts in it")
     b.add_argument("--platform", default="",
                    help="the app: reels/tiktok/shorts, or its own name ('Instagram Reels', "
                         "'YouTube Shorts'); stored as the safe zone it resolves to, refused "
@@ -170,7 +176,7 @@ def main() -> None:
                       tone_bias=tone_bias,
                       cast_share=parse_cast_share(a.cast_share, tuple(a.cast or ())),
                       asl=tuple(float(v) for v in a.asl.split(",")) if a.asl else None,
-                      music_known=a.music_known)
+                      music_known=a.music_known, music_in_app=a.music_in_app)
     result = write_reel_brief(spec, a.out_dir)
     print(json.dumps(result, indent=2))
     raise SystemExit(0)

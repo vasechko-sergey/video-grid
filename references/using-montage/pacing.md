@@ -11,7 +11,8 @@ same as step 6's first build. This second pass re-stamps `EDL.json` from scratch
 so a dropped `--spec` silently re-resolves the variety preset to `balanced` and
 re-stamps that instead of the brief's mood. It also clears `EDL.brief_len`, which
 turns the advisory `brief_length` check not-checked instead of comparing the
-reel against the brief. `--music` here does a SECOND job
+reel against the brief, and `EDL.music_in_app`, so no music-less copy and no
+sound note are delivered (the build log's `music in the app:` line says which). `--music` here does a SECOND job
 beyond feeding the beat grid: it fits the reel's *end* to a bar line — or a beat
 under a 1.5 s fade when the window has no bar grid — (`lib/outro.fit_outro`, applied after this pass binds every slot) so the music
 resolves on a downbeat instead of stopping mid-phrase — read `EDL.md`'s **Music

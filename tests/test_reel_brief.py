@@ -246,3 +246,24 @@ def test_the_hint_reads_footage_through_its_validated_loader(tmp_path):
     bad.write_text(json.dumps({"clips": "not a list", "band": [1.2, 4.0]}))
     with pytest.raises(ValueError):
         reel_brief.shot_length_hint("nostalgic", str(bad))
+
+
+def test_the_brief_records_music_in_app(tmp_path):
+    spec = build_spec(_project(tmp_path), length_s=30, mood="calm", hook="h",
+                      music_in_app=True)
+    assert spec.music_in_app is True
+    a = reel_brief.build_parser().parse_args(
+        ["build", "--project", "p", "--length", "30", "--mood", "m", "--hook", "h",
+         "--out-dir", "o", "--music-in-app"])
+    assert a.music_in_app is True
+
+
+
+def test_the_cli_hands_music_in_app_to_the_brief(tmp_path, monkeypatch, capsys):
+    """--music-in-app is the user's only way in; main() must pass it on."""
+    monkeypatch.setattr(sys, "argv", ["reel_brief", "build", "--project", _project(tmp_path),
+                                      "--length", "30", "--mood", "calm", "--hook", "h",
+                                      "--music-in-app", "--out-dir", str(tmp_path / "o")])
+    with pytest.raises(SystemExit):
+        reel_brief.main()
+    assert Spec.from_json(tmp_path / "o" / "SPEC.json").music_in_app is True

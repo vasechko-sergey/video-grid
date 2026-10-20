@@ -1696,6 +1696,9 @@ class ReelManifest:
                                        # partitions; check_spec applies only what
                                        # ReelCheckSpec owns. {} = every bar at its
                                        # default, and to_dict then omits the key.
+    music_in_app: bool = False         # EDL.music_in_app: build_reel's deliver arm also
+                                       # writes deliveries/no-music/REEL_v{n}.mp4 and its
+                                       # sound note (design 2026-10-20). Omitted when False.
     provenance: dict = field(default_factory=dict)   # run-level record threaded to deliver (§6)
 
     def __post_init__(self) -> None:
@@ -1763,6 +1766,13 @@ class ReelManifest:
                 f"(SPEC.length_s) or None, got {self.brief_len!r} — this is what "
                 f"check_reel's brief_length row divides by; re-run edl_to_reel "
                 f"--stop-after-episodes to regenerate EPISODES.json from a valid EDL")
+        if not isinstance(self.music_in_app, bool):
+            raise ValueError(f"ReelManifest.music_in_app must be true or false, got "
+                             f"{self.music_in_app!r}")
+        if self.music_in_app and self.music is None:
+            raise ValueError("ReelManifest.music_in_app asks for a sound note naming the "
+                             "track, but the reel has no music — pass edl_to_reel --music "
+                             "<MUSIC.json>, or drop --music-in-app from the brief")
         if not isinstance(self.provenance, dict):
             raise ValueError(f"ReelManifest.provenance must be an object, got "
                              f"{type(self.provenance).__name__}")
@@ -1824,6 +1834,7 @@ class ReelManifest:
                    tone_target=tuple(d["tone_target"]) if d.get("tone_target") else None,
                    brief_len=d.get("brief_len"),
                    gates={} if g is None else g,
+                   music_in_app=d.get("music_in_app", False),
                    provenance=d.get("provenance") or {})
 
     @classmethod
@@ -1846,6 +1857,8 @@ class ReelManifest:
             # gates keeps an EPISODES.json byte-identical to one written before this field
             # existed (design 2026-09-30 §3), and from_dict reads a missing key as {}.
             d["gates"] = dict(self.gates)
+        if self.music_in_app:              # omitted when False, like gates
+            d["music_in_app"] = True
         return d
 
     def write(self, path: str | Path) -> None:

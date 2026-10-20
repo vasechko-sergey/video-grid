@@ -24,6 +24,9 @@ user makes the final call (the §4.1 music checkpoint stays human-influenced).
   with `--catalog`). **Legally gray and jurisdiction-dependent — opt-in, the user's
   responsibility.** Only use it when `SPEC.music_mode` is explicitly `any`. Every fetch
   logs a responsibility line and records `license="unknown (any lane)"`.
+  For a reel posted where the app licenses the sound, the brief's `--music-in-app`
+  makes the delivery also ship the reel without the song plus a note for attaching
+  the track in the app.
 
 ## Inputs
 

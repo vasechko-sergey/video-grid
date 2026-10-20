@@ -35,6 +35,20 @@ class FetchedTrack:
                 "source_url": self.source_url, "license": self.license, "date": self.date}
 
 
+def track_meta(track: str) -> dict | None:
+    """The record `download` wrote beside `track` — {title, artist, source, source_url,
+    license, date} — or None when there is none, or the `.json` beside it is not one
+    (a local file can sit next to anything). Descriptive only: without a record the
+    file's own name is still true, just less said. One reader for the sidecar format
+    this module owns, shared by the reel review's prompt and the sound note."""
+    meta = Path(track).with_suffix(".json")
+    try:
+        t = json.loads(meta.read_text()) if meta.is_file() else None
+    except json.JSONDecodeError:
+        return None
+    return t if isinstance(t, dict) and t.get("artist") and t.get("title") else None
+
+
 def _log(msg: str) -> None:
     print(msg, file=sys.stderr)
 

@@ -5,10 +5,12 @@ chosen fragment, fade, two-pass loudnorm to −14 LUFS → aac. Given `segments`
 transitions and mixed in on top. Both bake into the one stem before the final
 loudnorm, so deliver/check_reel see a single pre-normalized signal."""
 import argparse
+import json
 import os
 import re
 import statistics
 import tempfile
+from pathlib import Path
 
 from scripts.lib import assembly, ffbin, proc
 from scripts.lib.models import MusicSpec
@@ -52,6 +54,8 @@ _SFX_Q = 0.7            # whoosh bandpass width (Q; smaller = wider)
 _SFX_ATTACK = 0.08      # whoosh rise time (s); its peak lands here
 _SFX_LEAD = 0.2         # whoosh starts this many seconds before the cut so its peak sits near it
 _SFX_MIX = 1.0          # whoosh volume entering the final amix (relative punch)
+_AMB_MIX = 0.6          # ambient bed volume entering the duck — shared by both graphs so the
+                        # music-less stem keeps the weight the music stem gave it
 _SFX_SEED = 42          # anoisesrc seed → a deterministic whoosh
 
 
@@ -160,7 +164,7 @@ def _mix_graph(has_ambient: bool, has_sfx: bool) -> str:
     if has_ambient:
         parts.append("[0:a]asplit=2[msum][mkey]")
         terms.append("[msum]")
-        parts.append(f"[{idx}:a]volume=0.6[amb]")
+        parts.append(f"[{idx}:a]volume={_AMB_MIX}[amb]")
         parts.append("[amb][mkey]sidechaincompress=threshold=0.03:ratio=4:attack=20:release=300[duck]")
         terms.append("[duck]")
         idx += 1
@@ -174,10 +178,44 @@ def _mix_graph(has_ambient: bool, has_sfx: bool) -> str:
     return ";".join(parts)
 
 
+def _nomusic_graph(has_ambient: bool, has_sfx: bool, gain_db: float, fades: list[str],
+                   dur: float) -> str:
+    """filter_complex for the music-less stem (design 2026-10-20 §2): what the music stem
+    sounds like with the track muted. Inputs: ambient (if any) then sfx (if any).
+
+    - No key, no sidechaincompress: with the music gone the duck would pump to nothing.
+    - The weights the music mix gave each layer — amix's default normalize=1 scaled every
+      input by 1/N, N counting the music — reproduced with normalize=0, so the layers keep
+      their level relative to each other and to the picture.
+    - The music stem's own loudnorm gain as a plain `volume`, never a second loudnorm: an
+      ambient bed normalized to −14 LUFS alone would lift the wind noise.
+    - The same bookend fades, then a sample-peak ceiling at the stem's true-peak target:
+      an un-ducked wave crash can peak higher than it did under the duck. It is not a
+      true-peak limiter — inter-sample peaks can still pass it. alimiter's `level` defaults to
+      an AUTO LEVEL that normalizes its output up — level=0 is load-bearing — and latency=1
+      keeps its lookahead from shifting the sound against the picture."""
+    n = 1 + has_ambient + has_sfx                       # the MUSIC mix's amix input count
+    layers = [(w, name) for on, w, name in ((has_ambient, _AMB_MIX, "amb"),
+                                             (has_sfx, _SFX_MIX, "sfx")) if on]
+    if not layers:
+        raise ValueError("_nomusic_graph: no ambient and no sfx — the stem is silence, "
+                         "which _render_without_music renders without a graph")
+    parts = [f"[{i}:a]volume={w / n:.6f}[{name}]" for i, (w, name) in enumerate(layers)]
+    if len(layers) == 2:
+        parts.append("[amb][sfx]amix=inputs=2:duration=longest:normalize=0[nm]")
+        src = "[nm]"
+    else:
+        src = f"[{layers[0][1]}]"
+    ceiling = 10 ** (_TP_MAX / 20)
+    parts.append(f"{src}apad,atrim=0:{dur},volume={gain_db:.3f}dB,{','.join(fades)},"
+                 f"alimiter=limit={ceiling:.4f}:level=0:latency=1[out]")
+    return ";".join(parts)
+
+
 def mix(music: MusicSpec, out_dir: str, dur: float,
         segments: list[tuple[str, float]] | None = None,
         ambient: bool = True, sfx: bool = False, fade: float = _FADE,
-        fade_in: float | None = None) -> str:
+        fade_in: float | None = None, without_music: str | None = None) -> str:
     """Audio stem for a `dur`-second reel → out_dir/audio.m4a (aac, −14 LUFS). With
     `segments` ([(raw_segment_path, episode_dur), …] in reel order) and `ambient`,
     each clip's nat-sound is ducked under the music; with `sfx`, a synthesized whoosh
@@ -193,7 +231,12 @@ def mix(music: MusicSpec, out_dir: str, dur: float,
     here so the audio and video bookends agree.
 
     `fade` is the CLOSING fade and, unless `fade_in` sets it apart, the opening one too
-    (LookSpec's own convention). The opening never drops below ANTICLICK."""
+    (LookSpec's own convention). The opening never drops below ANTICLICK.
+
+    `without_music`, when given, is a second path: the same reel with the track muted
+    (design 2026-10-20 §2, see _nomusic_graph), rendered here from the same beds and the
+    same measurement so the two stems cannot drift apart. With neither ambient nor sfx
+    it is silence of the reel's length — still the deliverable a picture needs."""
     if dur <= 0:
         raise ValueError(f"mix: dur must be positive, got {dur}")
     if dur > music.duration + 0.1:
@@ -247,7 +290,46 @@ def mix(music: MusicSpec, out_dir: str, dur: float,
                    f"measured_I={st['input_i']}:measured_TP={st['input_tp']}:"
                    f"measured_LRA={st['input_lra']}:measured_thresh={st['input_thresh']}"),
                   "-c:a", "aac", "-b:a", "192k", out])
+        if without_music is not None:
+            gain = _TARGET_LUFS - float(st["input_i"])
+            _render_without_music(without_music, amb, sfx_bed, dur, fades, gain, _layout(out))
+            # What the stem holds, and whether `gain` IS what the music stem received:
+            # loudnorm only stays linear when the measured range and the lifted true peak
+            # both fit its targets (af_loudnorm's own test). Otherwise it rode a dynamic
+            # gain and the music-less ambient sits several dB from the music version's —
+            # measured 4.9 and 6.3 dB on wide-range fixtures — so the note says so.
+            linear = (float(st["input_lra"]) <= _LRA_TARGET
+                      and float(st["input_tp"]) + gain <= _TP_MAX)
+            Path(without_music).with_suffix(".json").write_text(json.dumps(
+                {"ambient": amb is not None, "sfx": sfx_bed is not None,
+                 "gain_db": round(gain, 3), "linear": linear}))
     return out
+
+
+def _layout(path: str) -> tuple[int, int]:
+    """(channels, sample rate) of an encoded stem. The music stem takes the TRACK's
+    layout through amix, so a music-less stem rendered in any other layout would sit
+    at a different level: measured, a stereo bed beside a mono track lands 3 dB apart."""
+    r = proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "a:0",
+                  "-show_entries", "stream=channels,sample_rate", "-of", "csv=p=0", path])
+    rate, ch = r.stdout.decode("utf-8", errors="replace").strip().split(",")
+    return int(ch), int(rate)
+
+
+def _render_without_music(path: str, amb: str | None, sfx_bed: str | None, dur: float,
+                          fades: list[str], gain_db: float, layout: tuple[int, int]) -> None:
+    """Write the music-less stem in the music stem's own layout (see _layout)."""
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    ch, rate = layout
+    fmt = ["-ac", str(ch), "-ar", str(rate), "-c:a", "aac", "-b:a", "192k", path]
+    if amb is None and sfx_bed is None:
+        proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi", "-i", f"anullsrc=r={rate}:cl=stereo",
+                  "-t", f"{dur}", *fmt])
+        return
+    inputs = [x for b in (amb, sfx_bed) if b is not None for x in ("-i", b)]
+    proc.run([ffbin.ffmpeg(), "-y", *inputs, "-filter_complex",
+              _nomusic_graph(amb is not None, sfx_bed is not None, gain_db, fades, dur),
+              "-map", "[out]", "-t", f"{dur}", *fmt])
 
 
 def build_parser() -> argparse.ArgumentParser:

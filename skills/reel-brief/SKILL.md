@@ -74,7 +74,11 @@ Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
    anything that fits the mood: `--music-known` — `--music-mode` is the licence lane
    only, and the second real run read "any" as rights and searched niche artists.
    Prefer the user's free text ("without music" → `--music none`; "any source" →
-   `--music-mode any`).
+   `--music-mode any`). When the reel has music, ask whether the user will attach the
+   track **in the app** (Instagram, TikTok, Shorts) — recommend it for the `any` lane,
+   whose `yt-dlp` file can be muted when baked in — and record a yes with
+   `--music-in-app`: deliver then also writes the reel without the song and a note
+   naming the track and where the reel's music starts in it.
 3. **HARD-GATE.** Do not write until **mood + canvas + length + hook** are locked.
    If any is vague, keep asking.
 4. **Self-review** the assembled answers, then **build** (explicit args; the user

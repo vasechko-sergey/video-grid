@@ -1387,3 +1387,17 @@ def test_crop_aspect_refuses_a_malformed_ratio(text):
     with pytest.raises(ValueError, match="crop_aspect") as e:
         _ep(crop_aspect=text)
     assert repr(text) in str(e.value) and "W:H" in str(e.value)
+
+
+# --- backlog U3: music attached in the app rides the EDL ---
+
+def test_music_in_app_round_trips_and_is_absent_when_unasked():
+    e = EDL(episodes=(_ep(),), music_in_app=True)
+    assert e.to_dict()["music_in_app"] is True
+    assert EDL.from_dict(e.to_dict()).music_in_app is True
+    assert "music_in_app" not in EDL(episodes=(_ep(),)).to_dict()
+
+
+def test_music_in_app_on_the_edl_must_be_a_bool():
+    with pytest.raises(ValueError, match="music_in_app"):
+        EDL(episodes=(_ep(),), music_in_app="yes")
