@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 MUSIC_MODES = ("local", "free", "any")            # rights lane (design §5.5); default "free"
-STYLE_LEANS = ("classic", "balanced", "trend")    # classic ↔ trend axis; default "balanced"
 
 
 @dataclass
@@ -22,7 +21,9 @@ class Spec:
     reel_count: int = 1
     music: str = "auto"      # track name / "auto" / "none" (free, non-empty)
     music_mode: str = "free"
-    style_lean: str = "balanced"
+    # (style_lean — classic / balanced / trend — was removed on 2026-10-20, backlog U1:
+    # the brief asked it and no code ever read it. from_dict reads named keys only, so an
+    # older SPEC.json that still carries it loads, and the key is not written back.)
     platform: str = ""
     text: str = ""
     ending: str = ""
@@ -40,7 +41,7 @@ class Spec:
     # longboard rides into 13 pieces of 3.3 s; the operator rejected it at CP2 — "rides
     # of 2 seconds again" — and wanted whole rides of up to 10 s (retro 2026-10-16 S5).
     asl: tuple | None = None
-    # The brief asked for a KNOWN track (a hit, a trend) rather than any track that fits
+    # The brief asked for a KNOWN track (a hit, a popular song) rather than any track that fits
     # the mood. music_mode is the licence lane only; the second run's "any" was read as
     # rights and the search returned niche artists (retro 2026-10-16 S8). music_find
     # reads it as --popular.
@@ -71,8 +72,6 @@ class Spec:
             raise ValueError("Spec.music must be a non-empty string (track name / 'auto' / 'none')")
         if self.music_mode not in MUSIC_MODES:
             raise ValueError(f"Spec.music_mode {self.music_mode!r} not in {MUSIC_MODES}")
-        if self.style_lean not in STYLE_LEANS:
-            raise ValueError(f"Spec.style_lean {self.style_lean!r} not in {STYLE_LEANS}")
         for name in ("platform", "text", "ending", "notes"):
             v = getattr(self, name)
             if not isinstance(v, str):
@@ -137,7 +136,7 @@ class Spec:
             canvas=d.get("canvas"), length_s=d.get("length_s"),
             mood=d.get("mood"), hook=d.get("hook"),
             reel_count=opt("reel_count", 1), music=opt("music", "auto"),
-            music_mode=opt("music_mode", "free"), style_lean=opt("style_lean", "balanced"),
+            music_mode=opt("music_mode", "free"),
             platform=opt("platform", ""), text=opt("text", ""),
             ending=opt("ending", ""), cast=opt("cast", ()), notes=opt("notes", ""),
             tone_bias=d.get("tone_bias"), cast_share=d.get("cast_share"),
@@ -147,7 +146,7 @@ class Spec:
         return {"canvas": list(self.canvas), "length_s": self.length_s,
                 "mood": self.mood, "hook": self.hook, "reel_count": self.reel_count,
                 "music": self.music, "music_mode": self.music_mode,
-                "style_lean": self.style_lean, "platform": self.platform,
+                "platform": self.platform,
                 "text": self.text, "ending": self.ending, "cast": list(self.cast),
                 "notes": self.notes,
                 "tone_bias": None if self.tone_bias is None else list(self.tone_bias),
@@ -189,7 +188,6 @@ class Spec:
             f"- **Hook:** {self.hook}",
             f"- **Music:** {self.music} (mode: {self.music_mode}"
             f"{', known tracks' if self.music_known else ''})",
-            f"- **Style-lean:** {self.style_lean}",
             f"- **Platform:** {self.platform or '–'}",
             f"- **Cast:** {cast}",
             f"- **Cast share:** {share_line(self.cast_share) if self.cast_share else '–'}",

@@ -16,6 +16,12 @@ is where its neighbours were.
 
 ---
 
+## Closed from P1 — asked 2026-10-20
+
+| | Item | Size | Source |
+|---|------|------|--------|
+| ✅ | **U1 · Remove trend scanning entirely** — the deferred `trend-scan` stage (and with it the inspector's `deferred` kind), the `trend_flavor` review axis, `SPEC.style_lean` and its brief question, the design's trend layer (§2 principle 4, §5.4, the trend half of §5.5 and §6.3); label `--music-known` "popular", never "trending". Why, from the 2026-10-20 trend research: no platform promises a reach gain for a trending sound or format, the one test with statistics found none, a trend's median life is about five days and regional, and no legal machine source exposes formats (TikTok Creative Center has no API and its terms forbid scraping). `style_lean` is read by no code; `trend_flavor` is judged with no source. **Done 2026-10-20 (0.23.0):** `montage.V1_STAGES` loses `trend-scan` and `_KINDS` loses `deferred` (no deferred stage is left, so the inspector's `skip` state went too; the generated chain, positions and router table were already deferred-free and did not move); `REVIEW_AXES` loses `trend_flavor`; `Spec` loses `style_lean`/`STYLE_LEANS` and `reel_brief` its `--style-lean` flag. Old files: `Spec.from_dict` reads named keys only, so a `SPEC.json` carrying `style_lean` loads (pinned), and `montage status`/`verify` read `REVIEW.json` raw, so a stored `trend_flavor` finding does not break them (both pinned; the typed `Review.from_json`, which no production code calls, now refuses one). The design (§2, the layout tree, the artifact table, the flow diagram, §5.4, §5.5, §5.13, §6.2–§6.3, §8 and the open questions) and the pipeline map are corrected in place. | M | user, 2026-10-20 |
+
 ## Closed from P0 — the second real run's fixes (2026-10-19)
 
 | | Item | Size | Source |

@@ -45,12 +45,9 @@ Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
 2. **Ask one question at a time** — do not batch. Cover: reel count · platform ·
    target length (seconds) · mood · hook (the opening) · music (a track / "auto" /
    "none") + `music.mode` (local / free / any — default free, the safe distribution
-   lane) · style-lean (classic / balanced / trend) · shot length · on-screen text ·
-   ending · cast. **Shot length** is its own question, asked in the genre's terms
+   lane) · shot length · on-screen text · ending · cast. **Shot length** is its own question, asked in the genre's terms
    (quick cuts 1–3 s · medium 3–6 s · whole actions 6–10 s) and recorded with
    `--asl LO,HI`: it outranks the mood preset's band, which is a default nobody chose.
-   Style-lean is HOW the cut feels (classic vs trend), never how long a shot is — do not
-   describe either option as "long takes".
    `hook` and `ending` describe **shots** for the editor; `--text` is the **literal
    words** the reel shows (the titles stage drafts exactly them) — ask for the
    exact wording, never record a description of it. When the reel has more than one
@@ -60,7 +57,7 @@ Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
    **Platform** is the app (`reels` / `tiktok` / `shorts`, or the app's own name —
    "Instagram Reels" works); the brief stores the safe zone it resolves to and
    refuses a label no zone answers to. Leave it unset only when there is no app.
-   Ask separately whether the music should be a **known** track (a hit, a trend) or
+   Ask separately whether the music should be a **known** track (a hit, a popular song) or
    anything that fits the mood: `--music-known` — `--music-mode` is the licence lane
    only, and the second real run read "any" as rights and searched niche artists.
    Prefer the user's free text ("without music" → `--music none`; "any source" →
@@ -72,7 +69,7 @@ Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
 
        "$VG" scripts.reel_brief build --project <run>/project.json \
          --length 30 --mood "…" --hook "…" \
-         [--reel-count 1] [--music …] [--music-mode free] [--style-lean balanced] \
+         [--reel-count 1] [--music …] [--music-mode free] \
          [--platform …] [--text …] [--ending …] [--cast NAME]... \
          [--cast-share equal | --cast-share NAME=WEIGHT ...] [--asl LO,HI] \
          [--music-known] [--notes …] \
@@ -85,15 +82,17 @@ Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
 ## Gate
 
 `mood`, `canvas`, `length`, `hook` locked; `SPEC.json` + `SPEC.md` written. The
-edit-plan agent reads `SPEC.md` as guidance (mood / hook / style-lean / length).
+edit-plan agent reads `SPEC.md` as guidance (mood / hook / length / shot length).
 
 ## Boundaries
 
 - **Optional stage.** The brief enriches the reel; the autonomous path runs off
   `project.json` alone. Run reel-brief when the idea deserves shaping.
-- **Not consumed mechanically in v1:** `music`/`music_mode` are recorded for Phase
-  B3 sourcing (unbuilt); `style_lean` is editorial guidance, not a `TRENDS.md` (5.4)
-  input.
+- **No trend lane.** Trend scanning was removed on 2026-10-20 (no measured reach
+  gain, a trend lives about five days and is regional, and no legal machine source
+  exposes formats), and `style_lean` went with it — no code ever read it. An older
+  `SPEC.json` that carries the key still loads. A wish for a popular song is
+  `--music-known`, which sorts by catalogue popularity, never by "trending".
 - **`reel_count` stays 1.** `Spec` refuses `reel_count > 1` outright — the field
   stays in the contract for the day multi-reel fan-out is built, but the CLI will
   not silently produce one reel for a brief that asked for more. If the user

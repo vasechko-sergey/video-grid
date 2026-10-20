@@ -1,6 +1,6 @@
 import pytest
 
-from scripts.lib.spec import MUSIC_MODES, STYLE_LEANS, Spec
+from scripts.lib.spec import MUSIC_MODES, Spec
 
 GOOD = dict(canvas=(9, 16), length_s=30.0, mood="energetic", hook="jump-cut open")
 
@@ -8,7 +8,7 @@ GOOD = dict(canvas=(9, 16), length_s=30.0, mood="energetic", hook="jump-cut open
 def test_spec_accepts_good():
     s = Spec(**GOOD)
     assert s.canvas == (9, 16) and s.reel_count == 1 and s.music_mode == "free"
-    assert s.style_lean == "balanced" and s.music == "auto" and s.cast == ()
+    assert s.music == "auto" and s.cast == ()
 
 
 def test_spec_rejects_bad_canvas():
@@ -60,11 +60,6 @@ def test_spec_rejects_bad_music_mode():
         Spec(**{**GOOD, "music_mode": "pirate"})
 
 
-def test_spec_rejects_bad_style_lean():
-    with pytest.raises(ValueError, match="style_lean"):
-        Spec(**{**GOOD, "style_lean": "edgy"})
-
-
 def test_spec_rejects_nonstr_cast_entry():
     with pytest.raises(ValueError, match="cast"):
         Spec(**{**GOOD, "cast": ["Anna", 7]})
@@ -101,7 +96,6 @@ def test_spec_write_then_from_json(tmp_path):
 
 def test_vocab_constants_are_the_allowed_sets():
     assert MUSIC_MODES == ("local", "free", "any")
-    assert STYLE_LEANS == ("classic", "balanced", "trend")
 
 
 def test_spec_from_dict_rejects_noniterable_cast():
@@ -153,7 +147,7 @@ def test_to_markdown_full_render_whole_string():
     # construction (see test_reel_count_above_one_is_refused_...); to_markdown's plural
     # branch is now unreachable through any valid Spec, by design.
     s = Spec(canvas=(9, 16), length_s=30.0, mood="energetic", hook="jump-cut open",
-             reel_count=1, music="ODESZA", music_mode="local", style_lean="trend",
+             reel_count=1, music="ODESZA", music_mode="local",
              platform="tiktok", text="captions", ending="freeze frame",
              cast=["Anna", "Ben"], notes="keep it tight", tone_bias=(10.0, 18.0, 8.0))
     assert s.to_markdown() == (
@@ -163,7 +157,6 @@ def test_to_markdown_full_render_whole_string():
         "- **Tone bias:** +10/+18/+8\n"
         "- **Hook:** jump-cut open\n"
         "- **Music:** ODESZA (mode: local)\n"
-        "- **Style-lean:** trend\n"
         "- **Platform:** tiktok\n"
         "- **Cast:** Anna, Ben\n"
         "- **Cast share:** –\n"
@@ -288,3 +281,12 @@ def test_known_tracks_need_the_any_lane():
     with pytest.raises(ValueError, match="--music-mode any"):
         Spec(**GOOD, music_known=True)
     assert Spec(**GOOD, music_mode="any", music_known=True).music_known is True
+
+
+def test_a_brief_written_before_style_lean_was_removed_still_loads():
+    """style_lean was removed on 2026-10-20 (backlog U1): no code ever read it. An
+    older SPEC.json still carrying the key loads, and the key is not written back."""
+    d = Spec(canvas=(9, 16), length_s=30.0, mood="calm", hook="h").to_dict()
+    d["style_lean"] = "trend"
+    s = Spec.from_dict(d)
+    assert "style_lean" not in s.to_dict() and not hasattr(s, "style_lean")

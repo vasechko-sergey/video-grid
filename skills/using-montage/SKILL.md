@@ -16,7 +16,7 @@ does the reel read) is yours and the sub-skills'.
 
 **Core principle:** sequence, checkpoint, resume. Run built stages in order;
 surface the three user gates (design §4.1); resume from wherever the run's
-artifacts already reach; and when a stage is deferred/unbuilt, say so in one line
+artifacts already reach; and when you skip an optional stage, say so in one line
 rather than pretending it ran.
 
 ## When to Use
@@ -380,10 +380,9 @@ The user speaks free text; you pass **explicit args** — the user never types f
 |------|----|
 | "reel"/"shorts"/"9:16" · "youtube"/"16:9" · "square"/"1:1" · "cinema"/"21:9" | `project_init --purpose` |
 | "4k" · "1080"/"social" · "native"/(unstated) | `project_init --quality` |
-| a reel idea / mood / hook / ending / style-lean | reel-brief SKILL -> SPEC.md |
+| a reel idea / mood / hook / ending / shot length | reel-brief SKILL -> SPEC.md |
 | a track path / "with music" | `beats ... --out <run>/reels/<reel>/MUSIC.json` -> edit-plan `music` |
 | "no music" / "без музыки" | leave `MUSIC.json` unset (silent reel) |
-| "classic" <-> "trend" | edit-plan editorial guidance |
 
 Mixed/unstated intent (e.g. "a reel AND a youtube cut") -> ask; one project is one
 aspect (project-init's own "ask, don't guess").
@@ -398,11 +397,11 @@ aspect (project-init's own "ask, don't guess").
   artifact's presence and its digest binding to the exact rendered bytes —
   never that a judge truly looked (design §12); say so when you report a
   clean verdict.
-- **Deferred stages are named, not skipped silently:** trend-scan (5.4) is not
-  built; say so when you pass over it. For the live stages the table's `kind`
-  column above is the authority on which are optional — read it there rather
-  than from a sentence here, name every stage you pass over out loud, and see
-  that stage's page for what skipping it costs.
+- **Skipped stages are named, not skipped silently.** The table's `kind` column
+  above is the authority on which are optional — read it there rather than from
+  a sentence here, name every stage you pass over out loud, and see that stage's
+  page for what skipping it costs. There is no trend stage: trend scanning was
+  removed on 2026-10-20.
 - You never re-implement a stage and never hand-edit a generated artifact
   (`EDL.json` regenerates from `selection.json`; `FOOTAGE.json`/`project.json` from
   their writers) — `TITLES.json` is the one deliberate exception (titles SKILL): it

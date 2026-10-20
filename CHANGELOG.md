@@ -10,6 +10,16 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.23.0 — 2026-10-20
+
+- **Trend scanning is gone.** The never-built `trend-scan` stage, the reviewer's
+  `trend_flavor` axis and the brief's style-lean question (`--style-lean`, read by
+  no code) are removed. Research found no measured reach gain from trending
+  sounds or formats, a trend lives about five days and is regional, and no legal
+  machine source exposes formats. An older `SPEC.json` still loads, and
+  `montage status`/`verify` still read an older `REVIEW.json`. A popular song stays `--music-known`, labelled "popular", never
+  "trending".
+
 ## 0.22.2 — 2026-10-20
 
 - The README's example links to the reel it describes, on Instagram.

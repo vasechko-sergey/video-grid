@@ -14,7 +14,7 @@ from pathlib import Path
 from scripts.lib import (constraints, gates as gates_lib, matchgrade, provenance, runlayout,
                          toolindex)
 
-_KINDS = ("required", "optional", "deferred")
+_KINDS = ("required", "optional")
 _CHECKPOINTS = (None, "spec", "edl", "final")
 
 
@@ -57,7 +57,6 @@ V1_STAGES: tuple[Stage, ...] = (
           None, "footage"),
     Stage("reel-brief", "SPEC.json", "optional",
           "reel-brief SKILL -> reel_brief CLI", "spec", "reel"),
-    Stage("trend-scan", "TRENDS.md", "deferred", "5.4 - not built", None, "reel"),
     Stage("edit-plan", "EDL.json", "required",
           "edit-plan SKILL -> edit_plan build CLI", "edl", "reel"),
     Stage("music-and-mood", "MUSIC.json", "optional",
@@ -370,7 +369,6 @@ def next_action(run_dir: str, reel: str = runlayout.DEFAULT_REEL) -> dict:
       next     - the FIRST required stage whose artifact is missing (run this)
       pending  - a required stage after `next` still missing its artifact
       optional - an optional built stage not yet produced (music/pacing); never blocks
-      skip     - a deferred stage (trend-scan); named, not silent
       stale    - the artifact exists but no longer describes what is on disk: a
                  match-grade report whose authored pairs the EDL has lost, or a review
                  of an older delivery. Not done, so `next` points back at it — that is
@@ -400,9 +398,7 @@ def next_action(run_dir: str, reel: str = runlayout.DEFAULT_REEL) -> dict:
         if done and st.key in _FRESHNESS:
             state_name, stale_reason = _FRESHNESS[st.key](lay)
             done = state_name == "fresh"
-        if st.kind == "deferred":
-            state = "skip"
-        elif st.kind == "optional":
+        if st.kind == "optional":
             state = "done" if done else "optional"
         elif done:
             state = "done"

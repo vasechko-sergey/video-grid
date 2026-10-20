@@ -117,7 +117,7 @@ def position(stage_key: str) -> str:
     Names the DECLARED order, not what a given run executes — an optional stage
     is skipped and only the router's chain shows which (design §2.5, §5)."""
     from scripts import montage
-    live = [s.key for s in montage.V1_STAGES if s.kind != "deferred"]
+    live = [s.key for s in montage.V1_STAGES]
     i = live.index(stage_key)
     if i == 0:
         return f"Conveyor position: first, before {live[1]}."
@@ -130,7 +130,7 @@ def chain() -> str:
     """The router's whole path. Brackets come from Stage.kind, never typed."""
     from scripts import montage
     parts = [s.key if s.kind == "required" else f"[{s.key}]"
-             for s in montage.V1_STAGES if s.kind != "deferred"]
+             for s in montage.V1_STAGES]
     return "Conveyor: " + " -> ".join(parts) + "."
 
 
@@ -155,7 +155,7 @@ ROUTER_PAGES = "references/using-montage"
 def stage_steps() -> list[tuple[int, object]]:
     """(step number, Stage) for every live stage, in conveyor order."""
     from scripts import montage
-    live = [s for s in montage.V1_STAGES if s.kind != "deferred"]
+    live = list(montage.V1_STAGES)
     return list(enumerate(live, start=FIRST_STAGE_STEP))
 
 

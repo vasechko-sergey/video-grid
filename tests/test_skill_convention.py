@@ -368,7 +368,7 @@ def test_every_live_stage_has_a_router_page():
     and had no block of its own, living inside the deliver block below
     Checkpoint 3 (design 2026-09-14 §0.5)."""
     from scripts import montage
-    keys = {s.key for s in montage.V1_STAGES if s.kind != "deferred"}
+    keys = {s.key for s in montage.V1_STAGES}
     pages = {p.stem for p in (REPO / "references/using-montage").glob("*.md")}
     assert pages == keys, (
         f"pages without a stage: {sorted(pages - keys)}; "

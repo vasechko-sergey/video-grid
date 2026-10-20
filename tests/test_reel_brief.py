@@ -28,9 +28,16 @@ def test_build_spec_missing_project_fails_loud(tmp_path):
 
 def test_build_spec_forwards_cast_and_editorial(tmp_path):
     spec = build_spec(_project(tmp_path), length_s=20, mood="calm", hook="h",
-                      cast=["Anna", "Ben"], music_mode="local", style_lean="trend")
+                      cast=["Anna", "Ben"], music_mode="local")
     assert spec.cast == ("Anna", "Ben") and spec.music_mode == "local"
-    assert spec.style_lean == "trend"
+
+
+def test_the_cli_has_no_style_lean_flag_any_more():
+    """Removed 2026-10-20 (backlog U1): the brief asked it and no code read it."""
+    with pytest.raises(SystemExit):
+        reel_brief.build_parser().parse_args(
+            ["build", "--project", "p.json", "--length", "30", "--mood", "calm",
+             "--hook", "h", "--out-dir", "o", "--style-lean", "trend"])
 
 
 def test_write_reel_brief_emits_both_files(tmp_path):

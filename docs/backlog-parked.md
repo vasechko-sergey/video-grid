@@ -20,7 +20,7 @@ Grouped by area. One line each; the source carries the reasoning.
 **Front half / authoring**
 per-reel `CONSTRAINTS.json` — `edit_plan` finds it beside `project.json`, so two variants of one reel cannot hold different standing rules (run-layout-lifetimes §8) ·
 `split` — the last genuine layout, two sources into two rects (misc-engine, fit-solid §9, pan §12) ·
-trend-scan SP4 (§5.4), which also unblocks reel-review's `trend_flavor` ·
+~~trend-scan SP4 (§5.4), which also unblocks reel-review's `trend_flavor`~~ — removed 2026-10-20 (backlog U1, archive) ·
 shot-order grammar, "never two same-size shots back to back" (mood-preset §14) ·
 real window dedup for the variety census's `available` (mood-preset §14) ·
 carrying editorial constraints through `edl_to_reel`'s hand-authored front door (constraints §11) ·
@@ -273,7 +273,7 @@ enforce `SPEC.length_s` rather than only logging the cross-check —
 gate (`EDL.target_dur`) already equals what the master delivers, and only a
 stale `PACING.json` ever disagreed (length-retime §9,
 shadow-red-length-reconcile §2) ·
-music-less dual-emit + trending-sound sidecar, §5.14 (music-spine §9, using-montage §5) ·
+~~music-less dual-emit + trending-sound sidecar, §5.14 (music-spine §9, using-montage §5)~~ — moved to the queue as U3 on 2026-10-20, without the "trending" half ·
 a SPEC field for ambient / SFX instead of only `ReelManifest` flags (ambient §9, sfx §9) ·
 per-episode ambient level or mute (ambient §9) ·
 rank candidate music windows on energy agreement, not only grid quality —
@@ -598,9 +598,8 @@ re-derived in the whole-branch review's fix wave) ·
 the **waiver direction** of a `GATES.json` — a bar the default refuses, released by an authored one — is proven end to end for two of the eleven bars, one per scope: `entropy_floor` (`test_a_loosened_entropy_floor_releases_a_grade_the_default_refuses`) and `grade_residual_max` (`test_a_loosened_reel_bar_releases_a_reel_the_default_stops`), plus the phase-2 freeze for a third (`test_phase_2_judges_the_reel_by_the_set_phase_1b_froze`). A clamp at another bar's own comparison site — `black_floor`, `loudness_tol`, `length_retime_max` and the rest — is not reached at the integration tier. A coverage statement, not a defect: the mechanism is shared, and those proofs are what established that a clamp **below the report's echo** is invisible to everything else (a clamp at the call site dies on any test that reads the echoed value off the report). Filed so the next reader knows which bars are actually exercised end to end (threshold-surface Task 6 review)
 
 **CLI / tool index**
-`Stage.runner` names a tool and nothing checks the tool exists — `trend-scan`'s
-runner is the literal string `"5.4 - not built"`, so any check needs a
-deferred exemption; worth building only if a rename ever breaks a runner
+`Stage.runner` names a tool and nothing checks the tool exists (since 2026-10-20
+no stage is deferred, so a check would need no exemption); worth building only if a rename ever breaks a runner
 pointer (rederivable-purpose §6) ·
 ten CLI descriptions substitute a repo-internal pointer (`stage 5.2b`,
 `§5.13 Slice B`) for a statement — §3.7 shows no honest machine predicate

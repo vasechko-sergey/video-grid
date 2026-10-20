@@ -95,7 +95,7 @@ def test_colour_axis_spelling_matches_episode_qc():
 
 def test_vocab_constants_are_the_allowed_sets():
     assert REVIEW_AXES == ("idea", "mood", "hook", "ending", "spine",
-                           "edl_completeness", "trend_flavor", "colour")
+                           "edl_completeness", "colour")
     assert REVIEW_SEVERITY == ("blocking", "important", "minor")
     assert REVIEW_ROUTES == ("edit-plan", "pacing", "music", "reprocess", "titles",
                              "match-grade", "none")

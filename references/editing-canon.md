@@ -2,8 +2,7 @@
 
 Classic composition/editing rules (spec §6.3) + the composition-grid library
 (spec §6.5). A working reference for `edit-plan`, `process-episode`, and the
-checks — not an essay. Read alongside `TRENDS.md` (current trend lean,
-blended per `SPEC.style-lean`).
+checks — not an essay.
 
 ## Classic canon
 
@@ -33,11 +32,10 @@ blended per `SPEC.style-lean`).
   the edit doesn't flatten out (also underlies the §9 "variety" check —
   perceptual-hash distance between adjacent episodes).
 
-**Blend with trend:** canon is the default; `TRENDS.md`'s composition
-section (center punch-ins, jump cuts, extreme crops, whip transitions, hook
-patterns) nudges it per `SPEC.style-lean` (classic↔trend, e.g. 70/30). The
-editorial check judges both — all-canon reads dated, all-trend reads
-gimmicky.
+**No trend blend.** Canon is the default and the brief overrides it. The
+trend lean this section used to describe (a `TRENDS.md` nudged in per
+`SPEC.style-lean`) was removed on 2026-10-20: no measured reach gain, a
+trend lives about five days, and no legal machine source exposes formats.
 
 ## Composition-grid library
 

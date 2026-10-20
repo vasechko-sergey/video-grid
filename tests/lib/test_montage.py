@@ -66,14 +66,17 @@ def test_an_unknown_bucket_is_refused():
 
 def test_v1_stages_order_and_keys():
     assert [s.key for s in V1_STAGES] == [
-        "project-init", "footage-intake", "contact-sheet", "reel-brief", "trend-scan",
-        "edit-plan", "music-and-mood", "pacing", "episodes-geometry", "match-grade",
+        "project-init", "footage-intake", "contact-sheet", "reel-brief", "edit-plan",
+        "music-and-mood", "pacing", "episodes-geometry", "match-grade",
         "assemble-draft", "titles", "episodes", "episode-qc", "deliver", "reel-review"]
 
 
 def test_v1_stages_kinds_and_flags():
     by = {s.key: s for s in V1_STAGES}
-    assert [s.key for s in V1_STAGES if s.kind == "deferred"] == ["trend-scan"]
+    # Every stage is built: trend-scan, the one deferred stage, was removed on
+    # 2026-10-20 (backlog U1) and the `deferred` kind went with it.
+    assert {s.kind for s in V1_STAGES} == {"required", "optional"}
+    assert montage._KINDS == ("required", "optional")
     assert by["pacing"].kind == "optional"
     assert by["pacing"].artifact == "PACING.md"
     assert by["pacing"].checkpoint is None
@@ -135,7 +138,6 @@ def test_every_stage_lands_in_the_bucket_the_design_assigns_it():
         "footage-intake": "footage",
         "contact-sheet": "footage",
         "reel-brief": "reel",
-        "trend-scan": "reel",
         "edit-plan": "reel",
         "music-and-mood": "reel",
         "pacing": "reel",
@@ -168,11 +170,6 @@ def test_empty_run_next_is_project_init(tmp_path):
         "path": str(tmp_path / "project.json"), "kind": "required",
         "state": "next", "stale_reason": "", "checkpoint": "spec",
         "runner": "project-init SKILL -> project_init CLI"}
-
-
-def test_deferred_stages_always_skip(tmp_path):
-    res = next_action(str(tmp_path))
-    assert _state(res, "trend-scan") == "skip"
 
 
 def test_project_only_next_is_footage(tmp_path):
@@ -1176,3 +1173,20 @@ def test_verify_survives_a_review_json_whose_reel_digest_is_a_dict(tmp_path):
     got = montage.verify(str(tmp_path))["review"]           # must not raise
     assert got["state"] == "unbound"
     assert got["detail"]
+
+
+def test_a_review_written_with_the_removed_trend_axis_still_reads(tmp_path):
+    """trend_flavor was removed on 2026-10-20 (backlog U1). status and verify read
+    REVIEW.json raw, so a review from before that still reads as fresh and bound —
+    only the typed Review loader, which no production code calls, would refuse it."""
+    lay = runlayout.RunLayout(tmp_path)
+    lay.deliveries.mkdir(parents=True, exist_ok=True)
+    lay.reel_dir.mkdir(parents=True, exist_ok=True)
+    reel = lay.deliveries / "REEL_v1.mp4"
+    reel.write_text("delivered")
+    (lay.reel_dir / "REVIEW.json").write_text(json.dumps(
+        {"reel": str(reel), "reel_digest": provenance.digest_file(reel),
+         "findings": [{"axis": "trend_flavor", "severity": "minor", "evidence": "e",
+                       "route": "edit-plan", "suggestion": "s", "confidence": "low"}]}))
+    assert montage._review_state(lay.reel_dir, lay.deliveries) == ("fresh", "")
+    assert montage.verify(str(tmp_path))["review"]["state"] == "bound"

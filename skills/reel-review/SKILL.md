@@ -145,7 +145,7 @@ reel-review builds **no fixer** — each `route` names a stage that already exis
 
 | route | re-run | typical finding |
 |-------|--------|-----------------|
-| `edit-plan` | edit-plan SKILL (edit `selection.json`, rebuild `EDL`) | weak hook / weak ending / missing EDL element / classic↔trend lean |
+| `edit-plan` | edit-plan SKILL (edit `selection.json`, rebuild `EDL`) | weak hook / weak ending / missing EDL element |
 | `pacing` | pacing SKILL then `edit_plan build --pacing` | cuts drift off the energy spine |
 | `music` | music-match / music-source SKILL | mood mismatch / wrong track |
 | `reprocess` | process_episode on one episode (grade/layout redo) | one episode reads wrong vs the reel |
@@ -167,9 +167,10 @@ block. `REVIEW.json` records the reviewer's findings + verdict; the human approv
 
 - **Human-gated (§4.1).** Nothing auto-fixes on these findings; the human picks and
   re-runs. `check_reel`/`build_reel`/`deliver`/loop-2 are untouched.
-- **`trend_flavor` has no source of truth until §5.4 trend-scan.** The reviewer
-  judges it from general knowledge at forced `confidence: low`, never `blocking`,
-  and names §5.4 in the evidence.
+- **No trend axis.** `trend_flavor` was removed on 2026-10-20 together with trend
+  scanning: it had no source, so it was judged blind. An older `REVIEW.json` that
+  carries a `trend_flavor` finding still reads in `montage status`/`verify`, which
+  read the file raw.
 - **Judgement over plan + signals + stills, not full playback** — the reviewer says
   so in its `summary`.
 - **One reviewer, one reel per run.** A multi-perspective panel and cross-reel
