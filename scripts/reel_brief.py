@@ -132,8 +132,9 @@ def build_parser() -> argparse.ArgumentParser:
                         "screen time against it at CP2. Omit when the brief did not ask")
     b.add_argument("--asl", default=None,
                    help="the brief's average shot length as LO,HI seconds (e.g. 6,10 for "
-                        "whole rides) — outranks the mood preset's band, which edit_plan "
-                        "reports the cut against. Omit to take the preset's")
+                        "whole rides) — the user's own band, which outranks the mood's "
+                        "suggestion (see `hint`); omit it and the mood's band is only "
+                        "reported against")
     b.add_argument("--notes", default="", help="free text recorded in SPEC.json")
     b.add_argument("--tone-bias", default=None,
                    help="colour displacement as p5,p50,p95 luma units (e.g. 20,0,-18) — "

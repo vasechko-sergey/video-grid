@@ -4,6 +4,7 @@ import sys
 import pytest
 
 from scripts import reel_brief
+from scripts.lib.footage import Footage, FootageClip
 from scripts.lib.project import resolve_project
 from scripts.lib.spec import Spec
 from scripts.reel_brief import build_spec, write_reel_brief
@@ -204,7 +205,6 @@ def test_the_brief_refuses_a_platform_no_zone_answers_to(tmp_path):
 # --- backlog U2: the shot-length question offers the mood's band as a suggestion ---
 
 def _footage_json(tmp_path, band):
-    from scripts.lib.footage import Footage, FootageClip
     clip = FootageClip(source="a.mp4", dur=10.0, res=(1920, 1080), fps=30.0)
     path = tmp_path / "FOOTAGE.json"
     path.write_text(json.dumps(Footage(clips=[clip], band=band).to_dict()))
@@ -231,8 +231,18 @@ def test_a_footage_written_before_the_carve_band_reports_none(tmp_path):
 
 
 def test_the_hint_cli_prints_the_hint(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(sys, "argv", ["reel_brief", "hint", "--mood", "nostalgic"])
+    """--footage is the flag the skill passes; dropping it in main() must fail here."""
+    monkeypatch.setattr(sys, "argv", ["reel_brief", "hint", "--mood", "nostalgic",
+                                      "--footage", _footage_json(tmp_path, (1.2, 4.0))])
     with pytest.raises(SystemExit) as e:
         reel_brief.main()
     assert e.value.code == 0
-    assert json.loads(capsys.readouterr().out)["preset"] == "nostalgic"
+    out = json.loads(capsys.readouterr().out)
+    assert out["preset"] == "nostalgic" and out["carved"] == [1.2, 4.0]
+
+
+def test_the_hint_reads_footage_through_its_validated_loader(tmp_path):
+    bad = tmp_path / "FOOTAGE.json"
+    bad.write_text(json.dumps({"clips": "not a list", "band": [1.2, 4.0]}))
+    with pytest.raises(ValueError):
+        reel_brief.shot_length_hint("nostalgic", str(bad))

@@ -183,11 +183,13 @@ floor asks for a shot length that does not exist anywhere in
 `FOOTAGE.json`:
 
 ```
-preset.asl[0] < footage.band[0]   →  refuse
+band.asl[0] < footage.band[0]   →  refuse when the band is SPEC.asl; log when it is the preset's
 ```
 
-The refusal names all three numbers and the remedies: re-scan with a lower
-`--win-min`, choose a different mood, or drop `--spec`.
+The refusal names all three numbers and the remedies: raise the brief's `--asl`
+floor or re-scan with a lower `--win-min`. (As first built, a preset floor refused
+too, with "choose a different mood, or drop `--spec`" among the remedies; since
+2026-10-20 a preset's band is a suggestion and only logs.)
 
 **A missing band is said out loud.** A `FOOTAGE.json` written before this
 slice carries no `band`, so the reconciliation cannot run. It reports
@@ -233,8 +235,9 @@ rewritten under the new key (§3's one-time re-scan).
    returns byte-identical windows.
 4. **A default run is unchanged** — `intake` with no band flags produces the
    windows the current code produces, and the golden fixture does not move.
-5. **The floor contradiction refuses** — a preset floor below the carved
-   floor stops `write_edit_plan` with all three numbers named. The control:
+5. **The floor contradiction refuses** — a brief floor below the carved
+   floor stops `write_edit_plan` with all three numbers named (a preset floor
+   did too until 2026-10-20; now it logs). The control:
    a preset ceiling ABOVE the carved ceiling passes, because span merge
    reaches it (§0.3).
 6. **A band-less `FOOTAGE.json` reports not-checked** — and the reason names

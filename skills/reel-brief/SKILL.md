@@ -58,8 +58,9 @@ Announce on entry: **"Using reel-brief to lock the reel's SPEC."**
    suggestion beside your own estimate of how long one action runs — a ride, a
    wave — from the contact sheets you read, since nothing in `FOOTAGE.json`
    measures it. Record the user's answer with `--asl LO,HI`, the suggestion
-   included when they take it, so it becomes their decision. A mood band nobody
-   chose never refuses a build; a `--asl` floor under `carved` does.
+   included when they take it, so it becomes their decision; omit `--asl` when they
+   would rather not choose. A mood band nobody chose never refuses a build; a
+   `--asl` floor under `carved` does.
    `hook` and `ending` describe **shots** for the editor; `--text` is the **literal
    words** the reel shows (the titles stage drafts exactly them) — ask for the
    exact wording, never record a description of it. When the reel has more than one

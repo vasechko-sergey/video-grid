@@ -685,10 +685,11 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     preset's. Only a brief band below the carved floor stops here, with its own reason
     `length-band` (`episode_idx: null`, like `variety-gap` and `constraint-violation`:
     it judges the whole cut, not one episode); a mood's band is a suggestion the brief
-    offers, so its gap is logged and the build goes on (backlog U2, 2026-10-20). The `balanced` fallback is exempt exactly as
-    `look` is (`preset.name == "balanced"`) — unless the brief set `asl`: a skipped or
-    unmatched brief has no taste to hold the cut to, but a brief band is a decision. A FOOTAGE.json
-    written before this slice carries no recorded band; the check reports
+    offers, so its gap is logged and the build goes on (backlog U2, 2026-10-20). The
+    `balanced` fallback is not even compared, exactly as `look` is skipped for it
+    (`preset.name == "balanced"`) — unless the brief set `asl`: a skipped or unmatched
+    brief has no taste to hold the cut to, but a brief band is a decision. A
+    FOOTAGE.json written before the band was recorded carries none; the check reports
     `not-checked` rather than a silent pass.
 
     `music` (design 2026-08-14 §7, optional) is MUSIC.json — supplying it, together with
