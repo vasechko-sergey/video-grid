@@ -109,9 +109,10 @@ def _held_cut(i: int, h: Held, pos: float, run: tuple[int, ...], run_end: bool,
     target is `k` beats from its in-point; inside a run the detected beat nearest it
     wins, so the cut is on a beat by construction. The run's last hold (`run_end`, the
     next episode is footage) chooses among the level's lines instead, so the cut back to
-    footage is as musical as every other cut — falling back to the beats when no line is
-    in range. An authored count is never moved for the level. Nothing in range (music
-    shorter than the reel) → the target itself, clamped into the range."""
+    footage is as musical as every other cut — but only lines within [k/2, 2k] beats of
+    its plan, falling back to the beats when none is there. An authored count is never
+    moved for the level. Nothing in range (music shorter than the reel) → the target
+    itself, clamped into the range."""
     k = h.beats if h.beats is not None else plan(pos, run)
     if isinstance(k, bool) or not isinstance(k, int) or k < 1:
         raise ValueError(f"gridfit.fit_level: plan returned {k!r} for held episode {i} at "
@@ -119,12 +120,16 @@ def _held_cut(i: int, h: Held, pos: float, run: tuple[int, ...], run_end: bool,
     target = pos + k * period
     lo, hi = pos + h.lo, pos + h.hi
 
-    def inside(xs: list[float]) -> list[float]:
-        return [x for x in xs if lo - _SLACK <= x <= hi + _SLACK]
+    def inside(xs: list[float], a: float = lo, b: float = hi) -> list[float]:
+        return [x for x in xs if max(lo, a) - _SLACK <= x <= min(hi, b) + _SLACK]
 
     cands = inside(beats)
     if run_end and h.beats is None:
-        cands = inside(lines) or cands
+        # The band keeps the hold in its length class. Across all of [lo, hi] a phrase
+        # line is almost always reachable, so every coarse level would "fit" by
+        # stretching the last hold and coarsest-that-fits would pick it — a planned 2
+        # beats bound to 10 (design §2.2).
+        cands = inside(lines, pos + k * period / 2, pos + 2 * k * period) or cands
     if not cands:
         return min(max(target, lo), hi)
     return min(cands, key=lambda c: (abs(c - target), c))     # the earlier on a tie

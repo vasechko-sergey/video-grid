@@ -132,7 +132,7 @@ def _held_run_dir(tmp_path, *, closer):
         {"purpose": "reel", "canvas": [1080, 1920], "delivery": "long_edge:240"}))
     track = tmp_path / "t.wav"
     track.write_bytes(b"only ever hashed, never decoded")
-    line = 18.2 if closer == "video" else 10.2
+    line = 14.2 if closer == "video" else 10.2
     ms = MusicSpec(track=str(track), start_offset=0.0, duration=MUSIC_DUR, tempo=TEMPO,
                    beats=tuple(i * 0.5 for i in range(int(MUSIC_DUR / 0.5))),
                    energy=(0.1,) * 16 + (0.5,) * 12 + (0.9,) * 12, energy_hz=2.0,
@@ -167,6 +167,10 @@ def test_the_held_proof_would_be_vacuous_if_the_grid_did_not_move_the_holds(tmp_
     assert len(held) == 3 and {e.dur for e in held} != {hold.HOLD_DEFAULT}
     placed = held if closer == "video" else held[:-1]     # the outro grows a held closer
     assert all(e.dur / 0.5 == round(e.dur / 0.5) for e in placed)
+    if closer == "video":
+        # the last photo keeps its planned 2 beats; before the [k/2, 2k] band it was
+        # bound to 10 to reach a phrase line (design §2.2)
+        assert held[-1].dur == 1.0
     assert a.outro is not None and a.outro.rung == "gap" and a.outro.moved > 0
     # the freeze's frame is resolved from the bound predecessor, after the fit
     assert a.episodes[1].start == pytest.approx(0.5 + a.episodes[0].dur - 1 / FPS)

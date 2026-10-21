@@ -19,7 +19,9 @@ photo, or a `{"freeze": true}` — has no length of its own, so the grid AUTHORS
 whole beats: at 120 BPM 4, 2 or 1 as the next bar of music is quiet, mid or loud,
 never the same count three times in a row inside a run of holds, the cuts inside a run
 on detected beats and the run's last cut on a line of the chosen level, so the cut back
-to footage is as musical as the rest. An authored `hold` (beats) outranks it, and one
+to footage is as musical as the rest — but only a line within half to twice its planned
+length, so a hold keeps its length class; with none there it keeps its beat and the reel
+fits a finer level. An authored `hold` (beats) outranks it, and one
 that cannot last 1/3 s to 8.0 s at a window's tempo is refused. `PACING.md` marks each
 such slot `held N beats` and names them in the fit report; the energy agreement leaves
 them out, because their length was derived from the energy. Turning an episode from

@@ -503,13 +503,32 @@ def test_fit_spine_marks_held_slots_and_authors_their_lengths_in_whole_beats():
     counts = [s.dur / 0.5 for s in spine.slots[1:7]]
     assert counts == [round(c) for c in counts]          # whole beats, exactly
     # the run opens at 12.0 in the mid part: 2, 2, then the third doubles; at 16.0 the
-    # music turns loud and the holds shorten to one beat. The run's LAST hold is pulled
-    # from its planned 2 beats to the phrase line at 20.0, so the cut back to footage
-    # lands on a phrase like the cut into the run did (design §2.2)
-    assert counts == [2, 2, 4, 1, 1, 6]
-    assert (fit.level, fit.fits) == ("phrase", True)
-    assert spine.slots[6].line == 20.0 and spine.slots[6].dev == 0.0
+    # music turns loud and the holds shorten to one beat, and the third of those doubles
+    # too. The run's LAST hold reaches a line only inside [k/2, 2k] beats of that plan:
+    # the bar line at 18.0 is on it, so the cut back to footage lands on a bar like the
+    # cut into the run did. The phrase line at 20.0 is 6 beats on — out of the band, and
+    # reaching it used to be how phrase "fit" (design §2.2)
+    assert counts == [2, 2, 4, 1, 1, 2]
+    assert (fit.level, fit.fits) == ("bar", True)
+    assert spine.slots[6].line == 18.0 and spine.slots[6].dev == 0.0
     assert sum(s.dur for s in spine.slots) == pytest.approx(spine.target_dur)
+
+
+def test_the_runs_last_hold_keeps_its_length_class_instead_of_reaching_a_far_line():
+    # Task 2's own measured case — the fixed-point fixture's cut (a video, a freeze, two
+    # photos, a video closer) on its quiet -> mid -> loud track. Searching all of
+    # [HOLD_MIN, HOLD_ROOM] for a line, the last photo (planned at 2 beats) was bound to
+    # 10 to reach the phrase line at 14.0, and phrase "fit". Inside [k/2, 2k] it keeps
+    # its 2 beats and the reel fits a finer level instead (design §2.2).
+    h = gridfit.Held(None, 1 / 3, 8.0)
+    spine, fit, rejected = pacing.fit_spine(
+        [6.0, 2.0, 2.0, 2.0, 4.0], [i * 0.5 for i in range(40)],
+        [0.1] * 16 + [0.5] * 12 + [0.9] * 12, 2.0, 120.0,
+        [(-0.25, 0.25), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (-0.25, 0.25)],
+        held=[None, h, h, h, None])
+    assert [s.dur / 0.5 for s in spine.slots] == [12, 4, 2, 2, 8]
+    assert (fit.level, fit.fits) == ("2-bar", True)
+    assert [(f.level, f.fits) for f in rejected] == [("phrase", False)]
 
 
 def test_a_held_slot_inside_a_run_is_matched_to_the_beat_it_landed_on():

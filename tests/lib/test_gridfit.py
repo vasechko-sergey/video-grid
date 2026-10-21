@@ -350,6 +350,24 @@ def test_a_run_of_holds_starts_counting_afresh_after_footage():
     assert calls == [(), (2,), (), (2,)]
 
 
+def test_the_runs_last_hold_reaches_a_line_only_within_half_to_double_its_plan():
+    # held from 2.0 after a 2.0 s video, the cut back to footage at 4.0 + its shift
+    def landed(lines, k):
+        f = gridfit.fit_level([2.0, 2.0, 2.0], lines, [(-0.25, 0.25)] * 3, 0.25,
+                              beats=_BEATS_120, held=[None, _h(), None],
+                              plan=lambda pos, run: k)
+        return 4.0 + f.shifts[1], f.devs[1]
+
+    # planned 2 beats: the band is [2.5, 4.0], both ends in
+    assert landed([0.0, 2.0, 2.5], 2) == pytest.approx((2.5, 0.0), abs=1e-12)
+    assert landed([0.0, 2.0, 4.0], 2) == pytest.approx((4.0, 0.0), abs=1e-12)
+    # 2k + 1 beats: well inside [HOLD_MIN, HOLD_ROOM], out of the band — the hold keeps its
+    # planned beat and its distance to the line counts against the level (design §2.2)
+    assert landed([0.0, 2.0, 4.5], 2) == pytest.approx((3.0, 1.0), abs=1e-12)
+    # planned 4 beats: a line at 1 beat is in range but under k/2
+    assert landed([0.0, 2.0, 2.5, 30.0], 4) == pytest.approx((4.0, 1.5), abs=1e-12)
+
+
 def test_a_runs_last_hold_that_reaches_no_line_rejects_the_level():
     # a 60-beat level: every phase's next line after the video cut is 30 s on, far past
     # HOLD_ROOM — the run's last hold keeps a beat, misses, and the fit falls to the beat
