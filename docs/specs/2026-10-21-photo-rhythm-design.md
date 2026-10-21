@@ -85,10 +85,29 @@ its out-point is **chosen**:
   planned 2-beat photo bound to 10 beats. No line in the band: it keeps the beat and its
   deviation counts against the level — which then may not fit, and the rule falls to a
   finer level, as for any cut.
-- An authored `hold` is placed the same way but never moved for the level.
+- An authored `hold` is never moved for the level, and takes the detected beat nearest
+  its target among those within half a beat of it — even a hair outside `[lo, hi]`: the
+  count was checked against the range at the window's tempo before the fit, and beat
+  jitter must not cost or add a beat to it (`hold: 16` at 120 BPM on a grid 0.2 % slow
+  is 8.016 s, and the range alone gave it 15 beats). With no beat there, the range rule.
+  Where it is the last hold before a video, the cut back stays on the level's lines only
+  if the count is a whole number of them, so an odd count can cost the whole reel its
+  level (4 or 8 keep a bar, 2 only a half-bar, 3 only the beat — measured, and said in
+  the `hold` reference).
 - A held tail (the reel's last episode) is placed on a beat; the outro fit then owns the
   reel's end as before, growing it into `HOLD_ROOM`.
-- Past the last detected beat (music shorter than the reel) the target itself is used.
+- A target more than half a beat past the last detected beat (music shorter than the
+  reel) is past the grid: the target itself is used, clamped into `[lo, hi]`, and its
+  distance to the nearest line or beat is a deviation the fit sees, as for a footage cut
+  past the last line. Snapping to the last beat instead cut such a hold short in silence
+  and still read "fits".
+- Phases that tie on `(worst, total)` break toward the plan: the third key is
+  `Fit.drift`, `Σ |out − target|` over the held cuts. A run of holds re-syncs every later
+  cut to whichever line it ends on, so a reel that opens on holds ties every phase that
+  fits at (0, 0), and the first phase tried would give the last hold its SHORTEST legal
+  length by the order of a `range()`. `drift` is 0.0 without a held episode, so a
+  video-only choice is unchanged (a 3000-case fuzz against the fitter as it was
+  before held episodes).
 
 gridfit stays repo-import-free: it gets per-episode `Held(beats, lo, hi)` records and a
 `plan(pos, run) -> beats` callable, which `pacing.fit_spine` builds from the energy curve
@@ -97,17 +116,30 @@ definition).
 
 ### §2.3 · Binding
 
-`Slot.held` marks a slot whose length the grid authored (emitted only when true, so a
-video-only PACING.json is byte-identical). `_bind_pacing`'s half-beat guard exists to
-catch a spine fitted to a different edit; for a held episode it cannot apply (the length
-legitimately moves by seconds), so the identity check becomes kind-against-kind: a held
-episode needs a held slot and a video episode a video slot, either mismatch refused. The
+`Slot.held` marks a slot whose length the grid authored, and `Slot.hold` the authored
+count it was fitted with (each emitted only when set, so a video-only PACING.json is
+byte-identical). `_bind_pacing`'s half-beat guard exists to catch a spine fitted to a
+different edit; for a held episode it cannot apply (the length legitimately moves by
+seconds), so the identity check becomes kind-against-kind — a held episode needs a held
+slot and a video episode a video slot, either mismatch refused — and count against
+count: an episode whose `hold` differs from its slot's (added, removed or changed) is
+refused, since binding the old length would ignore the new count in silence. What
+stands in for the half-beat guard is the range the fit writes a held length in: a held
+slot outside `[HOLD_MIN, HOLD_ROOM]`, or (for an authored count) further than half a
+beat from `hold × beat`, is refused as a PACING.json the fit cannot have written. The
 fit stays a fixed point: a held length is a function of the music and of the positions
 the scenario's own lengths produce.
 
-`scripts/pacing.py` refuses an authored `hold` outside `[HOLD_MIN, HOLD_ROOM]` at the
-window's tempo, naming both. Anchors skip held episodes. PACING.md prints a held slot's
-beat count. `_apply_outro` grows a held closer into `HOLD_ROOM`, not into the clip's room
+`scripts/pacing.py` refuses an authored `hold` outside `[HOLD_MIN, HOLD_ROOM]` at each
+window's tempo, naming both, and hands the fitter no held list at all when nothing is
+held. Because the grid sets held lengths, a reel with photos can grow past the window
+the music was analysed for: a window the fitted reel overruns (by more than
+`build_reel`'s own 0.1 s) ranks below every window that covers it, and an overrun on the
+chosen window is named in one line with the length to re-analyse at (two bars of
+headroom, a convention) — not refused, since the reel gate already escalates it.
+Anchors skip held episodes. PACING.md prints a held slot's beat count, and says that its
+kind cell is the band of its own span while the count was planned from the bar that
+opens it. `_apply_outro` grows a held closer into `HOLD_ROOM`, not into the clip's room
 (for a freeze the clip's room means nothing).
 
 Without music nothing binds, and a held episode plays `HOLD_DEFAULT`; an authored `hold`
