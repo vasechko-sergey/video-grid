@@ -111,7 +111,12 @@ target length, and order them **hook first**. For each episode assign:
   ≥ 1) that outranks the music grid's own pick (design 2026-10-21 §2.1), e.g. for a
   hero photo the brief wants held longer. Beats need a tempo: without `--pacing` it is
   unused — `edit_plan build` says so — and the episode plays 2.0 s. Pacing refuses a
-  count that cannot last 1/3 s to 8.0 s at the window's tempo.
+  count that cannot last 1/3 s to 8.0 s at the window's tempo. An authored count is
+  never moved to reach a line, and the grid level is the whole reel's: when the hold is
+  the last before a video, the cut back stays on the level's lines only if the count is
+  a whole number of them — 4 or 8 beats keep a bar grid, 8 a 2-bar one, 2 only a
+  half-bar, an odd count only the beat — so one odd `hold` there can cost every cut in
+  the reel its bar alignment. Changing a `hold` means re-running pacing.
 - `pan` (optional) — `{"from": f, "to": f}`, a **generated** constant-velocity
   camera move: two fractions of the crop's horizontal freedom (`0.0` hard
   left, `1.0` hard right; direction is the sign of `to - from`). It replaces

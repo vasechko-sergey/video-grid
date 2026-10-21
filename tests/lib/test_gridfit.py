@@ -470,6 +470,19 @@ def test_an_authored_count_with_no_beat_near_its_target_falls_back_to_the_range(
     assert f.shifts[0] == pytest.approx(5.0, abs=1e-12)
 
 
+@pytest.mark.parametrize("k, level", [(1, "beat"), (2, "half-bar"), (3, "beat"), (4, "bar"),
+                                      (8, "2-bar")])
+def test_an_authored_count_before_footage_sets_the_whole_reels_level(k, level):
+    # the claim references/edit-plan/episode-fields.md makes for `hold`: the cut back to
+    # footage stays on a line only if the count is a whole number of the level's lines,
+    # and the level is the whole reel's (the video-only cut fits 2-bar)
+    durs, bounds = [4.0, 2.0, 4.0, 4.0, 3.0], [(-0.25, 0.25)] * 5
+    chosen, _ = gridfit.best_fit(durs, _BEATS_120, bounds, 0.25,
+                                 held=[None, _h(beats=k), None, None, None], plan=_never)
+    assert (chosen.level, chosen.fits) == (level, True)
+    assert gridfit.best_fit([4.0, 4.0, 4.0, 3.0], _BEATS_120, bounds[:4], 0.25)[0].level == "2-bar"
+
+
 def test_a_held_tail_is_placed_on_a_beat_and_its_shift_is_not_forced_to_zero():
     f = gridfit.fit_level([2.0, 2.0], _BAR_120, [(-0.25, 0.25)] * 2, 0.25,
                           beats=_BEATS_120, held=[None, _h()], plan=lambda pos, run: 3)
