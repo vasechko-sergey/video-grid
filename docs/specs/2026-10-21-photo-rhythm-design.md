@@ -195,8 +195,11 @@ still name EDL indices.
 at the master's real cut time (the probed clip durations `check_reel` already sums):
 
 - **a white flash** in `deliver`'s one encode: three frames of full-frame white at 0.85,
-  0.5, 0.2 opacity (`drawbox … t=fill:enable='between(t,a,b)'`), placed before the
-  titles and the bookend fade so a fade still darkens it. In deliver and not in the
+  0.5, 0.2 opacity — one `lutyuv` per frame moving every sample of every plane that far
+  toward white, `enable='between(t,a,b)'` — placed before the titles and the bookend
+  fade so a fade still darkens it. Not `drawbox … t=fill`: it blends a 4:2:0 chroma
+  sample once per luma pixel, four times, and missed the blend by up to 65 codes in one
+  channel of a saturated patch, where the LUT lands within 3.5. In deliver and not in the
   episode, because every colour sensor (match-grade's measurement, `grade_damage`,
   `grade_faithful`) reads the episode or the master, and a white frame under any of their
   samples would read as a grade. Deliver's own look gate compares the delivered file

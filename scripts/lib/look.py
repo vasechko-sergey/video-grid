@@ -19,6 +19,8 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from scripts.lib.color import TV_LO, TV_SPAN
+
 LOOK_VIGNETTE_MAX = 0.6      # past this the corners read as a black border, not a vignette
 LOOK_FADE_MAX = 2.0          # seconds per end; a 2.0s bookend already needs a >=4s reel
 VIGNETTE_PLATEAU = 0.55      # identity radius, as a fraction of the corner distance
@@ -31,6 +33,9 @@ FLASH_ALPHA = (0.85, 0.5, 0.2)   # the shutter flash's white, one frame at each 
                                  # dip on the cut), not measured on a real run (design
                                  # 2026-10-21 §7)
 FLASH_FRAMES = len(FLASH_ALPHA)
+# White in the planes a master carries — 8-bit tv yuv420p (extract's range contract,
+# color.refuse_ungradeable_plane): luma 235, chroma at its neutral 128.
+_WHITE_Y, _NEUTRAL_C = TV_LO + TV_SPAN, 128
 
 
 def _num(v: object) -> bool:
@@ -194,15 +199,26 @@ def _flash_inputs(times: Sequence[float], fps: float) -> None:
 
 def flash_args(times: Sequence[float], fps: float) -> list[str]:
     """The shutter accent's white flash (design 2026-10-21 §4): for each cut time,
-    one full-frame white `drawbox` per frame of FLASH_ALPHA.
+    one `lutyuv` per frame of FLASH_ALPHA, moving every sample of every plane the
+    opacity's fraction of the way to white: `a·white + (1−a)·picture`.
+
+    A per-plane LUT and not `drawbox ... color=white@a:t=fill`, because drawbox blends
+    a 4:2:0 chroma sample once per LUMA pixel it covers — four times — so its chroma
+    alpha is 1−(1−a)^4. Measured over flat patches of seven colours, decoded to RGB:
+    drawbox missed the blend by up to 67 codes in one channel (yellow's blue at
+    a=0.5) where luma moved by `a`, and this LUT lands within 3.4 codes on every
+    channel. `round` because lutyuv truncates the expression, which put every frame a
+    code or two low (the proof: tests/integration/test_shutter.py).
 
     Frame k of a flash at `t` is the frame in [t + k/fps, t + (k+1)/fps). `between`
     is closed at both ends, so that window written as-is enables two frames when `t`
     sits on the frame grid; it is written shifted back half a frame instead —
     [t + (k-0.5)/fps, t + (k+0.5)/fps] — whose edges fall half a frame from any
     frame, so a cut time a hair off the grid (it is a sum of probed float durations)
-    still enables exactly that one frame. The value is single-quoted because it
-    carries commas, which would otherwise split the filter chain (CLAUDE.md).
+    still enables exactly that one frame. The enable value is single-quoted because
+    it carries commas, which would otherwise split the filter chain (CLAUDE.md); the
+    plane expressions carry none and are quoted anyway, so an edit that adds one
+    cannot split it either.
 
     [] with no times: no filter, so a delivery with no accent keeps its argv."""
     _flash_inputs(times, fps)
@@ -210,7 +226,8 @@ def flash_args(times: Sequence[float], fps: float) -> list[str]:
     for t in times:
         for k, a in enumerate(FLASH_ALPHA):
             lo, hi = max(0.0, t + (k - 0.5) / fps), t + (k + 0.5) / fps
-            out.append(f"drawbox=x=0:y=0:w=iw:h=ih:color=white@{a:g}:t=fill:"
+            y, c = (f"'round(val+({w:g}-val)*{a:g})'" for w in (_WHITE_Y, _NEUTRAL_C))
+            out.append(f"lutyuv=y={y}:u={c}:v={c}:"
                        f"enable='between(t,{lo:.6f},{hi:.6f})'")
     return out
 

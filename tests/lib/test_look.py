@@ -164,11 +164,14 @@ def test_the_flash_is_three_frames_white_at_the_conventions_opacities():
     assert FLASH_ALPHA == (0.85, 0.5, 0.2) and FLASH_FRAMES == 3
 
 
-def test_flash_args_writes_one_full_frame_white_box_per_frame_of_each_flash():
-    """Each frame's window is centred on the frame's own instant, half a frame either
-    side, so a cut time a hair off the frame grid still enables that frame and only
-    it. The first window of a flash at 0 starts at 0, not at a negative time."""
-    box = "drawbox=x=0:y=0:w=iw:h=ih:color=white@{a}:t=fill:enable='between(t,{lo},{hi})'"
+def test_flash_args_writes_one_whole_frame_blend_to_white_per_frame_of_each_flash():
+    """Each frame moves every plane `a` of the way to the tv plane's white (luma 235,
+    chroma 128), once per sample. Each frame's window is centred on the frame's own
+    instant, half a frame either side, so a cut time a hair off the frame grid still
+    enables that frame and only it. The first window of a flash at 0 starts at 0, not
+    at a negative time."""
+    box = ("lutyuv=y='round(val+(235-val)*{a})':u='round(val+(128-val)*{a})':"
+           "v='round(val+(128-val)*{a})':enable='between(t,{lo},{hi})'")
     assert flash_args([0.0, 2.0], 25.0) == [
         box.format(a="0.85", lo="0.000000", hi="0.020000"),
         box.format(a="0.5", lo="0.020000", hi="0.060000"),
@@ -185,10 +188,11 @@ def test_flash_args_is_empty_with_no_flash():
 
 def test_a_flash_passes_the_landmine_guard_because_its_commas_are_quoted():
     """CLAUDE.md: a bare comma inside a filter value splits the chain. The between()
-    carries two, so the enable value is single-quoted inside the -vf string."""
+    carries two, so the enable value is single-quoted inside the -vf string — and so
+    are the three plane expressions, four quoted values per frame."""
     vf = ",".join(flash_args([1.0, 3.5], 30.0))
     assert lint.check_argv(["ffmpeg", "-i", "m.mp4", "-vf", vf, "out.mp4"]) == []
-    assert vf.count("'") == 2 * 2 * FLASH_FRAMES
+    assert vf.count("'") == 2 * 4 * 2 * FLASH_FRAMES
 
 
 @pytest.mark.parametrize("times, fps, what", [

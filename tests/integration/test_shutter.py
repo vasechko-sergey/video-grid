@@ -9,7 +9,9 @@ gate that does not know about the flash: the vignette's sample sits on the flash
 it steps around it), and a title that never rendered, sampled on a flash, passes.
 
 Synthetic known-answer inputs: a flat 0x808080 field decodes to luma 128, and white to
-255, so a flashed frame's centre reads 128 + a x (255 - 128) for each opacity a.
+255, so a flashed frame's centre reads 128 + a x (255 - 128) for each opacity a. Grey
+carries no chroma, so the blend's chroma half is proven separately, over saturated
+patches.
 """
 import json
 from pathlib import Path
@@ -19,9 +21,9 @@ import pytest
 from scipy.io import wavfile
 
 from scripts import check_reel, deliver as deliver_mod, mix
-from scripts.lib import assembly, ffbin, proc
+from scripts.lib import assembly, ffbin, proc, provenance
 from scripts.lib.look import FLASH_ALPHA, FLASH_FRAMES, LookSpec
-from scripts.lib.models import MusicSpec, REEL_H264, ReelCheckSpec
+from scripts.lib.models import MusicSpec, REEL_H264, ReelCheckSpec, ReelReport
 from scripts.lib.titles import Title, Titles
 
 pytestmark = pytest.mark.integration
@@ -93,6 +95,48 @@ def test_the_flash_is_in_the_delivery_not_the_master_and_the_look_gate_steps_aro
     # bright as its centre, and the check fails.
     blind = deliver_mod._verify_look(master, out, look, str(tj), "")
     assert {f.check: f.status for f in blind}["vignette"] == "fail"
+
+
+def _rgb(path: str) -> np.ndarray:
+    """Every frame as an (n, h, w, 3) float RGB array — one decode."""
+    si = assembly.probe_stream(path)
+    raw = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", path,
+                    "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]).stdout
+    n = si.w * si.h * 3
+    return np.frombuffer(raw, np.uint8)[:len(raw) // n * n] \
+        .reshape(-1, si.h, si.w, 3).astype(float)
+
+
+def test_the_flash_blends_the_colour_once_not_the_chroma_four_times(tmp_path):
+    """Every flashed frame reads a x white + (1 - a) x the picture in all three
+    channels. The patches are a red (chroma far off neutral in V) and a blue (in U),
+    because grey has no chroma to compound: drawbox, which blends a 4:2:0 chroma sample
+    once per luma pixel it covers, landed these same frames 20-65 codes off in one
+    channel, and passes the grey proof above all the same (design 2026-10-21 §4).
+    Measured through this encode: 3.45 codes at worst, every frame either side 0."""
+    try:
+        ffbin.ffmpeg()
+    except ValueError as e:
+        pytest.skip(str(e))
+    master = str(tmp_path / "colour.mp4")
+    proc.run([ffbin.ffmpeg(), "-y", "-f", "lavfi", "-i",
+              f"color=c=0xC82828:s=180x640:d={_DUR}:r={_FPS}[a];"
+              f"color=c=0x2828C8:s=180x640:d={_DUR}:r={_FPS}[b];[a][b]hstack",
+              "-t", f"{_DUR}", "-pix_fmt", "yuv420p", master])
+    rep = ReelReport(checks={}, master_digest=provenance.digest_file(master))
+    out = deliver_mod.deliver(master, REEL_H264, str(tmp_path / "out"), "colour", rep,
+                              scratch_dir=str(tmp_path / "scratch"), flashes=[1.0])
+    m, d = _rgb(master), _rgb(out)
+    n0 = round(1.0 * _FPS)
+    for x in (90, 270):                            # the centre of each patch
+        def patch(f):
+            return f[320 - 40:320 + 40, x - 40:x + 40].reshape(-1, 3).mean(0)
+        for k, a in enumerate(FLASH_ALPHA):
+            want = a * 255.0 + (1 - a) * patch(m[n0 + k])
+            got = patch(d[n0 + k])
+            assert np.abs(got - want).max() < 5.0, (x, a, got.round(1), want.round(1))
+        for n in (n0 - 1, n0 + FLASH_FRAMES):      # and the frames either side untouched
+            assert np.abs(patch(d[n]) - patch(m[n])).max() < 2.0, (x, n)
 
 
 def _music(path: Path, secs: float) -> MusicSpec:
