@@ -208,7 +208,7 @@ def test_flash_args_refuses_a_rate_or_time_it_cannot_place(times, fps, what):
 
 def test_the_flash_rides_first_then_the_titles_then_the_fade():
     """The fade last is what still darkens a flash at t=0 — and the titles above the
-    flash, so a title over a photo cut stays legible through the white."""
+    flash, so the white never washes over a title on a photo cut."""
     flashes = flash_args([1.0], 30.0)
     assert chain(LookSpec(fade=0.5), 30.0, "drawtext=x=1", flashes=flashes) == [
         *flashes, "drawtext=x=1", "fade=t=in:st=0:d=0.500", "fade=t=out:st=29.500:d=0.500"]

@@ -257,8 +257,10 @@ def clear_of_flash(t: float, windows: Sequence[tuple[float, float]]) -> float:
 
 def flash_free(lo: float, hi: float,
                windows: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
-    """The parts of [lo, hi] no window holds, in time order — the same membership
-    rule as clear_of_flash. Empty when flashes cover the whole span."""
+    """The parts of [lo, hi] outside every window, in time order; empty when flashes
+    cover the whole span. A part is closed and ends AT the next window's start, an
+    instant clear_of_flash counts as inside — so only a part's interior is clear, and
+    _title_times takes a part's midpoint, never its end."""
     parts, at = [], lo
     for w_lo, w_hi in sorted(windows):
         if w_hi <= at or w_lo >= hi:
@@ -281,8 +283,9 @@ def chain(spec: "LookSpec | None", dur: float, titles: str = "",
     delivered frame reads 0.0 — the title goes to black with the picture. Put it
     before the drawtext and the title burns on at full brightness over a black
     frame (design §4). The flashes come first for the same reason: a fade after them
-    still darkens a flash at t=0, and a title drawn after them stays legible through
-    the white.
+    still darkens a flash at t=0, and a title drawn after them sits on the white
+    rather than under it. That keeps the title from being washed out, not legible:
+    a white title on a 0.85 flash frame is barely there.
 
     The vignette overlay is deliberately NOT in this list: it needs a second input,
     so deliver wires it by label and prepends it. An empty list means deliver emits
