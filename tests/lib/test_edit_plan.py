@@ -2056,27 +2056,45 @@ def _turn(**kw):
 
 def test_a_freeze_holds_the_previous_episodes_last_frame_in_its_framing():
     sel = {"episodes": [_turn(layout="fit", hero="Lena", saturation=0.9, motion="static",
-                              stabilize=True, smooth_window_s=0.5,
+                              stabilize=True, smooth_window_s=0.5, crop_scale=0.8,
                               zoom={"from": 1.0, "to": 0.9}),
                         {"freeze": True}]}
     prev, fr = edit_plan.build_edl(_freeze_footage(), sel).episodes
+    # `center` (a held route has no travel to lead with), at the crop the push-in ENDS on
     assert fr == replace(prev, freeze=True, shutter=True, hold=None,
-                         start=5.0 + 3.0 - 1 / 30.0,
+                         start=5.0 + 3.0 - 1 / 30.0, composition="center",
+                         crop_scale=0.8 * 0.9,
                          dur=hold.HOLD_DEFAULT, base_dur=hold.HOLD_DEFAULT, beat_slot=None,
                          ramp=None, pan=None, zoom=None, still=None, motion=None,
                          smooth_window_s=None, stabilize=False,
                          processing_notes="freeze · the turn")
 
 
-def test_a_freeze_drops_a_ramp_and_a_pan_and_reads_the_source_window():
-    sel = {"episodes": [_turn(ramp={"at": 1.5, "factor": 0.5, "ease": 0.3, "hold": 0.2},
-                              pan={"from": 0.2, "to": 0.7}),
+def test_a_freeze_without_a_zoom_before_it_keeps_the_crop_scale():
+    sel = {"episodes": [_turn(crop_scale=0.8), {"freeze": True}]}
+    prev, fr = edit_plan.build_edl(_freeze_footage(), sel).episodes
+    assert (prev.composition, fr.composition) == ("lead", "center")
+    assert fr.crop_scale == prev.crop_scale == 0.8
+
+
+def test_a_freeze_drops_a_ramp_and_reads_the_source_window():
+    sel = {"episodes": [_turn(ramp={"at": 1.5, "factor": 0.5, "ease": 0.3, "hold": 0.2}),
                         {"freeze": True}]}
     prev, fr = edit_plan.build_edl(_freeze_footage(fps=60.0), sel).episodes
-    assert prev.ramp is not None and prev.pan is not None
-    assert (fr.ramp, fr.pan) == (None, None)
+    assert prev.ramp is not None and fr.ramp is None
     # the last SOURCE frame of the window, whatever the ramp did to its screen time
     assert fr.start == 5.0 + 3.0 - 1 / 60.0
+
+
+def test_a_freeze_after_a_pan_is_refused():
+    # a pan has no route to hold, and its window holds nobody to freeze on
+    sel = {"episodes": [_turn(composition="center", pan={"from": 0.2, "to": 0.7}),
+                        {"freeze": True}]}
+    with pytest.raises(ValueError, match="selection episode 1: a freeze holds the subject "
+                                         "where the previous episode left them, and episode "
+                                         "0 is a pan, which follows nobody — freeze the "
+                                         "episode before or after it, or drop the pan"):
+        edit_plan.build_edl(_freeze_footage(), sel)
 
 
 def test_a_freeze_takes_an_explicit_shutter_and_hold():

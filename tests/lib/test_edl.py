@@ -1597,7 +1597,8 @@ def test_edl_md_rows_without_held_fields_are_unchanged():
 
 
 def test_a_freeze_is_a_video_episode_to_the_manifest_bridge():
-    # tracked, framed and graded like any window — never the photo path's `still`
+    # framed and graded like any window — never the photo path's `still`; that it is not
+    # tracked is edl_to_reel's (it hands the freeze a held route), not the manifest's
     md = to_manifest_dict(_freeze_ep(hero="Lena"), "seg.mp4", "out.mp4")
     assert "still" not in md and md["hero"] == "Lena"
     assert md == to_manifest_dict(_ep(hero="Lena", start=3.9), "seg.mp4", "out.mp4")

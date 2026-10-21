@@ -13,19 +13,27 @@ segment's last frame in 5 of 28 random off-grid cuts, in both directions — (0.
 late. The review's own worked case (0.51 s, 1.51 s) was not one of them; it is kept
 because it was the case named. Taking the frame by count from the segment is right in
 every case by construction, and these are the cases where the source-time reading was
-not."""
+not.
+
+The last proof takes a freeze through edl_to_reel's geometry split on the committed
+golden ride, with the tracker replaced by its committed route: the freeze is never
+tracked, and the route it is framed over is its predecessor's last sample, held."""
 import json
+import shutil
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pytest
 
-from scripts import edit_plan, extract
-from scripts.lib import assembly, ffbin, proc
+from scripts import edit_plan, edl_to_reel, extract, track
+from scripts.lib import assembly, ffbin, models, proc
 from scripts.lib.edl import EDL, EDLEpisode
 from scripts.lib.footage import Footage, FootageClip
 
 pytestmark = pytest.mark.integration
+
+FIX = Path(__file__).parent.parent / "fixtures"
 
 
 @pytest.fixture(scope="module")
@@ -119,3 +127,60 @@ def test_a_freeze_holds_the_last_frame_its_segment_decodes(counting_clip, tmp_pa
     assert _streams(seg, "a") != [] and _streams(held, "a") == []  # the tone was dropped
     assert _streams(clip, "v:0")[0]["color_range"] == "pc"    # the control
     assert _streams(held, "v:0")[0]["color_range"] == "tv"
+
+
+def test_a_freeze_crosses_the_geometry_split_over_a_held_route_untracked(tmp_path,
+                                                                        monkeypatch):
+    """Phase 1a then phase 1b on real ffmpeg. YOLO is replaced by the committed golden
+    route — written where a rung-1 pass writes it, its sidecar beside it — and every
+    call is recorded, so "the freeze was not tracked" is an observation, not a reading
+    of the code. Everything else — extract, the contradiction gate, reframe,
+    check_episode — runs for real."""
+    route = json.loads((FIX / "golden_route.json").read_text())
+    meta = json.loads((FIX / "golden_route.meta.json").read_text())
+    tracked: list[str] = []
+
+    def build_route(spec, out):
+        tracked.append(spec.src)
+        pts = [p for p in route if p["t"] <= assembly.probe_duration(spec.src)]
+        Path(out).write_text(json.dumps(pts))
+        Path(out).with_suffix(".meta.json").write_text(json.dumps(meta))
+        return [models.RoutePoint.from_dict(p) for p in pts]
+    monkeypatch.setattr(track, "build_route", build_route)
+    monkeypatch.setattr(track, "ensure_model", lambda model=track.MODEL: None)
+    monkeypatch.setattr(track, "available", lambda descriptor=False: True)
+
+    foot = tmp_path / "footage"
+    foot.mkdir()
+    shutil.copy(FIX / "golden_ride.mp4", foot / "ride.mp4")
+    fps = assembly.probe_stream(str(foot / "ride.mp4")).fps
+    row = {"source": "ride.mp4", "shot_type": "wide", "grid": "thirds",
+           "composition": "center"}
+    edl = tmp_path / "EDL.json"
+    edl.write_text(json.dumps({"episodes": [
+        {**row, "start": 0.0, "dur": 0.75},
+        {**row, "start": 0.75 - 1 / fps, "dur": 0.5, "freeze": True}]}))
+    project = tmp_path / "project.json"
+    # 1:1 against 1280x720 under native: a 720x720 crop that nothing resamples
+    project.write_text(json.dumps({"purpose": "reel", "canvas": [1, 1], "delivery": "native"}))
+    reel = tmp_path / "reels" / "main"
+    work, out = str(reel / "build"), str(reel / "episodes")
+
+    geo, stop = edl_to_reel.build_geometry(str(edl), str(project), str(foot), work, out)
+    assert stop is None, stop
+    seg0, seg1 = (str(Path(work) / "segments" / f"ep{i}_raw.mp4") for i in (0, 1))
+    assert tracked == [seg0]                       # the freeze never reached the tracker
+    played = json.loads(Path(geo.episodes[0].route).read_text())
+    held = json.loads(Path(geo.episodes[1].route).read_text())
+    n = assembly.count_frames(seg1)
+    assert n == round(0.5 * fps)
+    assert held == [{**played[-1], "t": k / fps} for k in range(n)]   # constant, the last
+    assert played[-1] != played[0]                 # ...and the last is not the first
+    assert json.loads(Path(geo.episodes[1].route).with_suffix(".meta.json").read_text()) == meta
+
+    rm, stop = edl_to_reel.render_from_geometry(str(Path(out) / "GEOMETRY.json"),
+                                                str(project), work, out)
+    assert stop is None, stop
+    assert tracked == [seg0]                       # phase 1b tracks nothing at all
+    assert rm.episodes[1].route == geo.episodes[1].route
+    assert Path(rm.episodes[1].clip).exists()

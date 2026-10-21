@@ -77,11 +77,14 @@ its out-point is **chosen**:
 - target = `pos + k·beat`; candidates are the DETECTED beats in `[pos + lo, pos + hi]`
   (`lo = HOLD_MIN`, `hi = HOLD_ROOM`); the one nearest the target wins. Inside a run the
   cut is therefore on a beat by construction and its deviation is 0.
-- **The run's last hold** (the next episode is video) chooses among the LEVEL's lines in
-  that range instead, so the cut back to footage is as musical as every other cut of the
-  reel. No line in range: it keeps the beat and its deviation counts against the level —
-  which then may not fit, and the coarsest-that-fits rule falls to a finer level, as for
-  any cut.
+- **The run's last hold** (the next episode is video) chooses among the LEVEL's lines
+  instead, so the cut back to footage is as musical as every other cut of the reel — but
+  only inside `[k/2, 2k]` beats of its plan (within `[lo, hi]`). Across the whole
+  `[lo, hi]` a phrase line is almost always reachable, so every coarse level would "fit"
+  by stretching the last photo, and coarsest-that-fits would pick it: Task 2 measured a
+  planned 2-beat photo bound to 10 beats. No line in the band: it keeps the beat and its
+  deviation counts against the level — which then may not fit, and the rule falls to a
+  finer level, as for any cut.
 - An authored `hold` is placed the same way but never moved for the level.
 - A held tail (the reel's last episode) is placed on a beat; the outro fit then owns the
   reel's end as before, growing it into `HOLD_ROOM`.
@@ -119,21 +122,38 @@ and drops what addresses time (`ramp`, `pan`, `zoom`, `stabilize`, `motion`,
 `smooth_window_s`); `EDLEpisode.freeze` refuses those by name, and `still` too. A freeze
 defaults `shutter: true` (§4): without the accent a held frame reads as a stalled player.
 
-`start` is the frozen frame's source time. It depends on where the previous episode's
-cut lands, which pacing and the outro fit may move, so `build_edl` resolves it last:
-`prev.start + prev.dur − 1/fps` (the last frame the previous segment shows, whatever the
-frame phase).
+`start` records the frozen frame's source time, `prev.start + prev.dur − 1/fps`, resolved
+last in `build_edl` because pacing and the outro fit move the previous cut. It is a
+label (the cut identity, EDL.md). The PIXELS come from the previous episode's own
+segment: `extract` takes its **last decoded frame** by count
+(`trim=start_frame=n−1,setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop=N−1` plus the
+segment's range pair, no audio — the research: the sound stopping on a freeze deepens
+it). A formula over source time cannot promise that: output-side `-t` measures from the
+first KEPT frame, so with both ends off the frame grid the last frame shown and the
+formula's frame part by one (the Task 1 review's worked case, 0.51 s / 1.51 s at 30 fps).
+A ramped predecessor's segment is already retimed by then, so its last frame is the one
+that plays.
 
-A freeze is a **video episode** in every other respect: `extract` cuts the frame and
-clones it (`trim=start=T,setpts=PTS-STARTPTS,trim=end_frame=1,tpad=stop_mode=clone:stop=N−1`
-plus the segment's range pair, no audio — the research: the sound stopping on a freeze
-deepens it), then it is tracked, framed, graded and checked like any window. The tracked
-route over identical frames is constant, so the crop holds where the subject is. `zoom`
-is refused because `zoompan` stair-steps on a still (photos design §0); a pushed freeze
-would be the float warp, not this slice. The cut identity carries `freeze`, and edit-plan
-leaves a freeze out of the variety census and the constraint projection: it is not a new
-use of footage, and `no_repeat` would otherwise refuse every freeze as a repeat of its
-own shot.
+A freeze is a **video episode** in every other respect — framed, graded and checked like
+any window — except that it is **not tracked**. Re-tracking one cloned frame loses what
+the previous episode was following (the Task 1 review): with no motion an unpinned pick
+falls back to size and may take another person or tie, a frame left empty stops on
+`no-track`, flow builds a route out of encode noise, and a motion-keyed composition reads
+a direction from nothing. So `edl_to_reel` renders freezes in a second wave, after their
+predecessors, each handed a **held route**: the predecessor's last route sample repeated
+over the freeze's frames — the same person, where the previous episode left them. The
+held route is what GEOMETRY.json records, so phase 1b and the reprocess loop need nothing
+new. A freeze composes `center` (a held route has no travel to lead with) at the
+predecessor's crop scale times its zoom's end width when it had a zoom, so a push-in
+freezes pushed in. A freeze after a `pan` is refused: a pan has no route, and its window
+holds nobody to freeze on. `zoom` on the freeze itself is refused because `zoompan`
+stair-steps on a still (photos design §0); a pushed freeze would be the float warp, not
+this slice.
+
+The cut identity carries `freeze`, and edit-plan leaves a freeze out of the variety
+census and the constraint projection: it is not a new use of footage, and `no_repeat`
+would otherwise refuse every freeze as a repeat of its own shot. The constraint messages
+still name EDL indices.
 
 ## §4 · U8b — the shutter accent
 
@@ -194,8 +214,8 @@ beats of the music.
   across two cameras with different clocks they are not, and a burst split across them is
   two groups.
 - Sharpness is focus and motion blur, not taste; there is no aesthetic model.
-- The freeze decodes its source from the start to the frozen frame (frame-accurate, by
-  the filter); a late frame in a long 4K clip costs a few seconds.
-- A freeze after a stabilized episode holds the raw frame, a few pixels off the
-  stabilized last frame; the flash covers the cut, nothing corrects it.
+- A freeze re-centres its subject: after a `lead` episode the subject moves from the
+  third line to the centre on the cut. The flash covers it; nothing reproduces the lead.
+- A freeze after a stabilized episode holds the raw frame under a route measured on
+  stabilized pixels, a few pixels off; the flash covers the cut, nothing corrects it.
 - The flash is not in `draft.mp4`, and nothing checks that it rendered beyond the proof.

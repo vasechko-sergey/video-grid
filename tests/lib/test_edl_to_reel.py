@@ -2256,3 +2256,183 @@ def test_a_freeze_joins_its_cut_identity_and_a_video_does_not(tmp_path):
                    {"source": "a.mp4", "start": 1.9667, "dur": 2.0, "ramp": None,
                     "freeze": True},
                    {"source": "a.mp4", "start": 1.9667, "dur": 2.0, "ramp": None}]
+
+
+# --- the freeze is not tracked: a second wave over a held route (design 2026-10-21 §3) --
+
+_PREV_ROUTE = [{"t": 0.0, "x": 900.0, "y": 500.0, "w": 100.0, "h": 200.0},
+               {"t": 1 / 30, "x": 910.0, "y": 502.0, "w": 101.0, "h": 201.0},
+               {"t": 2 / 30, "x": 930.0, "y": 505.0, "w": 102.0, "h": 202.0}]
+
+
+def _freeze_cut():
+    """A played window, a freeze of its last frame, and a second window."""
+    return [_ep(), _ep(start=1.9667, freeze=True, composition="center"), _ep(start=4.0)]
+
+
+def _wire_freeze(monkeypatch, *, prev_route=_PREV_ROUTE, prev_meta=None, frames=4,
+                 pe_results=None):
+    """_wire, with a process_episode fake that behaves like the real one about routes: an
+    episode handed one reads it and writes nothing, and one handed none leaves a
+    route.json (and its sidecar) in its scratch dir — in the full render too, which the
+    bare fake skips. The freeze segment probes as `frames` frames at 30 fps."""
+    seen = _wire(monkeypatch)
+    canned = dict(pe_results or {})
+
+    def fake_pe(manifest, project_dir, route_path=None, *, stop_after=None,
+                prepared_source=None):
+        idx = int(Path(project_dir).name.removeprefix("ep"))
+        seen["pe"].append({"manifest": manifest, "project_dir": project_dir, "idx": idx,
+                           "route_path": route_path, "stop_after": stop_after,
+                           "prepared_source": prepared_source})
+        if idx in canned:
+            return canned[idx]
+        rp = route_path
+        if rp is None:
+            rp = str(Path(project_dir) / "route.json")
+            Path(project_dir).mkdir(parents=True, exist_ok=True)
+            Path(rp).write_text(json.dumps(prev_route))
+            if prev_meta is not None:
+                Path(rp).with_suffix(".meta.json").write_text(json.dumps(prev_meta))
+        if stop_after == "geometry":
+            return {"status": "geometry", "route": rp, "source": manifest["segment"],
+                    "timings": {}, "degraded": None}
+        return {"status": "mechanical_pass", "clip": manifest["out_path"]}
+    monkeypatch.setattr(edl_to_reel.process_episode, "process_episode", fake_pe)
+    monkeypatch.setattr(edl_to_reel.assembly, "count_frames",
+                        lambda p: frames if p.endswith("ep1_raw.mp4") else pytest.fail(p))
+    monkeypatch.setattr(edl_to_reel.assembly, "probe_stream",
+                        lambda p: type("S", (), {"fps": 30.0})())
+    return seen
+
+
+def _held(last: dict, frames: int, fps: float = 30.0) -> list[dict]:
+    return [{**last, "t": k / fps} for k in range(frames)]
+
+
+def _calls(seen) -> list[tuple]:
+    return [(c["idx"], c["route_path"], c["prepared_source"]) for c in seen["pe"]]
+
+
+def test_a_freeze_is_geometried_after_the_wave_it_holds_over_a_held_route(tmp_path,
+                                                                          monkeypatch):
+    seen = _wire_freeze(monkeypatch)
+    work, out = _reel_dirs(tmp_path)
+    geo, stop = edl_to_reel.build_geometry(_edl_file(tmp_path, episodes=_freeze_cut()),
+                                           _project(tmp_path), str(tmp_path), work, out)
+    assert stop is None
+    held = str(Path(work) / "ep1" / "route.json")
+    # wave 1 tracks the two played windows (in either order — they share a pool); only
+    # then does the freeze run, handed its route and nothing else
+    assert sorted(_calls(seen)[:2]) == [(0, None, None), (2, None, None)]
+    assert _calls(seen)[2:] == [(1, held, None)]
+    # the predecessor's LAST sample, repeated on every frame of the freeze's own segment
+    assert json.loads(Path(held).read_text()) == _held(_PREV_ROUTE[-1], 4)
+    # ...and that route is what GEOMETRY.json records, so phase 1b reads it like any other
+    assert [eg.route for eg in geo.episodes] == [str(Path(work) / "ep0" / "route.json"),
+                                                 held, str(Path(work) / "ep2" / "route.json")]
+    assert len(seen["warm"]) == 1          # one warm-up, wave 1's; the freeze tracks nothing
+
+
+def test_a_freeze_rendered_straight_through_holds_its_predecessors_route(tmp_path,
+                                                                        monkeypatch):
+    seen = _wire_freeze(monkeypatch, frames=3)
+    work, out = _reel_dirs(tmp_path)
+    rm, stop = edl_to_reel._build_manifest(_edl_file(tmp_path, episodes=_freeze_cut()),
+                                           _project(tmp_path), str(tmp_path), work, out)
+    assert stop is None
+    held = str(Path(work) / "ep1" / "route.json")
+    assert _calls(seen)[2:] == [(1, held, None)]
+    assert json.loads(Path(held).read_text()) == _held(_PREV_ROUTE[-1], 3)
+    # results stay in EDL index order, and the reel manifest names the held route — the
+    # one build_reel's reprocess hands back (a freeze never stabilizes, so it is reused)
+    assert [e.clip for e in rm.episodes] == [str(Path(out) / f"ep{i}.mp4") for i in range(3)]
+    assert rm.episodes[1].route == held and "stabilize" not in rm.episodes[1].manifest
+
+
+def test_phase_1b_renders_a_freeze_over_the_held_route_geometry_recorded(tmp_path,
+                                                                        monkeypatch):
+    seen = _wire_freeze(monkeypatch)
+    work, out = _reel_dirs(tmp_path)
+    edl_path = _edl_file(tmp_path, episodes=_freeze_cut())
+    geo, stop = edl_to_reel.build_geometry(edl_path, _project(tmp_path), str(tmp_path),
+                                           work, out)
+    assert stop is None
+    seen["pe"].clear()
+    rm, stop = edl_to_reel.render_from_geometry(str(Path(out) / "GEOMETRY.json"),
+                                                _project(tmp_path), work, out)
+    assert stop is None
+    assert sorted(_calls(seen)) == [(i, eg.route, None) for i, eg in enumerate(geo.episodes)]
+    assert rm.episodes[1].route == str(Path(work) / "ep1" / "route.json")
+
+
+def test_the_held_route_carries_its_predecessors_track_sidecar(tmp_path, monkeypatch):
+    meta = {"hero": 3, "ambiguous": False, "intent": "action", "features": {"3": {"n": 9}},
+            "pin_matched": True, "degraded": None, "stitched": []}
+    _wire_freeze(monkeypatch, prev_meta=meta)
+    work, out = _reel_dirs(tmp_path)
+    edl_to_reel.build_geometry(_edl_file(tmp_path, episodes=_freeze_cut()),
+                               _project(tmp_path), str(tmp_path), work, out)
+    assert json.loads((Path(work) / "ep1" / "route.meta.json").read_text()) == meta
+
+
+def test_a_held_route_without_a_sidecar_leaves_none_not_a_stale_one(tmp_path, monkeypatch):
+    prev = tmp_path / "ep0" / "route.json"
+    prev.parent.mkdir()
+    prev.write_text(json.dumps(_PREV_ROUTE))
+    out = tmp_path / "ep1" / "route.json"
+    out.parent.mkdir()
+    out.with_suffix(".meta.json").write_text('{"ambiguous": true}')   # an earlier run's
+    monkeypatch.setattr(edl_to_reel.assembly, "count_frames", lambda p: 2)
+    monkeypatch.setattr(edl_to_reel.assembly, "probe_stream",
+                        lambda p: type("S", (), {"fps": 25.0})())
+    assert edl_to_reel._hold_route(str(prev), "seg.mp4", out) == str(out)
+    # the rate and the frame count are the FREEZE segment's
+    assert json.loads(out.read_text()) == _held(_PREV_ROUTE[-1], 2, fps=25.0)
+    assert not out.with_suffix(".meta.json").exists()
+
+
+def test_a_stop_in_the_first_wave_returns_before_any_freeze_runs(tmp_path, monkeypatch):
+    seen = _wire_freeze(monkeypatch, pe_results={2: {"status": "escalate"}})
+    work, out = _reel_dirs(tmp_path)
+    geo, stop = edl_to_reel.build_geometry(_edl_file(tmp_path, episodes=_freeze_cut()),
+                                           _project(tmp_path), str(tmp_path), work, out)
+    assert geo is None
+    assert stop["finding"] == {"reason": "episode-failed", "episode_idx": 2,
+                               "sub_status": "escalate"}
+    assert 1 not in [c["idx"] for c in seen["pe"]]
+    assert not (Path(work) / "ep1" / "route.json").exists()
+
+
+def test_a_stop_in_the_freeze_wave_carries_its_edl_index(tmp_path, monkeypatch):
+    _wire_freeze(monkeypatch, pe_results={1: {"status": "stop_and_report"}})
+    work, out = _reel_dirs(tmp_path)
+    rm, stop = edl_to_reel._build_manifest(_edl_file(tmp_path, episodes=_freeze_cut()),
+                                           _project(tmp_path), str(tmp_path), work, out)
+    assert rm is None
+    assert stop["finding"] == {"reason": "episode-failed", "episode_idx": 1,
+                               "sub_status": "stop_and_report"}
+
+
+def test_a_predecessor_with_no_route_sample_stops_the_freeze_by_name(tmp_path, monkeypatch):
+    seen = _wire_freeze(monkeypatch, prev_route=[])
+    work, out = _reel_dirs(tmp_path)
+    geo, stop = edl_to_reel.build_geometry(_edl_file(tmp_path, episodes=_freeze_cut()),
+                                           _project(tmp_path), str(tmp_path), work, out)
+    assert geo is None and stop["status"] == "stop_and_report"
+    f = stop["finding"]
+    assert (f["reason"], f["episode_idx"], f["previous_idx"]) == ("freeze-no-route", 1, 0)
+    assert "episode 1 is a freeze of episode 0" in f["detail"]
+    assert 1 not in [c["idx"] for c in seen["pe"]]
+
+
+def test_a_cut_without_a_freeze_is_one_pool_over_every_episode(tmp_path, monkeypatch):
+    calls = []
+    real = edl_to_reel._run_pool
+    monkeypatch.setattr(edl_to_reel, "_run_pool",
+                        lambda *a, **k: (calls.append(k.get("indices")), real(*a, **k))[1])
+    _wire(monkeypatch)
+    work, out = _reel_dirs(tmp_path)
+    edl_to_reel.build_geometry(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
+                               work, out)
+    assert calls == [None]

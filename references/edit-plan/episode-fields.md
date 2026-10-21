@@ -91,14 +91,18 @@ target length, and order them **hook first**. For each episode assign:
   (heads), shortening itself rather than cut it.
 - `freeze` (a selection entry of its own) — `{"freeze": true}` holds **the previous
   episode's last frame**, "like a photograph" (design 2026-10-21 §3). It carries only
-  `freeze`, `shutter` and `hold`; source, window, layout, crop, composition, hero and
-  colour it inherits from the episode before it, which must be a played video window —
-  a freeze cannot open the cut or follow a photo or another freeze. It drops what
-  addresses time (`ramp`, `pan`, `zoom`, `still`, `motion`, `smooth_window_s`,
-  `stabilize`), plays 2.0 s when no music binds it, and its segment is silent. It is
-  not a new use of footage: the variety census and `CONSTRAINTS.json`'s `no_repeat`
-  both skip it. Its frame is resolved last, after pacing and the outro fit, so it
-  follows wherever the previous cut lands.
+  `freeze`, `shutter` and `hold`; source, window, layout, crop, hero and colour it
+  inherits from the episode before it, which must be a played video window that is not
+  a `pan` — a freeze cannot open the cut or follow a photo, another freeze or a pan
+  (a pan follows nobody). It composes `center` at the crop the previous episode ends
+  on (a `zoom` there: its end width). It is **not tracked**: it is framed over the
+  previous episode's last route sample, held — the same person, where that episode
+  left them — so after a `lead` the subject moves from the third line to the centre on
+  the cut. It drops what addresses time (`ramp`, `pan`, `zoom`, `still`, `motion`,
+  `smooth_window_s`, `stabilize`), plays 2.0 s when no music binds it, and its segment
+  is silent. It is not a new use of footage: the variety census and
+  `CONSTRAINTS.json`'s `no_repeat` both skip it. It follows wherever the previous cut
+  lands, after pacing and the outro fit.
 - `shutter` (optional, a photo or a freeze only) — the shutter accent on the
   episode's cut: a white flash and a shutter click (design 2026-10-21 §4). A freeze
   defaults it to `true` — without it a held frame reads as a stalled player; a photo

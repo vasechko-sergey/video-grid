@@ -496,14 +496,16 @@ FREEZE_KEYS = ("freeze", "shutter", "hold")   # all a selection's freeze entry m
 def _freeze_entry(sel: dict, episodes: list[EDLEpisode], k: int) -> EDLEpisode:
     """A selection entry `{"freeze": true}` → the episode that holds the previous one's
     last frame (design 2026-10-21 §3). It copies the previous episode's editorial fields
-    and drops every field that addresses time; its `start` is a placeholder until
-    _resolve_freezes, because the previous cut may still move (pacing, the outro fit)."""
+    — composing `center` at the crop it ends on — and drops every field that addresses
+    time; its `start` is a placeholder until _resolve_freezes, because the previous cut
+    may still move (pacing, the outro fit). It is not tracked: edl_to_reel renders it
+    over the previous episode's last route sample, held."""
     extra = sorted(set(sel) - set(FREEZE_KEYS))
     if extra:
         raise ValueError(
             f"selection episode {k}: a freeze carries only {', '.join(FREEZE_KEYS)} — got "
             f"{', '.join(extra)}. It inherits the previous episode's framing (source, "
-            f"window, layout, crop, composition, hero, colour); author those there")
+            f"window, layout, crop, hero, colour) and composes center; author those there")
     if sel["freeze"] is not True:
         raise ValueError(f"selection episode {k}: `freeze` must be true, got "
                          f"{sel['freeze']!r} — to cut a played window, drop the key and "
@@ -514,11 +516,22 @@ def _freeze_entry(sel: dict, episodes: list[EDLEpisode], k: int) -> EDLEpisode:
                f"episode {k - 1} is a {'freeze' if prev.freeze else 'photo'}")
         raise ValueError(f"selection episode {k}: a freeze holds the previous episode's last "
                          f"frame, so it must follow a video episode — {why}")
+    if prev.pan is not None:
+        # A freeze is rendered over the predecessor's last route sample (design §3), and a
+        # pan has no route — its window holds nobody to hold still on.
+        raise ValueError(f"selection episode {k}: a freeze holds the subject where the "
+                         f"previous episode left them, and episode {k - 1} is a pan, which "
+                         f"follows nobody — freeze the episode before or after it, or drop "
+                         f"the pan")
     try:
-        # shutter defaults ON: without the accent a held frame reads as a stalled player
+        # shutter defaults ON: without the accent a held frame reads as a stalled player.
+        # `center`: a held route has no travel to lead with. The crop is the one the
+        # previous episode ENDS on — times its zoom's end width when it pushed in.
         return dataclasses.replace(
             prev, freeze=True, shutter=sel.get("shutter", True), hold=sel.get("hold"),
             dur=hold.HOLD_DEFAULT, base_dur=hold.HOLD_DEFAULT, beat_slot=None,
+            composition="center",
+            crop_scale=prev.crop_scale * (prev.zoom["to"] if prev.zoom is not None else 1.0),
             ramp=None, pan=None, zoom=None, still=None, motion=None, smooth_window_s=None,
             stabilize=False,
             processing_notes=f"freeze · {prev.processing_notes}".rstrip(" ·"))

@@ -74,9 +74,11 @@ class EDLEpisode:
                               # kenburns.DEFAULT_MOVE. Validated HERE, like `ramp`: whether
                               # the source is a photo, and the move's rate, both need fields
                               # only this class has.
-    freeze: bool = False      # this episode HOLDS the video frame at `start` (design
-                              # 2026-10-21 §3) for `dur` — a video episode downstream
-                              # (tracked, framed, graded), only its segment is one frame.
+    freeze: bool = False      # this episode HOLDS the previous episode's last frame for
+                              # `dur` (design 2026-10-21 §3). `start` labels that frame's
+                              # source time; the pixels come from the previous segment.
+                              # A video episode downstream (framed, graded, checked), only
+                              # its segment is one frame and its route is held, not tracked.
     shutter: bool = False     # the shutter accent on this episode's cut (design §4); held
                               # episodes only.
     hold: int | None = None   # an authored length in BEATS, which outranks the grid's own
