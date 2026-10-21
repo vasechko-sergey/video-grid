@@ -122,7 +122,8 @@ def _held_run_dir(tmp_path, *, closer):
         _photo("IMG_1.HEIC"), _photo("IMG_2.HEIC")])
     (tmp_path / "FOOTAGE.json").write_text(json.dumps(f.to_dict()))
     eps = [{"source": "a.mp4", "window": 0, "composition": "lead", "grid": "thirds"},
-           {"freeze": True},
+           {"freeze": True, "hold": 4},   # authored: the slot carries the count it was
+                                          # fitted with, and the re-apply must bind it
            {"source": "IMG_1.HEIC", "window": 0, "composition": "center", "grid": "thirds"},
            {"source": "IMG_2.HEIC", "window": 0, "composition": "center", "grid": "thirds"}]
     if closer == "video":

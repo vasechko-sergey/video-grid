@@ -48,6 +48,10 @@ class Slot:
                          # from the fallback until this field (design 2026-09-07 §5).
     held: bool = False   # emitted only when true, so a video-only PACING.json is
                          # byte-identical to one written before held episodes existed
+    hold: int | None = None   # the AUTHORED beat count a held slot was fitted with, None
+                              # for the planner's — so binding can refuse an episode whose
+                              # `hold` changed since the fit (design 2026-10-21 §2.3).
+                              # Emitted only when set, like `held`
 
     def __post_init__(self) -> None:
         if isinstance(self.index, bool) or not isinstance(self.index, int) or self.index < 0:
@@ -82,11 +86,20 @@ class Slot:
         if not isinstance(self.held, bool):
             raise ValueError(f"Slot.held must be true or false, got {self.held!r} — re-run "
                              f"pacing to regenerate PACING.json")
+        if self.hold is not None:
+            if isinstance(self.hold, bool) or not isinstance(self.hold, int) or self.hold < 1:
+                raise ValueError(f"Slot.hold must be a whole number of beats >= 1 or null, got "
+                                 f"{self.hold!r} — re-run pacing to regenerate PACING.json")
+            if not self.held:
+                raise ValueError(f"Slot.hold is the authored count of a HELD slot, and slot "
+                                 f"{self.index} is not held — re-run pacing to regenerate "
+                                 f"PACING.json")
 
     def to_dict(self) -> dict:
         return {"index": self.index, "start": self.start, "dur": self.dur,
                 "energy": self.energy, "kind": self.kind, "line": self.line, "dev": self.dev,
-                "beats_in": self.beats_in, **({"held": True} if self.held else {})}
+                "beats_in": self.beats_in, **({"held": True} if self.held else {}),
+                **({"hold": self.hold} if self.hold is not None else {})}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Slot":
@@ -105,7 +118,8 @@ class Slot:
                              f"written before 2026-07-24 has no fit; re-run pacing")
         return cls(index=d["index"], start=d["start"], dur=d["dur"],
                    energy=d["energy"], kind=d["kind"], line=d["line"], dev=d["dev"],
-                   beats_in=d.get("beats_in", -1), held=d.get("held", False))
+                   beats_in=d.get("beats_in", -1), held=d.get("held", False),
+                   hold=d.get("hold"))
 
 
 @dataclass(frozen=True)
@@ -379,6 +393,8 @@ def fit_spine(durs, beats, energy, energy_hz: float, tempo: float, bounds,
     fit, rejected = gridfit.best_fit(durs, beats, bounds, allow, levels=levels,
                                      held=held, plan=plan)
     is_held = [False] * len(fit.shifts) if held is None else [h is not None for h in held]
+    authored = [None] * len(fit.shifts) if held is None else [
+        None if h is None else h.beats for h in held]
     fitted = [float(d) + s for d, s in zip(durs, fit.shifts)]
     total = sum(fitted)
     n = _beat_energy(beats, energy, energy_hz, total)
@@ -403,6 +419,7 @@ def fit_spine(durs, beats, energy, energy_hz: float, tempo: float, bounds,
             ref = beats if is_held[i] and is_held[i + 1] else grid_lines
             line = min(ref, key=lambda L: abs(L - want))
         slots.append(Slot(i, pos, dur, e, "hook" if i == 0 else _kind(e),
-                          line=line, dev=dev, beats_in=len(inside), held=is_held[i]))
+                          line=line, dev=dev, beats_in=len(inside), held=is_held[i],
+                          hold=authored[i]))
         pos += dur
     return Spine(tuple(slots), total, float(tempo)), fit, rejected

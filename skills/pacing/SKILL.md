@@ -25,8 +25,8 @@ fits a finer level. An authored `hold` (beats) outranks it, and one
 that cannot last 1/3 s to 8.0 s at a window's tempo is refused. `PACING.md` marks each
 such slot `held N beats` and names them in the fit report; the energy agreement leaves
 them out, because their length was derived from the energy. Turning an episode from
-footage into a photo or freeze (or back) means re-running pacing — binding refuses the
-mismatch.
+footage into a photo or freeze (or back), or adding, changing or dropping its `hold`,
+means re-running pacing — binding refuses the mismatch.
 
 A thin driver over the pure `scripts/lib/gridfit` + `scripts/lib/pacing` core.
 

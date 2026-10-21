@@ -485,6 +485,10 @@ def test_the_fit_report_names_the_held_episodes_and_their_beats(tmp_path):
     slots = res["spine"].slots
     assert [s.held for s in slots] == [False, True, True, False]
     assert slots[1].dur == pytest.approx(1.5)        # the authored 3 beats at 120 BPM
+    # the count it was fitted with rides into PACING.json, so a changed `hold` is refused
+    # at binding (design §2.3)
+    assert [s.get("hold") for s in json.loads((tmp_path / "out" / "PACING.json")
+                                              .read_text())["slots"]] == [None, 3, None, None]
     md = (tmp_path / "out" / "PACING.md").read_text()
     n2 = round(slots[2].dur / 0.5)
     assert (f"- **Held:** 2 of 4 episodes (photos or freezes) — the grid authored their "

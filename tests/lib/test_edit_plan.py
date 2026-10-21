@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import replace
 
 import pytest
@@ -2254,8 +2255,8 @@ def test_an_authored_hold_without_pacing_is_said_to_be_unused(capsys):
 def test_no_authored_hold_and_a_bound_spine_say_nothing_about_holds(capsys):
     edit_plan.build_edl(_freeze_footage(), {"episodes": [_turn(), {"freeze": True}]})
     spine = Spine(slots=(Slot(0, 0.0, 3.0, 0.5, "hook"),
-                         Slot(1, 3.0, 2.0, 0.5, "peak", held=True)),
-                  target_dur=5.0, tempo=120.0)
+                         Slot(1, 3.0, 1.0, 0.5, "peak", held=True, hold=2)),
+                  target_dur=4.0, tempo=120.0)
     edit_plan.build_edl(_freeze_footage(), {"episodes": [_turn(), {"freeze": True, "hold": 2}]},
                         pacing=spine)
     assert "beats need a tempo" not in capsys.readouterr().err
@@ -2334,6 +2335,31 @@ def test_a_footage_episode_on_a_held_slot_is_refused():
     with pytest.raises(ValueError, match="slot 1 was fitted with episode 1 held \\(a photo or "
                                          "a freeze\\); it is now footage — re-run pacing"):
         edit_plan._bind_pacing(eps, _held_spine((3.0, False), (2.0, True)))
+
+
+@pytest.mark.parametrize("fitted, authored, said", [
+    (None, 4, "hold=none (the grid's own count); episode 1 now authors 4"),
+    (4, None, "hold=4; episode 1 now authors none (the grid's own count)"),
+    (4, 8, "hold=4; episode 1 now authors 8"),
+])
+def test_a_held_episode_whose_hold_changed_since_the_fit_is_refused(fitted, authored, said):
+    # "hold the hero photo longer": the agent adds a `hold` and re-binds the old spine —
+    # its slot length was placed for the count the episode authored THEN
+    eps = [_edl_ep(source="A.mp4", start=5.0, dur=3.0, base_dur=3.0),
+           _edl_ep(source="IMG_1.HEIC", start=0.0, dur=2.0, base_dur=2.0, hold=authored)]
+    spine = Spine((Slot(0, 0.0, 3.0, 0.5, "hook"),
+                   Slot(1, 3.0, 2.0, 0.5, "build", held=True, hold=fitted)), 5.0, 120.0)
+    with pytest.raises(ValueError, match=f"slot 1 was fitted with {re.escape(said)} — re-run "
+                                         f"pacing"):
+        edit_plan._bind_pacing(eps, spine)
+
+
+def test_a_held_episode_binds_when_its_hold_is_the_one_the_slot_was_fitted_with():
+    eps = [_edl_ep(source="A.mp4", start=5.0, dur=3.0, base_dur=3.0),
+           _edl_ep(source="IMG_1.HEIC", start=0.0, dur=2.0, base_dur=2.0, hold=3)]
+    spine = Spine((Slot(0, 0.0, 3.0, 0.5, "hook"),
+                   Slot(1, 3.0, 1.5, 0.5, "build", held=True, hold=3)), 4.5, 120.0)
+    assert edit_plan._bind_pacing(eps, spine)[1] == replace(eps[1], beat_slot=1, dur=1.5)
 
 
 def test_a_footage_episode_keeps_the_half_beat_guard_beside_held_ones():

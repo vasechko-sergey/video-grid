@@ -238,6 +238,10 @@ _TEMPO_TOL = 0.5      # BPM. A spine copies MusicSpec.tempo straight through, so
                       # meaningful difference and far above float round-trip noise.
 
 
+def _hold_word(count: int | None) -> str:
+    return "none (the grid's own count)" if count is None else str(count)
+
+
 def _bind_pacing(episodes: list, spine: Spine) -> list:
     """Apply a FITTED spine: episode i's PLAYED length takes slot i's duration, and the
     episode gets `beat_slot=i`.
@@ -256,8 +260,10 @@ def _bind_pacing(episodes: list, spine: Spine) -> list:
     A HELD episode (a photo or a freeze, design 2026-10-21 §2.3) is the exception: the
     grid authored its length, which legitimately moves by seconds, so the guard cannot
     apply. Identity is checked kind against kind instead — a held episode needs a held
-    slot and footage a footage slot, either mismatch refused — and it takes the slot's
-    length as is (no ramp can ride a held episode).
+    slot and footage a footage slot, either mismatch refused — and count against count:
+    a slot records the `hold` it was fitted with, and an episode that authors another
+    (added, removed or changed) is refused. It takes the slot's length as is (no ramp can
+    ride a held episode).
 
     Zip-to-min; an over/underflow is logged, never a silent drop (§4.1)."""
     allow = gridfit.allowance(spine.tempo) + _SNAP_TOL
@@ -275,6 +281,13 @@ def _bind_pacing(episodes: list, spine: Spine) -> list:
                 f"pacing: slot {i} was fitted with episode {i} held (a photo or a freeze); "
                 f"it is now footage — re-run pacing against the current EDL.json before "
                 f"binding")
+        if ep.held() and ep.hold != slot.hold:
+            # The slot was placed for the count the episode authored THEN: binding its
+            # length to a changed `hold` would ignore the new count in silence
+            raise ValueError(
+                f"pacing: slot {i} was fitted with hold={_hold_word(slot.hold)}; episode "
+                f"{i} now authors {_hold_word(ep.hold)} — re-run pacing against the current "
+                f"EDL.json before binding, so the grid places the count it now asks for")
         if ep.held():
             bound.append(dataclasses.replace(ep, beat_slot=i, dur=slot.dur))
             continue

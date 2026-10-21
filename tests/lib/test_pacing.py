@@ -461,6 +461,35 @@ def test_a_slot_is_footage_unless_held_and_says_so_only_when_held():
     assert Slot.from_dict(s.to_dict()) == s
 
 
+def test_a_held_slot_records_the_authored_count_it_was_fitted_with_only_when_there_is_one():
+    h = Slot(1, 1.5, 1.5, 0.4, "build", line=3.0, dev=0.0, beats_in=3, held=True, hold=3)
+    assert h.to_dict() == {"index": 1, "start": 1.5, "dur": 1.5, "energy": 0.4,
+                           "kind": "build", "line": 3.0, "dev": 0.0, "beats_in": 3,
+                           "held": True, "hold": 3}
+    assert Slot.from_dict(h.to_dict()) == h
+    planned = dataclasses.replace(h, hold=None)
+    assert "hold" not in planned.to_dict() and Slot.from_dict(planned.to_dict()) == planned
+
+
+@pytest.mark.parametrize("kw, match", [
+    (dict(held=True, hold=0), "Slot.hold must be a whole number"),
+    (dict(held=True, hold=True), "Slot.hold must be a whole number"),
+    (dict(held=True, hold=2.0), "Slot.hold must be a whole number"),
+    (dict(held=False, hold=2), "slot 1 is not held"),
+])
+def test_a_slot_refuses_a_hold_that_is_not_a_held_slots_count(kw, match):
+    with pytest.raises(ValueError, match=match):
+        Slot(1, 1.5, 1.0, 0.4, "build", **kw)
+
+
+def test_fit_spine_records_each_held_slots_authored_count():
+    h = gridfit.Held(None, 1 / 3, 8.0)
+    spine, _, _ = pacing.fit_spine([8.0, 2.0, 2.0, 3.0], _STEP_BEATS, _STEP_ENERGY, 2.0,
+                                   120.0, [(-0.25, 0.25)] * 4,
+                                   held=[None, gridfit.Held(3, 1 / 3, 8.0), h, None])
+    assert [s.hold for s in spine.slots] == [None, 3, None, None]
+
+
 @pytest.mark.parametrize("bad", [1, "yes", None])
 def test_a_slot_refuses_a_non_bool_held(bad):
     with pytest.raises(ValueError, match="Slot.held"):
