@@ -91,7 +91,8 @@ project. If `"$VG"` says there is no runtime, it has not been set up yet: run th
 
    **Photos are footage too** (design 2026-10-20). JPEG, PNG and HEIC/HEIF in the
    same folder are scanned beside the clips: each becomes one `photo` clip with
-   one window of 2.0 s that pacing may stretch to 8.0 s, its people and shot size read
+   one window of 2.0 s — a placeholder: with music, pacing authors a photo's length in
+   whole beats, from 1/3 s to 8.0 s (design 2026-10-21 §2) — its people and shot size read
    by the same YOLO, decoded upright and in sRGB (a Display P3 iPhone photo is
    converted, not desaturated). Photos surface no cast candidates. The scan logs
    what it skipped by extension (`.dng`, `.webp` …) — say so to the user when it

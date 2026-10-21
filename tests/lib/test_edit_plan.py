@@ -2155,7 +2155,8 @@ def test_resolve_freezes_never_holds_a_frame_before_the_window():
 
 
 def test_a_paced_predecessor_moves_the_frozen_frame():
-    spine = Spine(slots=(Slot(0, 0.0, 3.2, 0.5, "hook"), Slot(1, 3.2, 2.0, 0.5, "peak")),
+    spine = Spine(slots=(Slot(0, 0.0, 3.2, 0.5, "hook"),
+                         Slot(1, 3.2, 2.0, 0.5, "peak", held=True)),
                   target_dur=5.2, tempo=120.0)
     sel = {"episodes": [_turn(), {"freeze": True}]}
     prev, fr = edit_plan.build_edl(_freeze_footage(), sel, pacing=spine).episodes
@@ -2164,7 +2165,8 @@ def test_a_paced_predecessor_moves_the_frozen_frame():
 
 
 def test_the_outro_fit_grows_a_frozen_closer_without_moving_its_frame():
-    spine = Spine(slots=(Slot(0, 0.0, 3.0, 0.5, "hook"), Slot(1, 3.0, 2.0, 0.5, "peak")),
+    spine = Spine(slots=(Slot(0, 0.0, 3.0, 0.5, "hook"),
+                         Slot(1, 3.0, 2.0, 0.5, "peak", held=True)),
                   target_dur=5.0, tempo=120.0)
     music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
                       beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
@@ -2208,7 +2210,8 @@ def test_an_authored_hold_without_pacing_is_said_to_be_unused(capsys):
 
 def test_no_authored_hold_and_a_bound_spine_say_nothing_about_holds(capsys):
     edit_plan.build_edl(_freeze_footage(), {"episodes": [_turn(), {"freeze": True}]})
-    spine = Spine(slots=(Slot(0, 0.0, 3.0, 0.5, "hook"), Slot(1, 3.0, 2.0, 0.5, "peak")),
+    spine = Spine(slots=(Slot(0, 0.0, 3.0, 0.5, "hook"),
+                         Slot(1, 3.0, 2.0, 0.5, "peak", held=True)),
                   target_dur=5.0, tempo=120.0)
     edit_plan.build_edl(_freeze_footage(), {"episodes": [_turn(), {"freeze": True, "hold": 2}]},
                         pacing=spine)
@@ -2242,3 +2245,56 @@ def test_resolve_freezes_refuses_a_freeze_with_nothing_before_it():
     with pytest.raises(ValueError, match="freeze 0 has no episode before it"):
         edit_plan._resolve_freezes([fr, _edl_ep(source="A.mp4", start=12.0, dur=2.0)],
                                    _freeze_footage())
+
+
+# --- binding a held episode: the grid authored its length (design 2026-10-21 §2.3) ----
+
+def _held_spine(*slots):
+    """(dur, held) pairs → a contiguous hook-first Spine at 120 BPM."""
+    out, start = [], 0.0
+    for i, (d, h) in enumerate(slots):
+        out.append(Slot(i, start, d, 0.5, "hook" if i == 0 else "build", held=h))
+        start += d
+    return Spine(tuple(out), start, 120.0)
+
+
+def test_a_held_episode_takes_its_slots_length_however_far_it_moved():
+    # 2.0 s placeholder -> 0.5 s (one loud beat) and -> 4.0 s: seconds, not a half-beat
+    eps = [_edl_ep(source="A.mp4", start=5.0, dur=3.0, base_dur=3.0),
+           _edl_ep(source="A.mp4", start=7.97, dur=2.0, base_dur=2.0, freeze=True),
+           _edl_ep(source="IMG_1.HEIC", start=0.0, dur=2.0, base_dur=2.0),
+           _edl_ep(source="A.mp4", start=12.0, dur=2.0, base_dur=2.0)]
+    spine = _held_spine((3.0, False), (0.5, True), (4.0, True), (2.0, False))
+    bound = edit_plan._bind_pacing(eps, spine)
+    assert bound == [replace(eps[0], beat_slot=0, dur=3.0),
+                     replace(eps[1], beat_slot=1, dur=0.5),
+                     replace(eps[2], beat_slot=2, dur=4.0),
+                     replace(eps[3], beat_slot=3, dur=2.0)]
+
+
+@pytest.mark.parametrize("ep, what", [
+    (_edl_ep(source="IMG_1.HEIC", start=0.0, dur=2.0, base_dur=2.0), "photo"),
+    (_edl_ep(source="A.mp4", start=7.97, dur=2.0, base_dur=2.0, freeze=True), "freeze"),
+])
+def test_a_held_episode_on_a_footage_slot_is_refused(ep, what):
+    eps = [_edl_ep(source="A.mp4", start=5.0, dur=3.0, base_dur=3.0), ep]
+    with pytest.raises(ValueError, match=f"slot 1 was fitted with episode 1 as footage; it is "
+                                         f"now a {what} — re-run pacing"):
+        edit_plan._bind_pacing(eps, _held_spine((3.0, False), (2.0, False)))
+
+
+def test_a_footage_episode_on_a_held_slot_is_refused():
+    # even at the very length the slot carries: the kinds disagree, so the fit was not of
+    # this edit
+    eps = [_edl_ep(source="A.mp4", start=5.0, dur=3.0, base_dur=3.0),
+           _edl_ep(source="A.mp4", start=12.0, dur=2.0, base_dur=2.0)]
+    with pytest.raises(ValueError, match="slot 1 was fitted with episode 1 held \\(a photo or "
+                                         "a freeze\\); it is now footage — re-run pacing"):
+        edit_plan._bind_pacing(eps, _held_spine((3.0, False), (2.0, True)))
+
+
+def test_a_footage_episode_keeps_the_half_beat_guard_beside_held_ones():
+    eps = [_edl_ep(source="IMG_1.HEIC", start=0.0, dur=2.0, base_dur=2.0),
+           _edl_ep(source="A.mp4", start=5.0, dur=3.0, base_dur=3.0)]
+    with pytest.raises(ValueError, match="fitted to a different edit"):
+        edit_plan._bind_pacing(eps, _held_spine((0.5, True), (4.0, False)))

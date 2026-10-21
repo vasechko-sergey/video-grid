@@ -11,7 +11,7 @@ import json
 import sys
 from pathlib import Path
 
-from scripts.lib import anchors, gridfit, pacing, ramp as ramp_mod
+from scripts.lib import anchors, gridfit, hold, pacing, ramp as ramp_mod
 from scripts.lib.edl import EDL
 from scripts.lib.footage import Footage
 from scripts.lib.models import MusicSpec, RampSpec
@@ -31,7 +31,11 @@ def _bounds(edl: EDL, footage: Footage, allow: float) -> list[tuple[float, float
     0.0, because a window whose end sits exactly at the region's own end makes
     `tail_room` a float hair negative (rounding, not a real overhang already refused at
     validation), which would otherwise turn `lo` POSITIVE and hand gridfit.fit_level an
-    empty interval."""
+    empty interval.
+
+    A held episode (a photo or a freeze) gets (0.0, 0.0): the grid AUTHORS its length
+    instead of snapping it, and gridfit's held walk never reads its bound (design
+    2026-10-21 §2.2) — a placeholder, not a claim that it cannot move."""
     by_source = {c.source: c for c in footage.clips}
     out = []
     for i, ep in enumerate(edl.episodes):
@@ -39,6 +43,9 @@ def _bounds(edl: EDL, footage: Footage, allow: float) -> list[tuple[float, float
         if clip is None:
             raise ValueError(f"pacing: EDL episode {i} references {ep.source!r}, which is "
                              f"not in FOOTAGE.json — have {sorted(by_source)}")
+        if ep.held():
+            out.append((0.0, 0.0))     # never read: see the docstring
+            continue
         room = clip.room_after(ep.start)
         # The SCENARIO's source length, for the same reason build_pacing fits the
         # scenario's played length: the room a cut may grow into is a property of the
@@ -53,6 +60,24 @@ def _bounds(edl: EDL, footage: Footage, allow: float) -> list[tuple[float, float
     return out
 
 
+def _refuse_unplayable_holds(edl: EDL, music: MusicSpec, path: str) -> None:
+    """An authored `hold` is a count of beats, so its length is the window's tempo's to
+    decide — and one outside [HOLD_MIN, HOLD_ROOM] would be silently clamped by the walk
+    into a count the author did not write (design 2026-10-21 §2.3). Refused, per window."""
+    beat = 2.0 * gridfit.allowance(music.tempo)
+    for i, ep in enumerate(edl.episodes):
+        if ep.hold is None:
+            continue
+        secs = ep.hold * beat
+        if not hold.HOLD_MIN - 1e-9 <= secs <= hold.HOLD_ROOM + 1e-9:
+            raise ValueError(
+                f"pacing: episode {i} authors a hold of {ep.hold} "
+                f"beat{'' if ep.hold == 1 else 's'} — {secs:.2f}s at {music.tempo:.1f} BPM "
+                f"({Path(path).name}), outside the [{hold.HOLD_MIN:.2f}, "
+                f"{hold.HOLD_ROOM:.1f}]s a held episode may last. Author a count that fits "
+                f"this tempo, or drop `hold` and let the grid choose")
+
+
 def _report(spine, fit, rejected, music_path: str, anchor_map: dict) -> str:
     rho, used, total, why = pacing.energy_agreement(spine.slots)
     # "used", not "measured": energy_agreement COUNTS a beats_in == -1 slot (not
@@ -61,6 +86,12 @@ def _report(spine, fit, rejected, music_path: str, anchor_map: dict) -> str:
     # final review).
     agreement = (f"{rho:+.2f} (Spearman rho, {used} of {total} slots used)"
                  if rho is not None else f"not computed — {why}")
+    held = [(s.index, round(s.dur * spine.tempo / 60.0)) for s in spine.slots if s.held]
+    counts = ", ".join(f"episode {i} = {n} beat{'' if n == 1 else 's'}" for i, n in held)
+    # silent without a held episode, so a video-only report reads exactly as before
+    held_line = ([f"- **Held:** {len(held)} of {len(spine.slots)} episodes (photos or "
+                  f"freezes) — the grid authored their lengths in whole beats: {counts}"]
+                 if held else [])
     lines = ["# Pacing — fit report", "",
              f"- **Music:** `{Path(music_path).name}`",
              f"- **Level:** {fit.level} (every {fit.level_n} beat(s), phase {fit.phase})",
@@ -72,6 +103,7 @@ def _report(spine, fit, rejected, music_path: str, anchor_map: dict) -> str:
              f"- **Energy agreement:** {agreement}",
              "  Negative = shorter shots where the music is louder. A DESCRIPTION, not "
              "a verdict — no threshold has been measured (design 2026-09-07 §7).",
+             *held_line,
              "",
              "| level | step | worst | needed | verdict |",
              "|-------|-----:|------:|-------:|---------|"]
@@ -136,12 +168,17 @@ def build_pacing(edl_json: str, footage_json: str, music_jsons: list[str], out_d
     # outro fit the re-apply deadlocked outright (design 2026-08-16 §1). base_play_dur()
     # falls back to play_dur() for a hand-authored SP1 EDL, which has no scenario.
     durs = [ep.base_play_dur() for ep in edl.episodes]
+    # A photo or a freeze: the grid authors its length in beats, between HOLD_MIN and
+    # HOLD_ROOM; an authored `hold` outranks the planner (design 2026-10-21 §2).
+    held = [gridfit.Held(ep.hold, hold.HOLD_MIN, hold.HOLD_ROOM) if ep.held() else None
+            for ep in edl.episodes]
     best = None
     for path in music_jsons:
         m = MusicSpec.from_json(path)
+        _refuse_unplayable_holds(edl, m, path)
         bounds = _bounds(edl, footage, gridfit.allowance(m.tempo))
         spine, fit, rejected = pacing.fit_spine(durs, m.beats, m.energy, m.energy_hz,
-                                                m.tempo, bounds)
+                                                m.tempo, bounds, held=held)
         # Coarsest FITTING level wins; a window whose best level misses ranks below every
         # window that fits, and ties break on the smaller worst deviation.
         rank = (fit.level_n if fit.fits else 0, -fit.worst)

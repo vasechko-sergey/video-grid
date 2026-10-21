@@ -253,12 +253,31 @@ def _bind_pacing(episodes: list, spine: Spine) -> list:
     edit, and copying its length across would truncate a shot exactly the way the
     generator used to: a 7.3s ride into a 4.6s slot, in silence. Refuse instead.
 
+    A HELD episode (a photo or a freeze, design 2026-10-21 §2.3) is the exception: the
+    grid authored its length, which legitimately moves by seconds, so the guard cannot
+    apply. Identity is checked kind against kind instead — a held episode needs a held
+    slot and footage a footage slot, either mismatch refused — and it takes the slot's
+    length as is (no ramp can ride a held episode).
+
     Zip-to-min; an over/underflow is logged, never a silent drop (§4.1)."""
     allow = gridfit.allowance(spine.tempo) + _SNAP_TOL
     n = min(len(episodes), len(spine.slots))
     bound = []
     for i in range(n):
         slot, ep = spine.slots[i], episodes[i]
+        if ep.held() and not slot.held:
+            raise ValueError(
+                f"pacing: slot {i} was fitted with episode {i} as footage; it is now a "
+                f"{'freeze' if ep.freeze else 'photo'} — re-run pacing against the current "
+                f"EDL.json before binding, so the grid authors its length")
+        if slot.held and not ep.held():
+            raise ValueError(
+                f"pacing: slot {i} was fitted with episode {i} held (a photo or a freeze); "
+                f"it is now footage — re-run pacing against the current EDL.json before "
+                f"binding")
+        if ep.held():
+            bound.append(dataclasses.replace(ep, beat_slot=i, dur=slot.dur))
+            continue
         # PLAYED time on both sides, and the SCENARIO's played time on the episode
         # side: the spine was fitted to base_play_dur (scripts/pacing.py), so
         # comparing the already-bound length would refuse a correct re-apply by

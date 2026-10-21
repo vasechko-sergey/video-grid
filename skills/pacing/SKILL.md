@@ -14,6 +14,18 @@ reads as accidental even when it is "on the beat"). **The cuts are the input; th
 is the output.** The fit is only a proposal until you re-run `edit_plan build --pacing`,
 which is what writes the snapped durations and `beat_slot` back into `EDL.json`.
 
+**Photos and freezes are the exception** (design 2026-10-21 §2). A held episode — a
+photo, or a `{"freeze": true}` — has no length of its own, so the grid AUTHORS it in
+whole beats: at 120 BPM 4, 2 or 1 as the next bar of music is quiet, mid or loud,
+never the same count three times in a row inside a run of holds, the cuts inside a run
+on detected beats and the run's last cut on a line of the chosen level, so the cut back
+to footage is as musical as the rest. An authored `hold` (beats) outranks it, and one
+that cannot last 1/3 s to 8.0 s at a window's tempo is refused. `PACING.md` marks each
+such slot `held N beats` and names them in the fit report; the energy agreement leaves
+them out, because their length was derived from the energy. Turning an episode from
+footage into a photo or freeze (or back) means re-running pacing — binding refuses the
+mismatch.
+
 A thin driver over the pure `scripts/lib/gridfit` + `scripts/lib/pacing` core.
 
 ## Inputs
@@ -104,7 +116,8 @@ project. If `"$VG"` says there is no runtime, it has not been set up yet: run th
 
 - **Generating or sizing cut lengths** → the material owns them (edit-plan + each
   shot's room, §2); pacing only chooses which grid lines the *existing* cuts land on.
-  It fits; it never re-times an episode to a slot's length.
+  It fits; it never re-times an episode to a slot's length — except a photo or a
+  freeze, whose length nothing in the footage fixes (above).
 - **Choosing the track** (which song) → music-and-mood (`music-match` / `music-source`),
   not this. Pacing analyses the chosen track's candidate windows, but it does not pick
   the song.

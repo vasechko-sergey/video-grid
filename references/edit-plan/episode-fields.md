@@ -85,8 +85,9 @@ target length, and order them **hook first**. For each episode assign:
   4:5) and `fit` with the blurred field otherwise (square, landscape); author
   `layout` to override. A photo refuses `zoom`, `pan`, `ramp`, `stabilize`,
   `hero`, `motion`, `smooth_window_s` and any `start_offset`, and a move faster
-  than `ZOOM_MAX_RATE` for its hold. Pacing may grow its `dur` up to 8.0 s; `hold`
-  (below) asks for a length in beats. The move keeps the TOP half of the people whole
+  than `ZOOM_MAX_RATE` for its hold. With `--pacing` the music grid authors its `dur`
+  in whole beats — 1/3 s to 8.0 s, shorter where the music is louder (design 2026-10-21
+  §2); `hold` (below) asks for a count. The move keeps the TOP half of the people whole
   (heads), shortening itself rather than cut it.
 - `freeze` (a selection entry of its own) — `{"freeze": true}` holds **the previous
   episode's last frame**, "like a photograph" (design 2026-10-21 §3). It carries only
@@ -105,7 +106,8 @@ target length, and order them **hook first**. For each episode assign:
 - `hold` (optional, a photo or a freeze only) — a length in whole **beats** (an int
   ≥ 1) that outranks the music grid's own pick (design 2026-10-21 §2.1), e.g. for a
   hero photo the brief wants held longer. Beats need a tempo: without `--pacing` it is
-  unused — `edit_plan build` says so — and the episode plays 2.0 s.
+  unused — `edit_plan build` says so — and the episode plays 2.0 s. Pacing refuses a
+  count that cannot last 1/3 s to 8.0 s at the window's tempo.
 - `pan` (optional) — `{"from": f, "to": f}`, a **generated** constant-velocity
   camera move: two fractions of the crop's horizontal freedom (`0.0` hard
   left, `1.0` hard right; direction is the sign of `to - from`). It replaces

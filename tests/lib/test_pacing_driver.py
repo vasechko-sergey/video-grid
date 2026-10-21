@@ -6,7 +6,7 @@ import pytest
 
 from scripts import pacing as driver
 from scripts import pacing as pacing_driver
-from scripts.lib import gridfit
+from scripts.lib import gridfit, hold
 from scripts.lib import pacing as pacing_lib
 from scripts.lib.edl import EDL, EDLEpisode, write_edl
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
@@ -166,7 +166,7 @@ def test_off_grid_report_logs_a_remedy_and_lists_each_level_once(tmp_path, capsy
 def test_the_fitter_receives_played_lengths_not_source_windows(monkeypatch, tmp_path):
     seen = {}
 
-    def spy(durs, beats, energy, hz, tempo, bounds):
+    def spy(durs, beats, energy, hz, tempo, bounds, **_kw):
         seen["durs"] = list(durs)
         raise _Stop()
 
@@ -421,3 +421,90 @@ def test_anchors_skip_a_held_episode(tmp_path, monkeypatch):
                         [_music(tmp_path)], str(tmp_path / "out"),
                         footage_root=str(tmp_path), with_anchors=True)
     assert seen == [(str(tmp_path / "a.mp4"), 0.0, 2.0)]
+
+
+# --- held episodes: the grid authors their length (design 2026-10-21 §2.3) -----------
+
+def _held_footage(tmp_path):
+    f = Footage(clips=[
+        FootageClip(source="a.mp4", dur=30.0, res=(1920, 1080), fps=30.0),
+        FootageClip(source="IMG_1.HEIC", dur=hold.HOLD_ROOM, res=(3024, 4032), fps=0.0,
+                    kind="photo", windows=[FootageWindow(start=0.0, dur=hold.HOLD_DEFAULT,
+                                                         shot_type="medium", people=1,
+                                                         motion=0.0, shake=0.0)])])
+    return _write(tmp_path / "FOOTAGE.json", f.to_dict())
+
+
+def _photo(**kw):
+    return EDLEpisode(source="IMG_1.HEIC", start=0.0, dur=hold.HOLD_DEFAULT,
+                      base_dur=hold.HOLD_DEFAULT, shot_type="medium", composition="center",
+                      grid="thirds", **kw)
+
+
+def _freeze(**kw):
+    return EDLEpisode(source="a.mp4", start=4.0 - 1 / 30, dur=hold.HOLD_DEFAULT,
+                      base_dur=hold.HOLD_DEFAULT, shot_type="wide", composition="lead",
+                      grid="thirds", freeze=True, shutter=True, **kw)
+
+
+def _held_cut():
+    return [EDLEpisode(source="a.mp4", start=0.0, dur=4.0, base_dur=4.0, shot_type="wide",
+                       composition="lead", grid="thirds"),
+            _freeze(hold=3), _photo(),
+            EDLEpisode(source="a.mp4", start=10.0, dur=3.0, base_dur=3.0, shot_type="wide",
+                       composition="lead", grid="thirds")]
+
+
+def test_the_driver_hands_the_fitter_one_held_record_per_episode(monkeypatch, tmp_path):
+    seen = {}
+
+    def spy(durs, beats, energy, hz, tempo, bounds, *, held=None):
+        seen["held"], seen["bounds"] = held, bounds
+        raise _Stop()
+
+    monkeypatch.setattr(driver.pacing, "fit_spine", spy)
+    with pytest.raises(_Stop):
+        driver.build_pacing(_write_edl(tmp_path, _held_cut()), _held_footage(tmp_path),
+                            [_music(tmp_path)], str(tmp_path / "out"))
+    assert seen["held"] == [None, gridfit.Held(3, hold.HOLD_MIN, hold.HOLD_ROOM),
+                            gridfit.Held(None, hold.HOLD_MIN, hold.HOLD_ROOM), None]
+    assert seen["bounds"][1:3] == [(0.0, 0.0), (0.0, 0.0)]
+
+
+def test_a_held_episodes_bounds_are_a_placeholder_the_walk_never_reads():
+    f = Footage(clips=[FootageClip(source="a.mp4", dur=30.0, res=(1920, 1080), fps=30.0),
+                       FootageClip(source="IMG_1.HEIC", dur=hold.HOLD_ROOM,
+                                   res=(3024, 4032), fps=0.0, kind="photo")])
+    assert driver._bounds(_edl(_held_cut()), f, 0.25) == [
+        (-0.25, 0.25), (0.0, 0.0), (0.0, 0.0), (-0.25, 0.25)]
+
+
+def test_the_fit_report_names_the_held_episodes_and_their_beats(tmp_path):
+    res = driver.build_pacing(_write_edl(tmp_path, _held_cut()), _held_footage(tmp_path),
+                              [_music(tmp_path)], str(tmp_path / "out"))
+    slots = res["spine"].slots
+    assert [s.held for s in slots] == [False, True, True, False]
+    assert slots[1].dur == pytest.approx(1.5)        # the authored 3 beats at 120 BPM
+    md = (tmp_path / "out" / "PACING.md").read_text()
+    n2 = round(slots[2].dur / 0.5)
+    assert (f"- **Held:** 2 of 4 episodes (photos or freezes) — the grid authored their "
+            f"lengths in whole beats: episode 1 = 3 beats, episode 2 = "
+            f"{n2} beat{'' if n2 == 1 else 's'}") in md
+
+
+def test_a_video_only_fit_report_says_nothing_about_holds(run_dir):
+    driver.build_pacing(str(run_dir / "EDL.json"), str(run_dir / "FOOTAGE.json"),
+                        [str(run_dir / "MUSIC.json")], str(run_dir))
+    assert "Held" not in (run_dir / "PACING.md").read_text()
+    assert "held" not in (run_dir / "PACING.json").read_text()
+
+
+@pytest.mark.parametrize("beats, tempo, said", [(20, 120.0, "20 beats — 10.00s at 120.0 BPM"),
+                                                (1, 200.0, "1 beat — 0.30s at 200.0 BPM")])
+def test_an_authored_hold_outside_the_hold_range_at_the_windows_tempo_is_refused(
+        tmp_path, beats, tempo, said):
+    eps = _held_cut()
+    eps[1] = _freeze(hold=beats)
+    with pytest.raises(ValueError, match=f"episode 1 authors a hold of {said}"):
+        driver.build_pacing(_write_edl(tmp_path, eps), _held_footage(tmp_path),
+                            [_music_json(tmp_path, tempo=tempo)], str(tmp_path / "out"))
