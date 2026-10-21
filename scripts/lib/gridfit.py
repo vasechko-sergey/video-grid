@@ -118,14 +118,21 @@ def _held_cut(i: int, h: Held, pos: float, run: tuple[int, ...], run_end: bool,
     (`run_end`, the next episode is footage) chooses among the level's lines instead, so
     the cut back to footage is as musical as every other cut — but only lines within
     [k/2, 2k] beats of its plan, falling back to the beats when none is there. An
-    authored count is never moved for the level. Nothing in range (music shorter than
-    the reel) → the target itself, clamped into the range."""
+    authored count is never moved for the level. A target more than half a beat past
+    the last detected beat (music shorter than the reel), or nothing in range → the
+    target itself, clamped into the range."""
     k = h.beats if h.beats is not None else plan(pos, run)
     if isinstance(k, bool) or not isinstance(k, int) or k < 1:
         raise ValueError(f"gridfit.fit_level: plan returned {k!r} for held episode {i} at "
                          f"{pos:.3f}s — it must return a whole number of beats >= 1")
     target = pos + k * period
     lo, hi = pos + h.lo, pos + h.hi
+    if target - beats[-1] > period / 2 + _SLACK:
+        # Past the grid (the music ends before this count does): no beat is this hold's
+        # to choose — snapping to the last one would cut it short in silence. The target
+        # is used, and its distance to the nearest line or beat (fit_level) is a dev the
+        # fit can see, as a footage cut past the last line has
+        return min(max(target, lo), hi), target
 
     def inside(xs: list[float], a: float = lo, b: float = hi) -> list[float]:
         return [x for x in xs if max(lo, a) - _SLACK <= x <= min(hi, b) + _SLACK]

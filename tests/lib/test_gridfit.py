@@ -472,6 +472,29 @@ def test_past_the_last_beat_the_target_itself_is_used_and_clamped_into_the_range
     assert f.shifts == pytest.approx((6.0,))                        # 10.0 clamped to 8.0
 
 
+def test_a_hold_whose_count_runs_past_the_last_beat_keeps_it_and_the_fit_sees_the_miss():
+    # The review's case: the music's last beat is 10.0, a video ends at 9.5, and a photo
+    # is planned at 8 beats (13.5). Snapping to the last beat cut it to ONE beat with
+    # devs (0, 0) and `fits` True; the overrun surfaced only at build_reel, after every
+    # episode was rendered
+    beats = [i * 0.5 for i in range(21)]                       # 0.0 .. 10.0
+    f = gridfit.fit_level([9.5, 2.0, 2.0], beats, [(-0.25, 0.25)] * 3, 0.25, beats=beats,
+                          held=[None, _h(), _h()], plan=lambda pos, run: 8)
+    assert f.shifts == pytest.approx((0.0, 2.0, 2.0), abs=1e-12)      # 13.5, then 17.5
+    assert f.devs == pytest.approx((0.0, 3.5), abs=1e-12)            # to the last beat
+    assert f.fits is False
+
+
+def test_half_a_beat_past_the_last_beat_is_still_on_the_grid():
+    beats = [i * 0.5 for i in range(21)]                       # 0.0 .. 10.0
+    def out(video, k):
+        f = gridfit.fit_level([video, 2.0, 2.0], beats, [(0.0, 0.0)] * 3, 0.25, beats=beats,
+                              held=[None, _h(), None], plan=lambda pos, run: k)
+        return video + 2.0 + f.shifts[1]
+    assert out(9.25, 2) == pytest.approx(10.0, abs=1e-12)    # target 10.25: the last beat
+    assert out(9.0, 3) == pytest.approx(10.5, abs=1e-12)     # target 10.5: past the grid
+
+
 def test_the_hold_range_is_inclusive_and_forgives_float_noise():
     # a 20-beat target at 10.0 s: the beat at exactly HOLD_ROOM (8.0) is in range...
     f = gridfit.fit_level([2.0], _BEATS_120, [(0.0, 0.0)], 0.25, beats=_BEATS_120,
