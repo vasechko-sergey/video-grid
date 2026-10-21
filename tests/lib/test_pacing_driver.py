@@ -526,3 +526,81 @@ def test_an_authored_hold_outside_the_hold_range_at_the_windows_tempo_is_refused
     with pytest.raises(ValueError, match=f"episode 1 authors a hold of {said}"):
         driver.build_pacing(_write_edl(tmp_path, eps), _held_footage(tmp_path),
                             [_music_json(tmp_path, tempo=tempo)], str(tmp_path / "out"))
+
+
+# --- a fitted reel the music window does not cover (design 2026-10-21 §2.2) ---------------
+
+def _window(tmp_path, name, duration, tempo=120.0, energy=None):
+    step = 60.0 / tempo
+    ms = MusicSpec(track="t.mp3", start_offset=0.0, duration=duration, tempo=tempo,
+                   beats=tuple(i * step for i in range(int(duration / step))),
+                   energy=energy or (0.3,) * int(duration), energy_hz=1.0)
+    return _write(tmp_path / name, ms.to_dict())
+
+
+def _photo_cut(**photo):
+    return [EDLEpisode(source="a.mp4", start=0.0, dur=4.0, base_dur=4.0, shot_type="wide",
+                       composition="lead", grid="thirds"),
+            _photo(**photo),
+            EDLEpisode(source="a.mp4", start=10.0, dur=3.0, base_dur=3.0, shot_type="wide",
+                       composition="lead", grid="thirds")]
+
+
+def test_a_window_that_covers_the_fitted_reel_outranks_one_it_overruns(tmp_path, capsys):
+    edl, footage = _write_edl(tmp_path, _photo_cut()), _held_footage(tmp_path)
+    short = _window(tmp_path, "MUSIC_short.json", 8.0)      # the reel fits to 9.0
+    whole = _window(tmp_path, "MUSIC_whole.json", 20.0)
+    alone = [driver.build_pacing(edl, footage, [w], str(tmp_path / n))["fit"]
+             for w, n in ((short, "s"), (whole, "w"))]
+    # the premise: on the grid the two fit identically, so only coverage separates them
+    assert [(f.level, f.phase, f.fits, f.worst) for f in alone] == [("bar", 0, True, 0.0)] * 2
+    capsys.readouterr()
+    res = driver.build_pacing(edl, footage, [short, whole], str(tmp_path / "out"))
+    assert res["music"] == whole and res["spine"].target_dur == 9.0
+    assert "overruns" not in capsys.readouterr().err
+
+
+def test_coverage_outranks_a_coarser_level(tmp_path):
+    edl, footage = _write_edl(tmp_path, _photo_cut()), _held_footage(tmp_path)
+    # quiet where the photo sits: it plans 4 beats and reaches the 2-bar line 8 beats on —
+    # the coarser fit, on a window the 11.0 s reel then overruns
+    short = _window(tmp_path, "MUSIC_short.json", 10.0, energy=(1.0,) * 4 + (0.0,) * 6)
+    whole = _window(tmp_path, "MUSIC_whole.json", 20.0)
+    alone = [driver.build_pacing(edl, footage, [w], str(tmp_path / n))
+             for w, n in ((short, "s"), (whole, "w"))]
+    assert [(r["fit"].level, r["fit"].fits, r["spine"].target_dur) for r in alone] == [
+        ("2-bar", True, 11.0), ("bar", True, 9.0)]
+    res = driver.build_pacing(edl, footage, [short, whole], str(tmp_path / "out"))
+    assert res["music"] == whole
+
+
+def test_a_chosen_window_the_held_lengths_overrun_is_named_with_its_remedy(tmp_path, capsys):
+    # an authored 8 beats (4.0 s, the placeholder was 2.0) carries the reel past a 9.0 s
+    # window analysed for the scenario's own 9.0 s — on the grid, so the fit itself fits
+    res = driver.build_pacing(_write_edl(tmp_path, _photo_cut(hold=8)), _held_footage(tmp_path),
+                              [_window(tmp_path, "MUSIC.json", 9.0)], str(tmp_path / "out"))
+    assert (res["spine"].target_dur, res["fit"].fits) == (11.0, True)
+    assert ("pacing: the fitted reel (11.00s) overruns its music window (9.00s, MUSIC.json) "
+            "by 2.00s — the scenario's cuts sum to 9.00s, and the lengths the grid authored "
+            "for the 1 held episode grew the reel +2.00s from their placeholders. build_reel "
+            "refuses a reel longer than its window: re-analyse with headroom (beats "
+            "--auto-start --duration 15) and re-run pacing\n") in capsys.readouterr().err
+
+
+def test_a_video_only_overrun_is_named_without_blaming_holds(run_dir, capsys):
+    driver.build_pacing(str(run_dir / "EDL.json"), str(run_dir / "FOOTAGE.json"),
+                        [_window(run_dir, "MUSIC_3s.json", 3.0)], str(run_dir))
+    line = next(x for x in capsys.readouterr().err.splitlines() if "overruns" in x)
+    assert line == ("pacing: the fitted reel (4.10s) overruns its music window (3.00s, "
+                    "MUSIC_3s.json) by 1.10s — the scenario's cuts sum to 4.00s. build_reel "
+                    "refuses a reel longer than its window: re-analyse with headroom (beats "
+                    "--auto-start --duration 9) and re-run pacing")
+
+
+@pytest.mark.parametrize("duration, named", [(4.05, False), (3.95, True)])
+def test_an_overrun_is_judged_by_build_reels_own_tolerance(run_dir, capsys, duration, named):
+    # the cut fits to 4.10 s: 0.05 past a window is inside build_reel's 0.1, 0.15 is not
+    res = driver.build_pacing(str(run_dir / "EDL.json"), str(run_dir / "FOOTAGE.json"),
+                              [_window(run_dir, "MUSIC_edge.json", duration)], str(run_dir))
+    assert res["spine"].target_dur == pytest.approx(4.1)
+    assert ("overruns" in capsys.readouterr().err) is named
