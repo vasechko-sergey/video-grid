@@ -75,12 +75,17 @@ def test_the_deps_stamp_fails_without_a_record(tmp_path, monkeypatch):
     assert ok is False and "before 0.27.0" in detail
 
 
+def test_an_empty_stamp_is_named_not_read_as_a_mismatch(tmp_path, monkeypatch):
+    ok, detail = _stamped(tmp_path, monkeypatch, b"numpy\n", "")
+    assert ok is False and "empty" in detail
+
+
 def test_setup_and_the_check_hash_through_the_same_function():
     """setup.sh writes the stamp by calling userdirs.requirements_digest, the function
     the check calls — so writer and reader cannot hash two different things."""
     setup = (Path(verify_runtime.__file__).resolve().parents[1] / "setup.sh").read_text()
-    i = setup.index(f'> "$VENV/{verify_runtime.STAMP}"')
-    assert "print(userdirs.requirements_digest())" in setup[i - 200:i]
+    i = setup.index(f'> "$VENV/{verify_runtime.STAMP}.tmp"')
+    assert "userdirs.requirements_digest(Path(sys.argv[1]))" in setup[i - 400:i]
 
 
 def test_probe_reid_reports_installed_and_absent(monkeypatch):

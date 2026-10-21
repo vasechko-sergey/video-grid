@@ -67,7 +67,11 @@ plus `setup.sh`'s own `pip" install` lines, since demucs and torchreid with its 
 extras are installed outside the file (a failed torch wheel must not abort the venv).
 `verify_runtime` gains a required `deps_stamp` check calling the same function, so an
 update that changes the dependencies says "run setup again" instead of failing on the
-first import that moved.
+first import that moved. setup's two Python steps (the weights fetch and the stamp) run
+from the models directory with `python -P`: the setup skill runs `setup.sh` from the
+user's project, often an old clone, and `-c` would otherwise import THAT `scripts/` —
+the re-review measured an empty stamp and a failed last step from an un-pulled clone.
+The stamp is written through a temp file, so a failure never blanks a good one.
 
 Coming from a clone install, the old `~/.config/video-grid/root` is read ONCE, by
 setup, to carry the Jamendo key and the YOLO weights over from that clone: a plugin

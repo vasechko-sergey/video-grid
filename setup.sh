@@ -267,7 +267,7 @@ for old in "$SKILL_DIR" "$OLD_CLONE"; do
     cp "$old/config/sourcing.env" "$SRC_ENV"
     echo "moved $old/config/sourcing.env -> $SRC_ENV"
   fi
-  if [ ! -e "$MODELS_DIR/yolo11n-seg.pt" ] && [ -f "$old/yolo11n-seg.pt" ]; then
+  if [ ! -e "$MODELS_DIR/yolo11n-seg.pt" ] && [ -s "$old/yolo11n-seg.pt" ]; then
     cp "$old/yolo11n-seg.pt" "$MODELS_DIR/"
     echo "copied $old/yolo11n-seg.pt -> $MODELS_DIR/"
   fi
@@ -283,7 +283,7 @@ fi
 # $MODELS_DIR — bin/vg's own working directory — with the code on PYTHONPATH, and
 # names the file the probe checks (MODELS[0]). OSNet and demucs weights still
 # download on first use: neither is a required check.
-(cd "$MODELS_DIR" && PYTHONPATH="$SKILL_DIR" "$VENV/bin/python" -c 'from pathlib import Path
+(cd "$MODELS_DIR" && PYTHONPATH="$SKILL_DIR" "$VENV/bin/python" -P -c 'from pathlib import Path
 from scripts.lib.models import MODELS
 from scripts import track
 Path(MODELS[0]).exists() or (print("fetching YOLO weights " + MODELS[0] + "..."), track.ensure_model(MODELS[0]))') \
@@ -292,6 +292,14 @@ Path(MODELS[0]).exists() or (print("fetching YOLO weights " + MODELS[0] + "...")
 # update that changed the dependencies from one that did not (design §3). The digest
 # is computed by the SAME function verify_runtime calls (userdirs.requirements_digest:
 # requirements.txt plus this script's own pip lines), so writer and reader agree.
-PYTHONPATH="$SKILL_DIR" "$VENV/bin/python" -c 'from scripts.lib import userdirs
-print(userdirs.requirements_digest())' > "$VENV/.video-grid-requirements"
+# Run like the YOLO fetch above: from $MODELS_DIR, with -P so the caller's working
+# directory never lands on sys.path — run from a user's project or an old clone, a
+# `scripts/` there would otherwise be imported instead of this one (the 2026-10-21
+# re-review) — and with this script's directory passed as the root explicitly. Written
+# to a temp file and moved, so a failure here never blanks a stamp that was good.
+(cd "$MODELS_DIR" && PYTHONPATH="$SKILL_DIR" "$VENV/bin/python" -P -c 'import sys
+from pathlib import Path
+from scripts.lib import userdirs
+print(userdirs.requirements_digest(Path(sys.argv[1])))' "$SKILL_DIR") > "$VENV/.video-grid-requirements.tmp"
+mv "$VENV/.video-grid-requirements.tmp" "$VENV/.video-grid-requirements"
 echo "venv ready: $VENV ($("$VENV/bin/python" -V))"

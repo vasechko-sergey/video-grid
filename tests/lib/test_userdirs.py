@@ -76,3 +76,13 @@ def test_the_requirements_digest_sees_setups_own_pip_lines_not_its_comments(tmp_
     (tmp_path / "setup.sh").write_text('"$VENV/bin/pip" install demucs\n')
     (tmp_path / "requirements.txt").write_text("numpy\nscipy\n")
     assert userdirs.requirements_digest(tmp_path) != first
+
+
+def test_the_real_setup_sh_puts_its_extra_packages_in_the_digest():
+    """The digest finds setup.sh's own installs by the `pip" install` spelling; a
+    respelling (`python -m pip install`) would drop demucs and torchreid out of the
+    stamp without a word (the re-review's minor 1)."""
+    lines = [ln.strip() for ln in (REPO / "setup.sh").read_text().splitlines()
+             if 'pip" install' in ln]
+    assert any("demucs" in ln for ln in lines) and any("torchreid" in ln for ln in lines)
+    assert any("-r \"$SKILL_DIR/requirements.txt\"" in ln for ln in lines)

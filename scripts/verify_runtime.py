@@ -119,6 +119,9 @@ def _probe_deps_stamp() -> tuple[bool, str]:
         return False, (f"no record of which requirements built {sys.prefix} — set up "
                        f"before 0.27.0, or not by setup.sh")
     got = stamp.read_text().strip()
+    if not got:
+        return False, (f"the stamp in {sys.prefix} is empty — setup did not finish its "
+                       f"last step")
     if got != want:
         return False, (f"built from requirements {got[:12]}…, this code needs "
                        f"{want[:12]}… — the dependencies changed since setup ran")

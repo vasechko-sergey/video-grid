@@ -54,7 +54,47 @@ def test_setup_fetches_the_weights_where_bin_vg_works():
 
 
 def test_setup_stamps_the_venv_after_everything_it_installs():
-    i = SETUP.index('> "$VENV/.video-grid-requirements"')
+    i = SETUP.index('mv "$VENV/.video-grid-requirements.tmp" "$VENV/.video-grid-requirements"')
     assert SETUP.index('install -r "$SKILL_DIR/requirements.txt"') < i
     assert SETUP.rindex('pip" install') < i                   # demucs, torchreid: before it
-    assert 'PYTHONPATH="$SKILL_DIR"' in SETUP[i - 200:i]
+
+
+def test_the_stamp_is_computed_away_from_the_callers_working_directory():
+    """The re-review's regression: `-c` puts the cwd on sys.path ahead of PYTHONPATH,
+    and the setup skill runs setup.sh from the user's project — an old clone's
+    `scripts/` was imported instead of the plugin's, and the stamp came out empty or
+    the clone's. Both Python steps run from $MODELS_DIR with -P, the stamp is handed
+    its root explicitly, and it is written through a temp file."""
+    i = SETUP.index('> "$VENV/.video-grid-requirements.tmp"')
+    block = SETUP[SETUP.rfind("(cd ", 0, i):i]
+    assert block.startswith('(cd "$MODELS_DIR" && PYTHONPATH="$SKILL_DIR" "$VENV/bin/python" -P -c')
+    assert "requirements_digest(Path(sys.argv[1]))" in block and '"$SKILL_DIR")' in block
+    j = SETUP.index("ensure_model(MODELS[0])")
+    assert '"$VENV/bin/python" -P -c' in SETUP[SETUP.rfind("(cd ", 0, j):j]
+
+
+def test_the_stamp_step_ignores_a_scripts_package_in_the_callers_directory(tmp_path):
+    """The re-review's scenario, run: setup.sh's own stamp lines, cut out of the real
+    script, executed from a directory holding a foreign `scripts/` package — an old
+    clone's, or any project's. The stamp must still be the plugin's own digest."""
+    import subprocess
+    import sys
+    from scripts.lib import userdirs
+    repo = Path(__file__).resolve().parents[1]
+    start = SETUP.index('(cd "$MODELS_DIR" && PYTHONPATH="$SKILL_DIR" "$VENV/bin/python" -P -c \'import sys')
+    end = SETUP.index('mv "$VENV/.video-grid-requirements.tmp"')
+    block = SETUP[start:SETUP.index("\n", end)]
+    venv, models, evil = tmp_path / "venv", tmp_path / "models", tmp_path / "project"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "bin" / "python").symlink_to(sys.executable)
+    models.mkdir()
+    (evil / "scripts").mkdir(parents=True)
+    (evil / "scripts" / "__init__.py").write_text("")          # no scripts.lib in it
+    env = {"PATH": "/usr/bin:/bin", "VENV": str(venv), "MODELS_DIR": str(models),
+           "SKILL_DIR": str(repo)}
+    proc = subprocess.run(["bash", "-euo", "pipefail", "-c", block], cwd=str(evil),
+                          env=env, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    stamp = (venv / ".video-grid-requirements").read_text().strip()
+    assert stamp == userdirs.requirements_digest(repo)
+    assert not (venv / ".video-grid-requirements.tmp").exists()
