@@ -405,3 +405,19 @@ def test_the_fit_report_renders_the_plus_sign_on_a_positive_agreement(tmp_path):
                       devs=(0.0, 0.0), needs=(0.0, 0.0), worst=0.0, total=9.0, fits=True)
     md = pacing_driver._report(spine, fit, [], "MUSIC.json", {})
     assert "- **Energy agreement:** +0.50 (Spearman rho, 3 of 3 slots used)" in md
+
+
+def test_anchors_skip_a_held_episode(tmp_path, monkeypatch):
+    """A freeze is one frame held: no motion curve to anchor on, like a photo (design
+    2026-10-21 §2.3) — and nothing to decode for it either."""
+    seen = []
+    monkeypatch.setattr(driver.anchors, "measure_curve",
+                        lambda src, start, dur: (seen.append((src, start, dur)),
+                                                 [0.0, 1.0, 0.0])[1])
+    played = _plain_episode(2.0)
+    held = EDLEpisode(source="a.mp4", start=2.0 - 1 / 30, dur=2.0, shot_type="wide",
+                      composition="lead", grid="thirds", freeze=True)
+    driver.build_pacing(_write_edl(tmp_path, [played, held]), _footage(tmp_path),
+                        [_music(tmp_path)], str(tmp_path / "out"),
+                        footage_root=str(tmp_path), with_anchors=True)
+    assert seen == [(str(tmp_path / "a.mp4"), 0.0, 2.0)]

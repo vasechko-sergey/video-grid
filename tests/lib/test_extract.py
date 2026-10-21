@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from scripts import extract
+from scripts.lib import lint
 from scripts.lib.edl import EDL, EDLEpisode
 
 
@@ -114,3 +115,74 @@ def test_extract_names_tv_not_pc_in_the_scale_filter(monkeypatch, tmp_path):
     extract.extract("a.mp4", 1.0, 2.0, str(tmp_path / "o.mp4"))
     vf = seen["cmd"][seen["cmd"].index("-vf") + 1]
     assert "out_range=tv" in vf and "out_range=pc" not in vf
+
+
+# --- the freeze (design 2026-10-21 §3) --------------------------------------------------
+
+def _freeze_cmd(monkeypatch, *args):
+    seen = {}
+    monkeypatch.setattr(extract.ffbin, "ffmpeg", lambda: "FFMPEG")
+    monkeypatch.setattr(extract.proc, "run", lambda cmd, **kw: seen.setdefault("cmd", cmd))
+    extract.extract_freeze(*args)
+    return seen["cmd"]
+
+
+def test_extract_freeze_trims_one_frame_and_clones_it_with_no_seek(monkeypatch):
+    cmd = _freeze_cmd(monkeypatch, "a.mp4", 7.9, 1.0, 30.0, "o.mp4")
+    assert cmd == [
+        "FFMPEG", "-y", "-i", "a.mp4", "-vf",
+        "trim=start=7.9,setpts=PTS-STARTPTS,trim=end_frame=1,"
+        "tpad=stop_mode=clone:stop=29,scale=in_range=auto:out_range=tv",
+        "-color_range", "tv", "-an", "-c:v", "libx264", "-crf", "18", "-preset", "medium",
+        "-pix_fmt", "yuv420p", "o.mp4"]
+
+
+def test_extract_freeze_holds_at_least_the_one_frame(monkeypatch):
+    cmd = _freeze_cmd(monkeypatch, "a.mp4", 0.0, 0.01, 30.0, "o.mp4")
+    assert "tpad=stop_mode=clone:stop=0," in cmd[cmd.index("-vf") + 1]
+
+
+def test_extract_freeze_passes_the_landmine_lint(monkeypatch):
+    assert lint.check_argv(_freeze_cmd(monkeypatch, "a.mp4", 2.5, 2.0, 29.97, "o.mp4")) == []
+
+
+def _freeze_edl():
+    base = dict(source="a.mp4", shot_type="medium", composition="lead", grid="thirds")
+    return EDL(episodes=[EDLEpisode(**base, start=0.0, dur=4.0),
+                         EDLEpisode(**base, start=4.0 - 1 / 25, dur=2.0, freeze=True)])
+
+
+def _fake_cuts(monkeypatch, durs):
+    calls = []
+    monkeypatch.setattr(extract, "extract",
+                        lambda src, start, dur, out, **kw: (
+                            calls.append(("cut", src, start, dur, out)),
+                            Path(out).write_bytes(b"cut"), out)[2])
+    monkeypatch.setattr(extract, "extract_freeze",
+                        lambda src, t, dur, fps, out, **kw: (
+                            calls.append(("freeze", src, t, dur, fps, out)),
+                            Path(out).write_bytes(b"held"), out)[2])
+    monkeypatch.setattr(extract, "_probe_dur", lambda p: durs[Path(p).name])
+    # the SOURCE probes 25 fps and every segment 50, so the test sees which one was asked
+    monkeypatch.setattr(extract.assembly, "probe_stream", lambda p: type(
+        "S", (), {"fps": 25.0 if p.endswith("a.mp4") else 50.0, "w": 1920, "h": 1080})())
+    return calls
+
+
+def test_extract_edl_cuts_a_freeze_from_the_source_at_its_own_rate(monkeypatch, tmp_path):
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    seg = tmp_path / "seg"
+    calls = _fake_cuts(monkeypatch, {"ep0_raw.mp4": 4.0, "ep1_raw.mp4": 2.0})
+    out = extract.extract_edl(_freeze_edl(), str(tmp_path), str(seg))
+    src = str(tmp_path / "a.mp4")
+    assert out == [str(seg / "ep0_raw.mp4"), str(seg / "ep1_raw.mp4")]
+    assert calls == [("cut", src, 0.0, 4.0, out[0]),
+                     ("freeze", src, 4.0 - 1 / 25, 2.0, 25.0, out[1])]
+
+
+def test_extract_edl_gates_a_short_freeze_like_any_segment(monkeypatch, tmp_path):
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    _fake_cuts(monkeypatch, {"ep0_raw.mp4": 4.0, "ep1_raw.mp4": 0.5})
+    with pytest.raises(ValueError, match="EDL episode 1 segment is 0.500s — shorter than its "
+                                         "2.0s hold"):
+        extract.extract_edl(_freeze_edl(), str(tmp_path), str(tmp_path / "seg"))

@@ -476,10 +476,13 @@ def _cut_identity(edl: EDL) -> list[dict]:
 
     A photo's `still` move is the same kind of input — it is rendered into the segment
     and does not cross either (design 2026-10-20 §4) — so it joins the identity, for
-    photos only: a GEOMETRY.json written before photos keeps comparing equal."""
+    photos only: a GEOMETRY.json written before photos keeps comparing equal. `freeze`
+    joins it for freezes only, for the same reason: `source`/`start`/`dur` cannot tell
+    a held frame from a played window that starts there (design 2026-10-21 §3)."""
     return [{"source": ep.source, "start": ep.start, "dur": ep.dur, "ramp": ep.ramp,
              **({"still": ep.still or kenburns.DEFAULT_MOVE.to_dict()}
-                if runlayout.is_photo(ep.source) else {})}
+                if runlayout.is_photo(ep.source) else {}),
+             **({"freeze": True} if ep.freeze else {})}
             for ep in edl.episodes]
 
 

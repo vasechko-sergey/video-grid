@@ -11,7 +11,7 @@ import json
 import sys
 from pathlib import Path
 
-from scripts.lib import anchors, gridfit, pacing, runlayout, ramp as ramp_mod
+from scripts.lib import anchors, gridfit, pacing, ramp as ramp_mod
 from scripts.lib.edl import EDL
 from scripts.lib.footage import Footage
 from scripts.lib.models import MusicSpec, RampSpec
@@ -164,8 +164,9 @@ def build_pacing(edl_json: str, footage_json: str, music_jsons: list[str], out_d
     if with_anchors:
         root = Path(footage_root or ".")
         for i, ep in enumerate(edl.episodes):
-            if runlayout.is_photo(ep.source):
-                continue        # a still has no motion curve to anchor on (design 2026-10-20)
+            if ep.held():
+                continue        # a photo or a held frame has no motion curve to anchor on
+                                # (designs 2026-10-20, 2026-10-21 §2.3)
             curve = anchors.measure_curve(str(root / ep.source), ep.start, ep.dur)
             # the contrast rides along: without it a `–` cannot be told apart from
             # "the curve was a plateau and the floor selected nothing" (design §4)

@@ -17,7 +17,7 @@ import json
 import sys
 from pathlib import Path
 
-from scripts.lib import edl as edl_lib, gridfit, moodpreset, outro, ramp as ramp_mod, safezones
+from scripts.lib import edl as edl_lib, gridfit, hold, moodpreset, outro, ramp as ramp_mod, safezones
 from scripts.lib.constraints import Constraints, Placed, evaluate as check_constraints
 from scripts.lib.edl import EDL, EDLEpisode, preflight, write_edl
 from scripts.lib.footage import (Footage, FootageClip, FootageWindow, SHOT_TYPES, delivered_shot,
@@ -378,7 +378,11 @@ def _apply_outro(episodes: list[EDLEpisode], footage: Footage, music: MusicSpec,
         return episodes, outro.OutroFit(reel_dur=realized, line=None, fade=fade, tail=0.0,
                                         rung="unchanged", moved=0.0, brief_len=brief_len,
                                         cause="closer-not-in-footage")
-    grow_max = max(0.0, clip.room_after(last.start) - last.dur)
+    # A held closer grows into HOLD_ROOM, not into its clip's room: a freeze's start is
+    # still a placeholder here (resolved after this fit) and the room after a frame it
+    # holds means nothing; a photo's clip `dur` IS HOLD_ROOM, so no photo result moves.
+    grow_max = (max(0.0, hold.HOLD_ROOM - last.dur) if last.held()
+                else max(0.0, clip.room_after(last.start) - last.dur))
     shrink_max = max(0.0, last.play_dur() - outro.MIN_LAST)
     fit = outro.fit_outro(lines, music.vocal_spans, realized,
                           outro.bar_seconds(music.tempo), fade,
@@ -467,6 +471,66 @@ def _placed(clip: FootageClip, ep: EDLEpisode) -> Placed:
     return Placed(source=ep.source, shot=clip.shot_at(ep.start), hero=hero)
 
 
+FREEZE_KEYS = ("freeze", "shutter", "hold")   # all a selection's freeze entry may carry
+
+
+def _freeze_entry(sel: dict, episodes: list[EDLEpisode], k: int) -> EDLEpisode:
+    """A selection entry `{"freeze": true}` → the episode that holds the previous one's
+    last frame (design 2026-10-21 §3). It copies the previous episode's editorial fields
+    and drops every field that addresses time; its `start` is a placeholder until
+    _resolve_freezes, because the previous cut may still move (pacing, the outro fit)."""
+    extra = sorted(set(sel) - set(FREEZE_KEYS))
+    if extra:
+        raise ValueError(
+            f"selection episode {k}: a freeze carries only {', '.join(FREEZE_KEYS)} — got "
+            f"{', '.join(extra)}. It inherits the previous episode's framing (source, "
+            f"window, layout, crop, composition, hero, colour); author those there")
+    if sel["freeze"] is not True:
+        raise ValueError(f"selection episode {k}: `freeze` must be true, got "
+                         f"{sel['freeze']!r} — to cut a played window, drop the key and "
+                         f"name a source and a window")
+    prev = episodes[-1] if episodes else None
+    if prev is None or prev.held():
+        why = ("it cannot open the cut" if prev is None else
+               f"episode {k - 1} is a {'freeze' if prev.freeze else 'photo'}")
+        raise ValueError(f"selection episode {k}: a freeze holds the previous episode's last "
+                         f"frame, so it must follow a video episode — {why}")
+    try:
+        # shutter defaults ON: without the accent a held frame reads as a stalled player
+        return dataclasses.replace(
+            prev, freeze=True, shutter=sel.get("shutter", True), hold=sel.get("hold"),
+            dur=hold.HOLD_DEFAULT, base_dur=hold.HOLD_DEFAULT, beat_slot=None,
+            ramp=None, pan=None, zoom=None, still=None, motion=None, smooth_window_s=None,
+            stabilize=False,
+            processing_notes=f"freeze · {prev.processing_notes}".rstrip(" ·"))
+    except ValueError as e:
+        raise ValueError(f"selection episode {k}: {e}") from e
+
+
+def _resolve_freezes(episodes: list[EDLEpisode], footage: Footage) -> list[EDLEpisode]:
+    """Every freeze's `start` from its predecessor AS IT IS NOW: the last frame that
+    episode's segment shows, `start + dur - 1/fps` whatever the frame phase, never before
+    its own in-point (design 2026-10-21 §3). Run last, after pacing and the outro fit —
+    either may move the predecessor's cut, and the outro fit may grow the freeze's own
+    length, which moves nothing here."""
+    by_source = {c.source: c for c in footage.clips}
+    out = list(episodes)
+    for i, ep in enumerate(out):
+        if not ep.freeze:
+            continue
+        if i == 0:      # out[-1] would be the reel's LAST episode: a wrong frame, silently
+            raise ValueError("edit_plan: freeze 0 has no episode before it — a freeze holds "
+                             "the previous episode's last frame, so it cannot open the cut")
+        prev = out[i - 1]
+        clip = by_source.get(prev.source)
+        if clip is None:
+            raise ValueError(f"edit_plan: freeze {i} follows {prev.source!r}, which is not in "
+                             f"FOOTAGE — its frame rate names the last frame it shows")
+        out[i] = dataclasses.replace(
+            ep, start=max(prev.start, prev.start + prev.dur - 1 / clip.fps))
+    return out
+
+
 def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
               cast: str | None = None, *, aspect: tuple[int, int] | None = None,
               preset: MoodPreset | None = None,
@@ -506,6 +570,11 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     evaluated", never as "passed". As with variety, build_edl only MEASURES; the
     refusal lives one level up in write_edit_plan, so a caller building an EDL in
     memory still gets the finding.
+
+    A selection entry carrying `freeze` (design 2026-10-21 §3) holds the previous
+    episode's last frame — see _freeze_entry. It is resolved LAST (_resolve_freezes), after
+    pacing and the outro fit have moved the cut it freezes. An authored `hold` (beats) with
+    no pacing bound is logged as unused, never refused: beats need a tempo.
 
     `platform` (design 2026-08-12 §1.1, keyword-only) rides straight onto EDL.platform —
     build_edl does not resolve it from anything, write_edit_plan already reads SPEC.platform
@@ -551,6 +620,11 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     for k, sel in enumerate(eps_in):
         if not isinstance(sel, dict):
             raise ValueError(f"selection episode {k} must be an object, got {type(sel).__name__}")
+        if "freeze" in sel:
+            # Neither censused nor placed: a freeze is not a new use of footage, and
+            # `no_repeat` would refuse every freeze as a repeat of its own shot (§3).
+            episodes.append(_freeze_entry(sel, episodes, k))
+            continue
         ed = dict(sel)
         source = ed.pop("source", None)
         window = ed.pop("window", None)
@@ -658,6 +732,13 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
                      f"the fitter bounded against the music, so the target stays clamped at "
                      f"{target:.2f}s and the over-flow escalates at the reel gate. Re-run "
                      f"pacing against the current EDL.json, or drop episodes")
+    authored = [i for i, e in enumerate(episodes) if e.hold is not None]
+    if authored and pacing is None:
+        _log(f"hold: episode{'s' if len(authored) > 1 else ''} "
+             f"{', '.join(map(str, authored))} authored a length in beats, but no pacing is "
+             f"bound and beats need a tempo — unused, each plays {hold.HOLD_DEFAULT:.1f}s. "
+             f"Run pacing and re-build with --pacing to use them")
+    episodes = _resolve_freezes(episodes, footage)   # last: pacing and the outro moved cuts
     cap = selection.get("cap")
     variety = None
     if aspect is not None and preset is not None:

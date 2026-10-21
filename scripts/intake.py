@@ -19,7 +19,8 @@ import imagehash
 from PIL import Image, ImageDraw
 
 from scripts import check_reel                    # reuse _hamming for cull dedup
-from scripts.lib import assembly, carve, footage, intake_cache, reid, runlayout, still, vidstab
+from scripts.lib import (assembly, carve, footage, hold, intake_cache, reid, runlayout,
+                        still, vidstab)
 from scripts.lib.appearance import crop_bbox
 from scripts.lib.intake_cache import CastEntry, ClipResult
 from scripts.track import MODEL, ensure_model       # reuse the tracker's model choice
@@ -57,12 +58,12 @@ CARD_LONG_SIDE = 480     # a review card enlarges its crop by WHOLE pixels until
                          # reaches this, so a small crop is legible and nothing is invented
 CARD_MIN_W = 360         # the card's narrowest canvas, so its caption is never cut
 _FOOTAGE_EXTS = runlayout.FOOTAGE_EXTS      # one list: intake scans it, project_init refuses on it
-PHOTO_HOLD = 2.0         # a photo window's length: the research's 1-2 s per photo in a reel,
-                         # 2-4 s in a post (design 2026-10-20 §1). A convention; U7 will take
-                         # a photo's length from the music grid instead.
-PHOTO_ROOM = 8.0         # how long a photo MAY be held — its clip `dur`, the room the pacing
-                         # fitter can stretch it into (selection.json has no length field for
-                         # a photo; U7). A convention.
+PHOTO_HOLD = hold.HOLD_DEFAULT   # a photo window's length — what it plays when no music
+                                 # binds it; with music the grid authors it (design
+                                 # 2026-10-21 §2). A convention, owned by lib/hold.py.
+PHOTO_ROOM = hold.HOLD_ROOM      # how long a photo MAY be held — its clip `dur`, the room the
+                                 # grid and the outro fit may grow it into. A convention,
+                                 # owned by lib/hold.py.
 DEFAULT_JOBS = 2          # 3 parallel full-clip passes pin every P-core (3x libx264 proxy
                           # alone is ~400s of CPU) and thermally throttle a laptop; 2 is the
                           # sustainable default. --jobs raises it on a cooled/desktop box or

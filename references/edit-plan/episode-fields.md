@@ -85,9 +85,27 @@ target length, and order them **hook first**. For each episode assign:
   4:5) and `fit` with the blurred field otherwise (square, landscape); author
   `layout` to override. A photo refuses `zoom`, `pan`, `ramp`, `stabilize`,
   `hero`, `motion`, `smooth_window_s` and any `start_offset`, and a move faster
-  than `ZOOM_MAX_RATE` for its hold. Pacing may grow its `dur` up to 8.0 s; there is
-  no field to set it by hand. The move keeps the TOP half of the people whole (heads),
-  shortening itself rather than cut it.
+  than `ZOOM_MAX_RATE` for its hold. Pacing may grow its `dur` up to 8.0 s; `hold`
+  (below) asks for a length in beats. The move keeps the TOP half of the people whole
+  (heads), shortening itself rather than cut it.
+- `freeze` (a selection entry of its own) — `{"freeze": true}` holds **the previous
+  episode's last frame**, "like a photograph" (design 2026-10-21 §3). It carries only
+  `freeze`, `shutter` and `hold`; source, window, layout, crop, composition, hero and
+  colour it inherits from the episode before it, which must be a played video window —
+  a freeze cannot open the cut or follow a photo or another freeze. It drops what
+  addresses time (`ramp`, `pan`, `zoom`, `still`, `motion`, `smooth_window_s`,
+  `stabilize`), plays 2.0 s when no music binds it, and its segment is silent. It is
+  not a new use of footage: the variety census and `CONSTRAINTS.json`'s `no_repeat`
+  both skip it. Its frame is resolved last, after pacing and the outro fit, so it
+  follows wherever the previous cut lands.
+- `shutter` (optional, a photo or a freeze only) — the shutter accent on the
+  episode's cut: a white flash and a shutter click (design 2026-10-21 §4). A freeze
+  defaults it to `true` — without it a held frame reads as a stalled player; a photo
+  defaults to `false`. Refused on a played video window.
+- `hold` (optional, a photo or a freeze only) — a length in whole **beats** (an int
+  ≥ 1) that outranks the music grid's own pick (design 2026-10-21 §2.1), e.g. for a
+  hero photo the brief wants held longer. Beats need a tempo: without `--pacing` it is
+  unused — `edit_plan build` says so — and the episode plays 2.0 s.
 - `pan` (optional) — `{"from": f, "to": f}`, a **generated** constant-velocity
   camera move: two fractions of the crop's horizontal freedom (`0.0` hard
   left, `1.0` hard right; direction is the sign of `to - from`). It replaces
@@ -184,6 +202,8 @@ is the index into it. Anything absent from this table is not authorable from
 | `pan` | a generated camera move; refused over a window holding people |
 | `zoom` | a subject-anchored push-in/pull-out along the tracked route |
 | `still` | a photo's move — a push toward its people, rendered into the segment |
+| `freeze` | a selection entry of its own: hold the previous episode's last frame |
+| `shutter` / `hold` | a photo's or a freeze's cut accent / its length in beats |
 | `ramp` | a speed ramp down to a slow plateau and back |
 | `stabilize` | the vidstab pre-stage; never on a wade-in/out shot |
 | `smooth_window_s` | seconds of path smoothing |

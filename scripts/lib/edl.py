@@ -74,6 +74,13 @@ class EDLEpisode:
                               # kenburns.DEFAULT_MOVE. Validated HERE, like `ramp`: whether
                               # the source is a photo, and the move's rate, both need fields
                               # only this class has.
+    freeze: bool = False      # this episode HOLDS the video frame at `start` (design
+                              # 2026-10-21 §3) for `dur` — a video episode downstream
+                              # (tracked, framed, graded), only its segment is one frame.
+    shutter: bool = False     # the shutter accent on this episode's cut (design §4); held
+                              # episodes only.
+    hold: int | None = None   # an authored length in BEATS, which outranks the grid's own
+                              # pick (design §2.1); held episodes only. None = the grid's.
     stabilize: bool = False   # run the vidstab pre-stage before tracking (design
                               # 2026-07-20). EXPLICIT by design and never inferred:
                               # a wade-in shot is handheld in moving water and so is
@@ -164,12 +171,31 @@ class EDLEpisode:
                 f"EDLEpisode.smooth_window_s must be a span in seconds in (0, 2.0] or "
                 f"null, got {self.smooth_window_s!r} — it is a filter cutoff, and a "
                 "window longer than a couple of seconds stops following the subject")
+        for name in ("freeze", "shutter"):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"EDLEpisode.{name} must be true or false, got "
+                                 f"{getattr(self, name)!r}")
+        if self.hold is not None and (isinstance(self.hold, bool) or not isinstance(self.hold, int)
+                                      or self.hold < 1):
+            raise ValueError(f"EDLEpisode.hold must be a whole number of beats >= 1 or null, got "
+                             f"{self.hold!r} — drop it to let the music grid choose the length")
         if runlayout.is_photo(self.source):
+            if self.freeze:
+                raise ValueError(f"EDLEpisode {self.source} is a photo, and a photo is already a "
+                                 f"still — drop `freeze`; a freeze holds a VIDEO frame")
             self._refuse_what_a_photo_cannot_carry()
+        elif self.freeze:
+            self._refuse_what_a_freeze_cannot_carry()
         elif self.still is not None:
             raise ValueError(
                 f"EDLEpisode.still is a photo's move and {self.source} is a video — a "
                 f"push-in over video is `zoom`")
+        for name, authored in (("shutter", self.shutter), ("hold", self.hold is not None)):
+            if authored and not self.held():
+                raise ValueError(
+                    f"EDLEpisode.{name} applies to a photo or a freeze, and {self.source} "
+                    f"@{self.start:.2f}s is a played video window — drop it, or follow the "
+                    f"window with a freeze (`{{\"freeze\": true}}` in selection.json)")
         if self.ramp is not None:
             ramp_mod.validate_window(
                 RampSpec.from_dict(self.ramp), self.dur,
@@ -238,6 +264,28 @@ class EDLEpisode:
                     f"{zoom_mod.ZOOM_MAX_RATE} a zoom may move — a lurch, not a move. "
                     f"Narrow it or hold the photo longer")
 
+    def _refuse_what_a_freeze_cannot_carry(self) -> None:
+        """A freeze holds one frame, so it addresses no time (design 2026-10-21 §3): every
+        field that does is refused by name, in the photo's style. `zoom` too, because
+        zoompan stair-steps on a still (photos design §0)."""
+        moves = {"ramp": self.ramp, "pan": self.pan, "zoom": self.zoom, "still": self.still,
+                 "motion": self.motion, "smooth_window_s": self.smooth_window_s,
+                 "stabilize": self.stabilize or None}
+        bad = [k for k, v in moves.items() if v is not None]
+        if bad:
+            raise ValueError(
+                f"EDLEpisode {self.source} @{self.start:.2f}s is a freeze and cannot carry "
+                f"{', '.join(bad)} — a held frame has no time to retime, pan, smooth or "
+                f"stabilize, and zoompan stair-steps on a still. It keeps the previous "
+                f"episode's framing (layout, crop, composition, hero, colour); move the "
+                f"camera on that episode instead")
+
+    def held(self) -> bool:
+        """A photo or a freeze: an episode whose length nothing in the footage fixes
+        (design 2026-10-21 §1). The one predicate — `runlayout.is_photo` alone still means
+        "rendered by the photo path, route-less", which a freeze is not."""
+        return self.freeze or runlayout.is_photo(self.source)
+
     def to_dict(self) -> dict:
         def _j(v: object) -> object:
             return list(v) if isinstance(v, tuple) else v
@@ -250,6 +298,11 @@ class EDLEpisode:
                 "zoom": self.zoom,
                 "stabilize": self.stabilize, "ramp": self.ramp,
                 **({"still": dict(self.still)} if self.still is not None else {}),
+                # absent at their defaults, so an EDL.json written before held episodes
+                # existed stays byte-identical
+                **({"freeze": True} if self.freeze else {}),
+                **({"shutter": True} if self.shutter else {}),
+                **({"hold": self.hold} if self.hold is not None else {}),
                 "smooth_window_s": self.smooth_window_s,
                 "hero": _j(self.hero),
                 "white_balance": self.white_balance,
@@ -522,8 +575,15 @@ class EDL:
             if runlayout.is_photo(e.source):
                 mv = e.still or kenburns.DEFAULT_MOVE.to_dict()
                 motion = f"photo · {mv['from']}→{mv['to']}"
+            elif e.freeze:
+                motion = "freeze"      # it refuses motion/pan/zoom, so nothing is replaced
+            if e.hold is not None:
+                motion += f" · {e.hold} beat{'' if e.hold == 1 else 's'}"
+            if e.shutter:
+                motion += " · shutter"
             beat = str(e.beat_slot) if e.beat_slot is not None else "–"
-            window = f"{e.start:.2f}–{e.start + e.dur:.2f} ({e.dur:.2f}s)"
+            window = (f"freeze @{e.start:.2f}s ({e.dur:.2f}s)" if e.freeze else
+                      f"{e.start:.2f}–{e.start + e.dur:.2f} ({e.dur:.2f}s)")
             notes = e.processing_notes
             if e.ramp is not None:
                 # "silent" is mechanical, not aspirational (design §12): slowed audio
@@ -639,7 +699,9 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
     were wrong — a number goes stale the moment someone adds a branch and does not
     re-count. Read the branches below instead; that is why they are named here.)
     EDL-only fields (source/start/dur/shot_type/processing_notes/
-    beat_slot) do NOT cross — this map is the documented EDL↔manifest boundary.
+    beat_slot/freeze/shutter/hold) do NOT cross — this map is the documented EDL↔manifest
+    boundary. A freeze needs nothing here: downstream it is a video episode whose segment
+    happens to be one frame held (design 2026-10-21 §3), never the photo path's `still`.
     `cast` is EDL.cast, the reel-level registry path — forwarded so a cast-name
     hero resolves per episode while the manifest itself stays a self-contained
     brief (§14.4); omitted when None so Manifest.from_dict falls to its own ""

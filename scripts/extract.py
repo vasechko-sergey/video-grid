@@ -1,5 +1,6 @@
 """Cut an EDL window into a standalone fragment (spec §5.8, §12) — or, for a photo,
-render its move into one (design docs/specs/2026-10-20-photos-design.md §4)."""
+render its move into one (design docs/specs/2026-10-20-photos-design.md §4), or for a
+freeze, hold one frame (docs/specs/2026-10-21-photo-rhythm-design.md §3)."""
 import argparse
 import json
 from pathlib import Path
@@ -52,6 +53,29 @@ def extract(src: str, start: float, dur: float, out: str, crf: int = 18) -> str:
         "-vf", "scale=in_range=auto:out_range=tv", "-color_range", "tv",
         "-c:v", "libx264", "-crf", str(crf), "-preset", "medium",
         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", out,
+    ]
+    proc.run(cmd)
+    return out
+
+
+def extract_freeze(src: str, t: float, dur: float, fps: float, out: str, crf: int = 18) -> str:
+    """The frame of `src` at `t`, held for `dur` at `fps` (design 2026-10-21 §3): a video
+    segment like extract's, on the same range contract, whose frames are one frame
+    cloned — so it is tracked, framed and graded downstream like any window.
+
+    NO `-ss` at all, before or after `-i`. The filter's `trim=start` is frame-accurate on
+    its own, and an output-side `-ss` is applied AFTER the filtergraph: it would seek
+    inside the one-frame clone, so `trim=end_frame=1` would take frame 0 of the source
+    and the hold would freeze the wrong moment. The cost is a decode from the start to
+    `t` (design §7). No audio: the sound stopping on a freeze is part of the effect."""
+    n = max(1, round(dur * fps))
+    cmd = [
+        ffbin.ffmpeg(), "-y", "-i", src,
+        # the same range pair extract carries, for the same contract (design 2026-08-27)
+        "-vf", f"trim=start={t},setpts=PTS-STARTPTS,trim=end_frame=1,"
+               f"tpad=stop_mode=clone:stop={n - 1},scale=in_range=auto:out_range=tv",
+        "-color_range", "tv", "-an",
+        "-c:v", "libx264", "-crf", str(crf), "-preset", "medium", "-pix_fmt", "yuv420p", out,
     ]
     proc.run(cmd)
     return out
@@ -138,7 +162,11 @@ def extract_edl(edl: EDL, footage_root: str, seg_dir: str,
     A photo episode is RENDERED into the same name (render_photo), with its record
     beside it as ep{i}_raw.still.json. It needs `project` for the canvas and the
     delivery, and takes the clock of the EDL's first video segment, so the videos are
-    cut first."""
+    cut first.
+
+    A freeze (design 2026-10-21 §3) is cut in the video loop by extract_freeze, under
+    the same length gate. edit_plan never lets one open the cut, so the photos' clock
+    still comes from a played window."""
     Path(seg_dir).mkdir(parents=True, exist_ok=True)
     photos = [i for i, ep in enumerate(edl.episodes) if runlayout.is_photo(ep.source)]
     if photos and project is None:
@@ -160,13 +188,19 @@ def extract_edl(edl: EDL, footage_root: str, seg_dir: str,
             raise ValueError(f"EDL episode {i} source not found: {src!r} "
                              f"(footage_root={footage_root!r} + source={ep.source!r})")
         out = str(Path(seg_dir) / f"ep{i}_raw.mp4")
-        extract(src, ep.start, ep.dur, out)
+        if ep.freeze:
+            # the source's own rate: the hold is that many of ITS frames, on its clock
+            extract_freeze(src, ep.start, ep.dur, assembly.probe_stream(src).fps, out)
+        else:
+            extract(src, ep.start, ep.dur, out)
         probed, fps = _probe_dur(out), assembly.probe_stream(out).fps
         if probed + 1.0 / fps + _LEN_EPS < ep.dur:
-            raise ValueError(
-                f"EDL episode {i} segment is {probed:.3f}s — shorter than its {ep.dur}s window "
-                f"(source {src!r} start={ep.start}); the window runs past the clip. Trim the window "
-                "or fix the in-point.")
+            what = (f"{ep.dur}s hold (source {src!r}, frame at {ep.start}s); the encode lost "
+                    f"frames" if ep.freeze else
+                    f"{ep.dur}s window (source {src!r} start={ep.start}); the window runs past "
+                    f"the clip. Trim the window or fix the in-point.")
+            raise ValueError(f"EDL episode {i} segment is {probed:.3f}s — shorter than its "
+                             f"{what}")
         if ep.ramp is not None:
             # A PRE-STAGE writing a file, exactly like vidstab.stabilize and for
             # the same reason (design §4): the route must be measured on the

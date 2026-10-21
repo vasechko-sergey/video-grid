@@ -3,7 +3,7 @@ from dataclasses import replace
 
 import pytest
 from scripts import edit_plan
-from scripts.lib import mood, outro, provenance
+from scripts.lib import hold, mood, outro, provenance
 from scripts.lib.constraints import Constraints
 from scripts.lib.edl import EDL, EDLEpisode
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
@@ -2033,3 +2033,212 @@ def test_a_canvas_in_selection_is_refused_by_name():
                          "grid": "thirds", "canvas": [9, 16]}]}
     with pytest.raises(ValueError, match="`canvas` is the project's"):
         edit_plan.build_edl(f, sel, aspect=(9, 16))
+
+
+# --- the freeze (design 2026-10-21 §3) -------------------------------------------------
+
+def _freeze_footage(fps=30.0):
+    """A.mp4 with a cut at 10.0 (windows 0 and 1 share the shot [0, 10)) and a photo."""
+    return Footage(clips=[
+        _clip(source="A.mp4", dur=22.0, fps=fps, scene_cuts=[10.0], windows=[
+            FootageWindow(start=1.0, dur=2.0, shot_type="wide", people=1, motion=0.3,
+                          shake=0.0, description="approach"),
+            FootageWindow(start=5.0, dur=3.0, shot_type="close", people=1, motion=0.5,
+                          shake=0.0, description="the turn"),
+            FootageWindow(start=12.0, dur=2.0, shot_type="medium", people=1, motion=0.3,
+                          shake=0.0, description="exit")]),
+        _photo_clip((3024, 4032))])
+
+
+def _turn(**kw):
+    return {"source": "A.mp4", "window": 1, "composition": "lead", "grid": "thirds", **kw}
+
+
+def test_a_freeze_holds_the_previous_episodes_last_frame_in_its_framing():
+    sel = {"episodes": [_turn(layout="fit", hero="Lena", saturation=0.9, motion="static",
+                              stabilize=True, smooth_window_s=0.5,
+                              zoom={"from": 1.0, "to": 0.9}),
+                        {"freeze": True}]}
+    prev, fr = edit_plan.build_edl(_freeze_footage(), sel).episodes
+    assert fr == replace(prev, freeze=True, shutter=True, hold=None,
+                         start=5.0 + 3.0 - 1 / 30.0,
+                         dur=hold.HOLD_DEFAULT, base_dur=hold.HOLD_DEFAULT, beat_slot=None,
+                         ramp=None, pan=None, zoom=None, still=None, motion=None,
+                         smooth_window_s=None, stabilize=False,
+                         processing_notes="freeze · the turn")
+
+
+def test_a_freeze_drops_a_ramp_and_a_pan_and_reads_the_source_window():
+    sel = {"episodes": [_turn(ramp={"at": 1.5, "factor": 0.5, "ease": 0.3, "hold": 0.2},
+                              pan={"from": 0.2, "to": 0.7}),
+                        {"freeze": True}]}
+    prev, fr = edit_plan.build_edl(_freeze_footage(fps=60.0), sel).episodes
+    assert prev.ramp is not None and prev.pan is not None
+    assert (fr.ramp, fr.pan) == (None, None)
+    # the last SOURCE frame of the window, whatever the ramp did to its screen time
+    assert fr.start == 5.0 + 3.0 - 1 / 60.0
+
+
+def test_a_freeze_takes_an_explicit_shutter_and_hold():
+    sel = {"episodes": [_turn(), {"freeze": True, "shutter": False, "hold": 3}]}
+    fr = edit_plan.build_edl(_freeze_footage(), sel).episodes[1]
+    assert (fr.freeze, fr.shutter, fr.hold) == (True, False, 3)
+
+
+def test_a_freeze_cannot_open_the_cut():
+    with pytest.raises(ValueError, match="selection episode 0: a freeze .* must follow a "
+                                         "video episode"):
+        edit_plan.build_edl(_freeze_footage(), {"episodes": [{"freeze": True}]})
+
+
+@pytest.mark.parametrize("before", [
+    [{"source": "IMG_1.HEIC", "window": 0, "composition": "center", "grid": "thirds",
+      "layout": "fill"}],
+    [_turn(), {"freeze": True}],
+])
+def test_a_freeze_after_a_held_episode_is_refused(before):
+    sel = {"episodes": [*before, {"freeze": True}]}
+    with pytest.raises(ValueError, match=f"selection episode {len(before)}: a freeze .* must "
+                                         f"follow a video episode"):
+        edit_plan.build_edl(_freeze_footage(), sel)
+
+
+@pytest.mark.parametrize("extra", [{"source": "A.mp4"}, {"window": 1}, {"layout": "fit"}])
+def test_a_freeze_carries_nothing_but_its_own_keys(extra):
+    sel = {"episodes": [_turn(), {"freeze": True, **extra}]}
+    with pytest.raises(ValueError, match="inherits the previous episode's framing"):
+        edit_plan.build_edl(_freeze_footage(), sel)
+
+
+@pytest.mark.parametrize("value", [False, "yes", 1])
+def test_freeze_must_be_true(value):
+    sel = {"episodes": [_turn(), {"freeze": value}]}
+    with pytest.raises(ValueError, match="`freeze` must be true"):
+        edit_plan.build_edl(_freeze_footage(), sel)
+
+
+def test_a_freeze_is_not_a_new_use_of_footage_in_the_variety_census():
+    sel = {"episodes": [_turn(), {"freeze": True}]}
+    edl = edit_plan.build_edl(_freeze_footage(), sel, aspect=(16, 9),
+                              preset=moodpreset.resolve(None))
+    assert sum(edl.variety.used.values()) == 1
+
+
+def test_no_repeat_does_not_read_a_freeze_as_a_repeat_of_its_own_shot():
+    sel = {"episodes": [_turn(), {"freeze": True}]}
+    edl = edit_plan.build_edl(_freeze_footage(), sel, rules=_no_repeat_rules())
+    assert edl.constraints.ok and len(edl.constraints.rules) == 1
+    # the control: the same shot used again IS a repeat
+    again = {"episodes": [_turn(), {**_turn(), "window": 0}]}
+    assert not edit_plan.build_edl(_freeze_footage(), again,
+                                   rules=_no_repeat_rules()).constraints.ok
+
+
+def test_resolve_freezes_reads_the_predecessor_as_it_is_now():
+    footage = _freeze_footage()
+    prev = _edl_ep(source="A.mp4", start=5.0, dur=3.0)
+    fr = replace(prev, freeze=True, dur=2.0)                      # placeholder start
+    out = edit_plan._resolve_freezes([prev, fr], footage)
+    assert out == [prev, replace(fr, start=5.0 + 3.0 - 1 / 30.0)]
+    # the outro fit grows the freeze's own length, never the frame it holds
+    grown = edit_plan._resolve_freezes([prev, replace(fr, dur=3.5)], footage)[1]
+    assert grown.start == out[1].start
+    # a predecessor whose cut moved takes the frozen frame with it
+    longer = edit_plan._resolve_freezes([replace(prev, dur=3.2), fr], footage)[1]
+    assert longer.start == 5.0 + 3.2 - 1 / 30.0
+
+
+def test_resolve_freezes_never_holds_a_frame_before_the_window():
+    prev = _edl_ep(source="A.mp4", start=5.0, dur=0.02)           # under one frame at 30fps
+    fr = replace(prev, freeze=True, dur=2.0)
+    assert edit_plan._resolve_freezes([prev, fr], _freeze_footage())[1].start == 5.0
+
+
+def test_a_paced_predecessor_moves_the_frozen_frame():
+    spine = Spine(slots=(Slot(0, 0.0, 3.2, 0.5, "hook"), Slot(1, 3.2, 2.0, 0.5, "peak")),
+                  target_dur=5.2, tempo=120.0)
+    sel = {"episodes": [_turn(), {"freeze": True}]}
+    prev, fr = edit_plan.build_edl(_freeze_footage(), sel, pacing=spine).episodes
+    assert prev.dur == pytest.approx(3.2)
+    assert fr.start == pytest.approx(5.0 + 3.2 - 1 / 30.0)
+
+
+def test_the_outro_fit_grows_a_frozen_closer_without_moving_its_frame():
+    spine = Spine(slots=(Slot(0, 0.0, 3.0, 0.5, "hook"), Slot(1, 3.0, 2.0, 0.5, "peak")),
+                  target_dur=5.0, tempo=120.0)
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
+                      bars=(6.0,), vocal_spans=((6.0, 8.0),))
+    sel = {"episodes": [_turn(), {"freeze": True}]}
+    edl = edit_plan.build_edl(_freeze_footage(), sel, pacing=spine, music=music)
+    prev, fr = edl.episodes
+    assert edl.outro.rung == "gap" and fr.dur == pytest.approx(3.5)
+    assert fr.start == 5.0 + 3.0 - 1 / 30.0
+
+
+def test_a_held_closer_grows_into_the_hold_room_not_the_clips():
+    music = MusicSpec(track="t.wav", start_offset=0.0, duration=42.0, tempo=120.0,
+                      beats=(0.0, 0.5), energy=(0.1,), energy_hz=2.0,
+                      bars=(15.0,), vocal_spans=((15.0, 17.0),))
+    # the shot after 9.0 has 1.5s of room — a 4.0s freeze has none to grow into by the
+    # clip's measure, and the 4.0s it has under HOLD_ROOM is what the fit uses
+    cut = _footage_with(source="a.mp4", dur=30.0, scene_cuts=(10.5,))
+    eps = [_edl_ep(source="a.mp4", start=0.0, dur=9.0),
+           _edl_ep(source="a.mp4", start=9.0, dur=1.0),
+           _edl_ep(source="a.mp4", start=9.0, dur=4.0, freeze=True)]
+    out, fit = edit_plan._apply_outro(eps, cut, music, fade=0.5, brief_len=None)
+    assert fit.rung == "gap" and out[-1].dur == pytest.approx(5.5)
+    # ...and HOLD_ROOM bounds it: a 7.0s freeze may grow 1.0s, short of the line, though
+    # the clip itself has 24s of room after its placeholder start
+    open_clip = _footage_with(source="a.mp4", dur=30.0, scene_cuts=())
+    eps = [_edl_ep(source="a.mp4", start=0.0, dur=6.0),
+           _edl_ep(source="a.mp4", start=6.0, dur=1.0),
+           _edl_ep(source="a.mp4", start=6.0, dur=7.0, freeze=True)]
+    out, fit = edit_plan._apply_outro(eps, open_clip, music, fade=0.5, brief_len=None)
+    assert fit.rung == "unchanged" and out[-1].dur == 7.0
+
+
+def test_an_authored_hold_without_pacing_is_said_to_be_unused(capsys):
+    sel = {"episodes": [_turn(), {"freeze": True, "hold": 2}]}
+    fr = edit_plan.build_edl(_freeze_footage(), sel).episodes[1]
+    assert (fr.hold, fr.dur) == (2, hold.HOLD_DEFAULT)
+    err = capsys.readouterr().err
+    assert "episode 1" in err and "beats need a tempo" in err
+
+
+def test_no_authored_hold_and_a_bound_spine_say_nothing_about_holds(capsys):
+    edit_plan.build_edl(_freeze_footage(), {"episodes": [_turn(), {"freeze": True}]})
+    spine = Spine(slots=(Slot(0, 0.0, 3.0, 0.5, "hook"), Slot(1, 3.0, 2.0, 0.5, "peak")),
+                  target_dur=5.0, tempo=120.0)
+    edit_plan.build_edl(_freeze_footage(), {"episodes": [_turn(), {"freeze": True, "hold": 2}]},
+                        pacing=spine)
+    assert "beats need a tempo" not in capsys.readouterr().err
+
+
+def test_write_edit_plan_writes_a_freeze_through_the_preflight(tmp_path):
+    sel = {"episodes": [
+        {"source": "A.mp4", "window": 0, "composition": "lead", "grid": "thirds"},
+        {"freeze": True},
+        {"source": "B.mp4", "window": 0, "composition": "center", "grid": "phi"}]}
+    fj, sj, pj = _write_inputs(tmp_path, sel)
+    res = edit_plan.write_edit_plan(fj, sj, pj, str(tmp_path / "out"))
+    assert res["status"] == "written" and res["episodes"] == 3
+    fr = EDL.from_json(str(tmp_path / "out" / "EDL.json")).episodes[1]
+    assert (fr.freeze, fr.shutter, fr.source, fr.start) == (True, True, "A.mp4",
+                                                           0.5 + 2.0 - 1 / 30.0)
+    assert "freeze @2.47s (2.00s)" in (tmp_path / "out" / "EDL.md").read_text()
+
+
+def test_a_bad_freeze_field_names_the_selection_episode():
+    sel = {"episodes": [_turn(), {"freeze": True, "shutter": "yes"}]}
+    with pytest.raises(ValueError, match="selection episode 1: EDLEpisode.shutter must be true "
+                                         "or false"):
+        edit_plan.build_edl(_freeze_footage(), sel)
+
+
+def test_resolve_freezes_refuses_a_freeze_with_nothing_before_it():
+    # out[i - 1] at i == 0 is the LAST episode: a silent wrong frame, so it is refused
+    fr = _edl_ep(source="A.mp4", start=5.0, dur=2.0, freeze=True)
+    with pytest.raises(ValueError, match="freeze 0 has no episode before it"):
+        edit_plan._resolve_freezes([fr, _edl_ep(source="A.mp4", start=12.0, dur=2.0)],
+                                   _freeze_footage())

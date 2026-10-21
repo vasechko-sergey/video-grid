@@ -2243,3 +2243,16 @@ def test_an_explicit_default_move_is_the_same_cut_as_an_absent_one():
     explicit = EDL(episodes=(EDLEpisode(**_ep(source="IMG_1.jpg",
                                               still={"from": 1.0, "to": 0.92})),))
     assert edl_to_reel._cut_identity(absent) == edl_to_reel._cut_identity(explicit)
+
+
+def test_a_freeze_joins_its_cut_identity_and_a_video_does_not(tmp_path):
+    """source/start/dur cannot tell a held frame from a played window (design 2026-10-21
+    §3): a 2.0s freeze of the frame at 1.9667s and a 2.0s window starting there share all
+    three."""
+    played = EDLEpisode(**_ep(start=1.9667))
+    held = EDLEpisode(**_ep(start=1.9667, freeze=True))
+    ids = edl_to_reel._cut_identity(EDL(episodes=(EDLEpisode(**_ep()), held, played)))
+    assert ids == [{"source": "a.mp4", "start": 0.0, "dur": 2.0, "ramp": None},
+                   {"source": "a.mp4", "start": 1.9667, "dur": 2.0, "ramp": None,
+                    "freeze": True},
+                   {"source": "a.mp4", "start": 1.9667, "dur": 2.0, "ramp": None}]
