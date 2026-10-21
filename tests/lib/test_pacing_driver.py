@@ -471,6 +471,20 @@ def test_the_driver_hands_the_fitter_one_held_record_per_episode(monkeypatch, tm
     assert seen["bounds"][1:3] == [(0.0, 0.0), (0.0, 0.0)]
 
 
+def test_a_video_only_cut_hands_the_fitter_no_held_list_at_all(monkeypatch, run_dir):
+    seen = {}
+
+    def spy(durs, beats, energy, hz, tempo, bounds, *, held=None):
+        seen["held"] = held
+        raise _Stop()
+
+    monkeypatch.setattr(driver.pacing, "fit_spine", spy)
+    with pytest.raises(_Stop):
+        driver.build_pacing(str(run_dir / "EDL.json"), str(run_dir / "FOOTAGE.json"),
+                            [str(run_dir / "MUSIC.json")], str(run_dir))
+    assert seen == {"held": None}
+
+
 def test_a_held_episodes_bounds_are_a_placeholder_the_walk_never_reads():
     f = Footage(clips=[FootageClip(source="a.mp4", dur=30.0, res=(1920, 1080), fps=30.0),
                        FootageClip(source="IMG_1.HEIC", dur=hold.HOLD_ROOM,

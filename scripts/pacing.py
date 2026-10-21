@@ -172,6 +172,10 @@ def build_pacing(edl_json: str, footage_json: str, music_jsons: list[str], out_d
     # HOLD_ROOM; an authored `hold` outranks the planner (design 2026-10-21 §2).
     held = [gridfit.Held(ep.hold, hold.HOLD_MIN, hold.HOLD_ROOM) if ep.held() else None
             for ep in edl.episodes]
+    # No held episode → no list at all, so a video-only fit takes the walk that existed
+    # before held episodes did, by structure rather than by an all-None list staying
+    # equivalent to it forever (and builds no planner)
+    held = held if any(h is not None for h in held) else None
     best = None
     for path in music_jsons:
         m = MusicSpec.from_json(path)
