@@ -173,3 +173,26 @@ def test_probe_duration_is_the_shared_helper():
     # extract._probe_dur is promoted to assembly.probe_duration — one duration probe, shared.
     assert extract._probe_dur is assembly.probe_duration
     assert callable(assembly.probe_duration)
+
+
+def _ffprobe_says(monkeypatch, payload: dict):
+    seen = {}
+    monkeypatch.setattr(assembly.proc, "run", lambda cmd, **k: (
+        seen.setdefault("cmd", cmd), type("C", (), {"stdout": json.dumps(payload).encode()})())[1])
+    return seen
+
+
+def test_count_frames_counts_the_decoded_frames(monkeypatch):
+    seen = _ffprobe_says(monkeypatch, {"streams": [{"nb_read_frames": "61"}]})
+    assert assembly.count_frames("seg.mp4") == 61
+    # COUNTED, by a decode — not the container's nb_frames, and not duration x rate
+    assert "-count_frames" in seen["cmd"] and "stream=nb_read_frames" in seen["cmd"]
+
+
+@pytest.mark.parametrize("payload", [{"streams": []}, {"streams": [{}]},
+                                     {"streams": [{"nb_read_frames": "N/A"}]},
+                                     {"streams": [{"nb_read_frames": "0"}]}])
+def test_count_frames_refuses_a_stream_with_no_decodable_frame(monkeypatch, payload):
+    _ffprobe_says(monkeypatch, payload)
+    with pytest.raises(RuntimeError, match="seg.mp4 has no decodable video frame"):
+        assembly.count_frames("seg.mp4")

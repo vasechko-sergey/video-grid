@@ -58,22 +58,28 @@ def extract(src: str, start: float, dur: float, out: str, crf: int = 18) -> str:
     return out
 
 
-def extract_freeze(src: str, t: float, dur: float, fps: float, out: str, crf: int = 18) -> str:
-    """The frame of `src` at `t`, held for `dur` at `fps` (design 2026-10-21 §3): a video
-    segment like extract's, on the same range contract, whose frames are one frame
-    cloned — so it is tracked, framed and graded downstream like any window.
+def extract_freeze(prev_segment: str, dur: float, out: str, crf: int = 18) -> str:
+    """The LAST decoded frame of `prev_segment` — the previous episode's own segment —
+    held for `dur` at that segment's rate (design 2026-10-21 §3): a video segment like
+    extract's, on the same range contract, whose frames are one frame cloned.
 
-    NO `-ss` at all, before or after `-i`. The filter's `trim=start` is frame-accurate on
-    its own, and an output-side `-ss` is applied AFTER the filtergraph: it would seek
-    inside the one-frame clone, so `trim=end_frame=1` would take frame 0 of the source
-    and the hold would freeze the wrong moment. The cost is a decode from the start to
-    `t` (design §7). No audio: the sound stopping on a freeze is part of the effect."""
-    n = max(1, round(dur * fps))
+    The frame is taken by COUNT (`trim=start_frame=n-1`), so it is the last one the
+    previous episode shows by construction. A source time cannot promise that: which
+    source frames extract's output-side `-ss`/`-t` keeps depends on both ends' phase
+    against the frame grid, and measured over 28 random off-grid cuts the time
+    `start + dur - 1/fps` named a NEIGHBOUR of the segment's last frame in 5, in both
+    directions (tests/integration/test_freeze.py carries three of them). A ramped previous
+    segment is already retimed when this runs, so its last frame is the one that plays.
+
+    NO `-ss` at all: the trim is the selection. No audio: the sound stopping on a freeze
+    is part of the effect."""
+    n = assembly.count_frames(prev_segment)
+    hold = max(1, round(dur * assembly.probe_stream(prev_segment).fps))
     cmd = [
-        ffbin.ffmpeg(), "-y", "-i", src,
+        ffbin.ffmpeg(), "-y", "-i", prev_segment,
         # the same range pair extract carries, for the same contract (design 2026-08-27)
-        "-vf", f"trim=start={t},setpts=PTS-STARTPTS,trim=end_frame=1,"
-               f"tpad=stop_mode=clone:stop={n - 1},scale=in_range=auto:out_range=tv",
+        "-vf", f"trim=start_frame={n - 1},setpts=PTS-STARTPTS,"
+               f"tpad=stop_mode=clone:stop={hold - 1},scale=in_range=auto:out_range=tv",
         "-color_range", "tv", "-an",
         "-c:v", "libx264", "-crf", str(crf), "-preset", "medium", "-pix_fmt", "yuv420p", out,
     ]
@@ -164,9 +170,9 @@ def extract_edl(edl: EDL, footage_root: str, seg_dir: str,
     delivery, and takes the clock of the EDL's first video segment, so the videos are
     cut first.
 
-    A freeze (design 2026-10-21 §3) is cut in the video loop by extract_freeze, under
-    the same length gate. edit_plan never lets one open the cut, so the photos' clock
-    still comes from a played window."""
+    A freeze (design 2026-10-21 §3) is cut in the video loop by extract_freeze from the
+    previous episode's segment, under the same length gate. EDL never lets one open the
+    cut, so the photos' clock still comes from a played window."""
     Path(seg_dir).mkdir(parents=True, exist_ok=True)
     photos = [i for i, ep in enumerate(edl.episodes) if runlayout.is_photo(ep.source)]
     if photos and project is None:
@@ -189,14 +195,22 @@ def extract_edl(edl: EDL, footage_root: str, seg_dir: str,
                              f"(footage_root={footage_root!r} + source={ep.source!r})")
         out = str(Path(seg_dir) / f"ep{i}_raw.mp4")
         if ep.freeze:
-            # the source's own rate: the hold is that many of ITS frames, on its clock
-            extract_freeze(src, ep.start, ep.dur, assembly.probe_stream(src).fps, out)
+            # The previous episode's segment, finished one iteration ago — cut, and
+            # retimed in place when it ramps — because this loop runs in reel order and
+            # photos are rendered after it. EDL refuses a freeze that does not follow a
+            # played window; this guards the ORDER, which a reshuffle of this loop would
+            # otherwise break silently (the freeze would hold a stale or missing file).
+            if i - 1 not in segments:
+                raise ValueError(f"EDL episode {i} is a freeze, and episode {i - 1} has no "
+                                 f"played segment cut before it to take the last frame "
+                                 f"from — a freeze must follow a played video window")
+            extract_freeze(segments[i - 1], ep.dur, out)
         else:
             extract(src, ep.start, ep.dur, out)
         probed, fps = _probe_dur(out), assembly.probe_stream(out).fps
         if probed + 1.0 / fps + _LEN_EPS < ep.dur:
-            what = (f"{ep.dur}s hold (source {src!r}, frame at {ep.start}s); the encode lost "
-                    f"frames" if ep.freeze else
+            what = (f"{ep.dur}s hold of episode {i - 1}'s last frame ({segments.get(i - 1)}); "
+                    f"the encode lost frames" if ep.freeze else
                     f"{ep.dur}s window (source {src!r} start={ep.start}); the window runs past "
                     f"the clip. Trim the window or fix the in-point.")
             raise ValueError(f"EDL episode {i} segment is {probed:.3f}s — shorter than its "

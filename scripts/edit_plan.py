@@ -527,11 +527,13 @@ def _freeze_entry(sel: dict, episodes: list[EDLEpisode], k: int) -> EDLEpisode:
 
 
 def _resolve_freezes(episodes: list[EDLEpisode], footage: Footage) -> list[EDLEpisode]:
-    """Every freeze's `start` from its predecessor AS IT IS NOW: the last frame that
-    episode's segment shows, `start + dur - 1/fps` whatever the frame phase, never before
-    its own in-point (design 2026-10-21 §3). Run last, after pacing and the outro fit —
-    either may move the predecessor's cut, and the outro fit may grow the freeze's own
-    length, which moves nothing here."""
+    """Every freeze's `start` from its predecessor AS IT IS NOW: `start + dur - 1/fps`,
+    the source time of the frame it holds, never before its own in-point (design
+    2026-10-21 §3). A LABEL — the cut identity and EDL.md read it. The pixels come from
+    the predecessor's own segment (extract.extract_freeze), whose last frame this time can
+    miss by one either way when both ends of the window are off the frame grid. Run last,
+    after pacing and the outro fit — either may move the predecessor's cut, and the outro
+    fit may grow the freeze's own length, which moves nothing here."""
     by_source = {c.source: c for c in footage.clips}
     out = list(episodes)
     for i, ep in enumerate(out):

@@ -69,6 +69,26 @@ def probe_rate(path: str) -> tuple[str, int]:
     return s["r_frame_rate"], int(s["time_base"].split("/")[1])
 
 
+def count_frames(path: str) -> int:
+    """How many frames a decoder actually reads from the first video stream — COUNTED
+    (`-count_frames`, one full decode), never `duration × rate`, which can name a frame
+    one past the stream's real end (see _LAST_FRAME_MARGIN_S). The freeze takes its
+    previous segment's last frame by this number (design 2026-10-21 §3)."""
+    out = proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
+                    "-count_frames", "-show_entries", "stream=nb_read_frames", "-of", "json",
+                    str(path)]).stdout.decode("utf-8", errors="replace")
+    streams = json.loads(out).get("streams", [])
+    raw = streams[0].get("nb_read_frames") if streams else None
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        n = 0
+    if n < 1:
+        raise RuntimeError(f"{path} has no decodable video frame (ffprobe read "
+                           f"{raw!r}) — re-cut it")
+    return n
+
+
 def probe_duration(path: str) -> float:
     """Container duration in seconds (format=duration). StreamInfo carries w/h/fps
     only; this is the shared duration probe (was extract._probe_dur)."""
