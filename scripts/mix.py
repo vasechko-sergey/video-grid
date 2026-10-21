@@ -361,9 +361,17 @@ def mix(music: MusicSpec, out_dir: str, dur: float,
             # measured 4.9 and 6.3 dB on wide-range fixtures — so the note says so.
             linear = (float(st["input_lra"]) <= _LRA_TARGET
                       and float(st["input_tp"]) + gain <= _TP_MAX)
+            # The bed by what it holds, not by whether it exists: `sfx` is the whooshes
+            # (the flag's own meaning, and all a bed held before the accent) and
+            # `clicks` the shutter accent's, present only when placed — so the note
+            # never calls a bed of clicks "the transition whooshes", and a record with
+            # no accent is the one it always was.
+            whooshes = sfx_bed is not None and sfx and bool(
+                _major_cuts([du for _, du in segments]))
             Path(without_music).with_suffix(".json").write_text(json.dumps(
-                {"ambient": amb is not None, "sfx": sfx_bed is not None,
-                 "gain_db": round(gain, 3), "linear": linear}))
+                {"ambient": amb is not None, "sfx": whooshes,
+                 "gain_db": round(gain, 3), "linear": linear,
+                 **({"clicks": True} if sfx_bed is not None and shutters else {})}))
     return out
 
 

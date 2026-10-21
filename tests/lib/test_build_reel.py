@@ -1210,6 +1210,23 @@ def test_a_reel_for_the_app_also_ships_without_its_song_and_with_a_note(tmp_path
     assert sorted(p.name for p in (tmp_path / "out").glob("REEL_v*")) == ["REEL_v3.mp4"]
 
 
+def test_the_sound_note_names_the_clicks_mix_recorded(tmp_path, monkeypatch):
+    """A record written before `clicks` existed reads as no clicks; one that has them
+    reaches the note."""
+    src = tmp_path / "out" / "REEL_v1.mp4"
+    src.parent.mkdir()
+    src.write_bytes(b"reel")
+    stem = tmp_path / "nm.m4a"
+    monkeypatch.setattr(build_reel.proc, "run", lambda cmd, **k: Path(cmd[-1]).write_bytes(b"m"))
+    monkeypatch.setattr(build_reel.check_reel, "_probe_dur", lambda p: 3.0)
+    rm = _rm_music(music=str(tmp_path / "MUSIC.json"), ambient=False)
+    for extra, said in (({"clicks": True}, True), ({}, False)):
+        stem.with_suffix(".json").write_text(json.dumps(
+            {"ambient": False, "sfx": False, "gain_db": 0.0, "linear": True, **extra}))
+        res = build_reel._deliver_without_music(str(src), str(stem), _fake_music(), rm)
+        assert ("with the shutter clicks kept" in Path(res["sound_note"]).read_text()) is said
+
+
 def test_a_reel_not_for_the_app_ships_exactly_as_before(tmp_path, monkeypatch):
     mixed, runs = [], []
     _wire_in_app(monkeypatch, tmp_path, mixed, runs)

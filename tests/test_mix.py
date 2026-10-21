@@ -442,3 +442,24 @@ def test_mix_records_what_the_music_less_stem_holds_and_whether_the_gain_is_exac
             without_music=str(nm))
     assert json.loads(nm.with_suffix(".json").read_text()) == {
         "ambient": True, "sfx": False, "gain_db": 6.0, "linear": linear}
+
+
+@pytest.mark.parametrize("sfx, segs, want", [
+    # clicks alone: the bed exists, and it holds no whoosh
+    (False, [("s0.mp4", 2.0), ("s1.mp4", 2.0), ("s2.mp4", 2.0)], {"sfx": False, "clicks": True}),
+    # whooshes enabled but no major cut to place one on: still clicks only
+    (True, [("s0.mp4", 2.0), ("s1.mp4", 2.0), ("s2.mp4", 2.0)], {"sfx": False, "clicks": True}),
+    # a held middle shot makes two major cuts: both kinds
+    (True, [("s0.mp4", 1.0), ("s1.mp4", 4.0), ("s2.mp4", 1.0)], {"sfx": True, "clicks": True}),
+])
+def test_mix_records_clicks_apart_from_whooshes(tmp_path, monkeypatch, sfx, segs, want):
+    """Review M1: the record said `sfx: true` for a bed of clicks alone, and the note
+    read that as "the transition whooshes kept"."""
+    stats = (b'"input_i" : "-20.0", "input_tp" : "-9.0", '
+             b'"input_lra" : "5.0", "input_thresh" : "-30.0"')
+    monkeypatch.setattr(mix.proc, "run", lambda cmd, **k: _R(stdout=b"48000,2\n", stderr=stats))
+    nm = tmp_path / "out" / "no_music.m4a"
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0, segments=segs, ambient=False,
+            sfx=sfx, shutters=[2.0], without_music=str(nm))
+    assert json.loads(nm.with_suffix(".json").read_text()) == {
+        "ambient": False, "gain_db": 6.0, "linear": True, **want}

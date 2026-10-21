@@ -108,6 +108,7 @@ def _deliver_without_music(delivered: str, stem: str, music: MusicSpec,
                                      provenance.digest_file(str(src)),
                                      check_reel._probe_dur(str(src)), cuts, rm.platform,
                                      ambient=held["ambient"], sfx=held["sfx"],
+                                     clicks=held.get("clicks", False),
                                      linear=held["linear"], fitted=rm.outro is not None))
     return {"no_music": str(target), "sound_note": str(note)}
 
