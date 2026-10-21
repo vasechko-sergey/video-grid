@@ -112,6 +112,18 @@ def _deliver_without_music(delivered: str, stem: str, music: MusicSpec,
     return {"no_music": str(target), "sound_note": str(note)}
 
 
+def _accent_times(clips: list[str], shutters: tuple[int, ...]) -> list[float]:
+    """The master's real cut time of each accented episode (design 2026-10-21 §4): the
+    sum of the PROBED durations of the clips before it — the numbers check_reel sums
+    for its own cut times, read through its own helpers so the two cannot disagree.
+    Not the target_durs: a clip is a whole number of frames, so the master's cuts sit
+    wherever the encodes put them. No probe at all when nothing is accented."""
+    if not shutters:
+        return []
+    starts = [0.0, *check_reel._boundaries([check_reel._probe_dur(c) for c in clips])]
+    return [starts[i] for i in shutters]
+
+
 def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None = None) -> dict:
     """Drive rm's locked clips to a delivered reel or a stop-and-report finding."""
     Path(work_dir).mkdir(parents=True, exist_ok=True)
@@ -160,6 +172,12 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
     # entry rather than letting a stale number outlive the clip it described.
     chroma = [e.chroma for e in rm.episodes]
     predicted = _predict(rm)
+    # The shutter accent's cut times (design 2026-10-21 §4), derived ONCE, in the first
+    # round whose picture passes, and handed to mix (the click) and deliver (the flash)
+    # alike: the two must land on one instant, so they share one list. Like the stem,
+    # it is not re-derived if a later round re-renders a clip — the stem is not rebuilt
+    # then either, and a reprocess renders the episode at the length it had.
+    accents: list[float] | None = None
     need_assemble = True
     # A fit whose rung is "unchanged" chose nothing — the reel kept its footage-derived
     # length — so it must not block the absorb. .get with a default rather than [] :
@@ -210,8 +228,10 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                         "finding": {"reason": reason, "episode_idx": None,
                                     "problems": problems},
                         "report": report.to_dict(), "reprocessed": sorted(reprocessed)}
+            if accents is None:
+                accents = _accent_times(clips, rm.shutters)
             if music is not None and audio is None:  # picture passed → build the stem once, re-check with it
-                want = rm.ambient or rm.sfx
+                want = rm.ambient or rm.sfx or bool(accents)
                 segments = ([(e.manifest["segment"], e.manifest["target_dur"]) for e in rm.episodes]
                             if want else None)
                 # The look's opening and closing fades reach the sound as they reach the
@@ -231,6 +251,8 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
                     # the same reel with the track muted, from the same beds and the same
                     # measurement as the stem above (design 2026-10-20 §2)
                     fade_kw["without_music"] = str(Path(work_dir) / "audio_no_music.m4a")
+                if accents:                # only then, so a reel without one keeps the
+                    fade_kw["shutters"] = accents  # call shape it had (`gates`' rule below)
                 audio = mix.mix(music, work_dir, check_reel._probe_dur(master),
                                 segments=segments, ambient=rm.ambient, sfx=rm.sfx, **fade_kw)
                 continue                             # need_assemble stays False — clips unchanged, no re-assemble
@@ -266,7 +288,8 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
             out = deliver.deliver(master, REEL_H264, out_dir, rm.changelog, report,
                                   scratch_dir=work_dir,   # build/reel — never the deliveries bucket
                                   audio=audio, titles=titles, platform=rm.platform,
-                                  look=rm.look, run_provenance=prov)
+                                  look=rm.look, run_provenance=prov,
+                                  **({"flashes": accents} if accents else {}))
             result = {"status": "delivered", "output": out, "report": report.to_dict(),
                       "reprocessed": sorted(reprocessed)}
             if rm.music_in_app and music is not None:

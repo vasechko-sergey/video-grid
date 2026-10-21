@@ -456,6 +456,9 @@ def _reel_manifest(mds: list[dict], results: list[dict], routes: list[str | None
                       # SPEC.music_in_app: the deliver arm also writes the reel without
                       # the song and its sound note (design 2026-10-20)
                       music_in_app=edl.music_in_app,
+                      # the episodes whose cut carries the shutter accent; build_reel
+                      # places it on the master's real cut time (design 2026-10-21 §4)
+                      shutters=tuple(i for i, ep in enumerate(edl.episodes) if ep.shutter),
                       **extra)
     # The run's record, assembled where all three parts are in hand (design §6). The
     # override list is a DIFF of the effective check spec against a default one, so a

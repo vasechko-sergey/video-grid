@@ -1,7 +1,9 @@
 import pytest
 
-from scripts.lib.look import (LOOK_FADE_MAX, LOOK_VIGNETTE_MAX, LookSpec, chain,
-                              fade_args, mask_expr)
+from scripts.lib import lint
+from scripts.lib.look import (FLASH_ALPHA, FLASH_FRAMES, LOOK_FADE_MAX, LOOK_VIGNETTE_MAX,
+                              LookSpec, chain, clear_of_flash, fade_args, flash_args,
+                              flash_free, flash_windows, mask_expr)
 
 
 def test_default_is_no_look():
@@ -154,3 +156,98 @@ def test_a_head_and_tail_that_meet_are_refused():
 def test_a_long_close_fits_a_reel_that_opens_on_picture():
     # the old rule (2 * fade > dur) refused this; only the ends that render count
     assert fade_args(0.8, 1.2, fade_in=0.0) == ["fade=t=out:st=0.400:d=0.800"]
+
+
+# --- the shutter accent's flash (design 2026-10-21 §4) ---------------------------------
+
+def test_the_flash_is_three_frames_white_at_the_conventions_opacities():
+    assert FLASH_ALPHA == (0.85, 0.5, 0.2) and FLASH_FRAMES == 3
+
+
+def test_flash_args_writes_one_full_frame_white_box_per_frame_of_each_flash():
+    """Each frame's window is centred on the frame's own instant, half a frame either
+    side, so a cut time a hair off the frame grid still enables that frame and only
+    it. The first window of a flash at 0 starts at 0, not at a negative time."""
+    box = "drawbox=x=0:y=0:w=iw:h=ih:color=white@{a}:t=fill:enable='between(t,{lo},{hi})'"
+    assert flash_args([0.0, 2.0], 25.0) == [
+        box.format(a="0.85", lo="0.000000", hi="0.020000"),
+        box.format(a="0.5", lo="0.020000", hi="0.060000"),
+        box.format(a="0.2", lo="0.060000", hi="0.100000"),
+        box.format(a="0.85", lo="1.980000", hi="2.020000"),
+        box.format(a="0.5", lo="2.020000", hi="2.060000"),
+        box.format(a="0.2", lo="2.060000", hi="2.100000")]
+
+
+def test_flash_args_is_empty_with_no_flash():
+    assert flash_args([], 30.0) == []
+    assert flash_args((), 0.0) == []        # nothing to place, so no rate is needed
+
+
+def test_a_flash_passes_the_landmine_guard_because_its_commas_are_quoted():
+    """CLAUDE.md: a bare comma inside a filter value splits the chain. The between()
+    carries two, so the enable value is single-quoted inside the -vf string."""
+    vf = ",".join(flash_args([1.0, 3.5], 30.0))
+    assert lint.check_argv(["ffmpeg", "-i", "m.mp4", "-vf", vf, "out.mp4"]) == []
+    assert vf.count("'") == 2 * 2 * FLASH_FRAMES
+
+
+@pytest.mark.parametrize("times, fps, what", [
+    ([1.0], 0.0, "fps"), ([1.0], -30.0, "fps"), ([1.0], True, "fps"),
+    ([1.0], float("nan"), "fps"), ([-0.1], 30.0, "time"), ([True], 30.0, "time"),
+    (["1.0"], 30.0, "time"), ([float("inf")], 30.0, "time")])
+def test_flash_args_refuses_a_rate_or_time_it_cannot_place(times, fps, what):
+    with pytest.raises(ValueError, match=what):
+        flash_args(times, fps)
+    with pytest.raises(ValueError, match=what):
+        flash_windows(times, fps)
+
+
+def test_the_flash_rides_first_then_the_titles_then_the_fade():
+    """The fade last is what still darkens a flash at t=0 — and the titles above the
+    flash, so a title over a photo cut stays legible through the white."""
+    flashes = flash_args([1.0], 30.0)
+    assert chain(LookSpec(fade=0.5), 30.0, "drawtext=x=1", flashes=flashes) == [
+        *flashes, "drawtext=x=1", "fade=t=in:st=0:d=0.500", "fade=t=out:st=29.500:d=0.500"]
+    assert chain(None, 30.0, flashes=flashes) == flashes
+
+
+def test_a_chain_with_no_flash_is_the_chain_it_was():
+    for spec, titles in ((None, ""), (LookSpec(fade=0.5), "drawtext=x=1"),
+                         (LookSpec(vignette=0.3), "")):
+        assert chain(spec, 30.0, titles, flashes=()) == chain(spec, 30.0, titles)
+
+
+def test_a_flash_window_is_a_frame_before_it_to_a_frame_after_its_last():
+    w = flash_windows([1.0, 2.0], 25.0)
+    assert [x for pair in w for x in pair] == pytest.approx([0.96, 1.16, 1.96, 2.16])
+    assert flash_windows([], 0.0) == []
+
+
+def test_clear_of_flash_leaves_a_clear_time_alone_and_moves_one_in_a_window_to_its_end():
+    w = flash_windows([1.0], 25.0)                       # [0.96, 1.16)
+    lo, hi = w[0]
+    assert clear_of_flash(0.5, w) == 0.5
+    assert clear_of_flash(0.959, w) == 0.959             # just before: clear
+    assert clear_of_flash(lo, w) == hi                   # the window's start is inside it
+    assert clear_of_flash(1.0, w) == hi
+    assert clear_of_flash(hi, w) == hi                   # its end is the first clear instant
+    assert clear_of_flash(2.0, []) == 2.0
+
+
+def test_clear_of_flash_walks_through_windows_that_overlap():
+    """A window's end can sit inside another flash's window (two accented cuts a few
+    frames apart): one step would land the sample on the second flash. In either order
+    of the windows — one pass in time order would get there, deliver's caller is not
+    obliged to hand them sorted."""
+    for times in ([1.0, 1.12], [1.12, 1.0]):             # [0.96, 1.16), [1.08, 1.28)
+        assert clear_of_flash(1.0, flash_windows(times, 25.0)) == pytest.approx(1.28)
+
+
+def test_flash_free_is_every_part_of_a_span_outside_the_windows():
+    w = flash_windows([1.0, 3.0], 25.0)                  # [0.96, 1.16), [2.96, 3.16)
+    free = flash_free(0.0, 4.0, w)
+    assert [x for part in free for x in part] == pytest.approx(
+        [0.0, 0.96, 1.16, 2.96, 3.16, 4.0])
+    assert flash_free(1.0, 1.1, w) == []                 # the whole span is one flash
+    assert flash_free(0.5, 0.9, w) == [(0.5, 0.9)]       # no flash touches it
+    assert flash_free(0.0, 4.0, []) == [(0.0, 4.0)]

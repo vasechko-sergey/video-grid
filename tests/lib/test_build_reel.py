@@ -1235,3 +1235,68 @@ def test_a_failed_music_less_mux_is_reported_beside_the_delivery_not_raised(tmp_
     assert res["status"] == "delivered" and "no_music" not in res
     assert "ffmpeg exited 1" in res["no_music_error"]
     assert not list((tmp_path / "out" / "no-music").glob(".*part*"))   # no half-written file
+
+
+# --- the shutter accent: one list of cut times for the click and the flash (design
+# 2026-10-21 §4) --------------------------------------------------------------------
+
+_CLIP_DURS = {"c0.mp4": 2.0, "c1.mp4": 1.5, "c2.mp4": 3.0}
+
+
+def _accent_world(tmp_path, monkeypatch, *, music=True, ambient=False, sfx=False,
+                  shutters=(1, 2)):
+    """Three clips whose PROBED lengths (2.0, 1.5, 3.0) are not their target_durs (2.0
+    each): the accent sits on the master's real cut, which is what check_reel sums."""
+    eps = [ReelEpisode(manifest={"segment": f"s{i}.mp4", "target_dur": 2.0},
+                       clip=f"c{i}.mp4", route=f"r{i}.json") for i in range(3)]
+    rm = ReelManifest(episodes=eps, target_dur=6.0, music=str(tmp_path / "M.json")
+                      if music else None, ambient=ambient, sfx=sfx, shutters=shutters)
+    got = {"mix": [], "deliver": []}
+    reports = [_passing(), _passing()]
+    monkeypatch.setattr(build_reel.assembly, "probe_stream", lambda p: _si())
+    monkeypatch.setattr(build_reel.assembly, "assemble", lambda *a, **k: None)
+    monkeypatch.setattr(build_reel.check_reel, "_probe_dur",
+                        lambda p: _CLIP_DURS.get(Path(p).name, 6.0))
+    monkeypatch.setattr(build_reel.check_reel, "run", lambda *a, **k: reports.pop(0))
+    monkeypatch.setattr(build_reel.MusicSpec, "from_json", staticmethod(lambda p: _fake_music()))
+    monkeypatch.setattr(build_reel.mix, "mix",
+                        lambda *a, **k: (got["mix"].append(k), "stem.m4a")[1])
+    monkeypatch.setattr(build_reel.deliver, "deliver",
+                        lambda *a, **k: (got["deliver"].append(k), "OUT.mp4")[1])
+    res = build_reel.build_reel(rm, str(tmp_path / "out"), str(tmp_path / "work"))
+    assert res["status"] == "delivered"
+    return got
+
+
+def test_accent_times_are_the_masters_cuts_from_the_probed_clip_durations(monkeypatch):
+    probed = []
+    monkeypatch.setattr(build_reel.check_reel, "_probe_dur",
+                        lambda p: probed.append(p) or _CLIP_DURS[p])
+    clips = ["c0.mp4", "c1.mp4", "c2.mp4"]
+    assert build_reel._accent_times(clips, (0, 1, 2)) == [0.0, 2.0, 3.5]
+    assert probed == clips
+    probed.clear()
+    assert build_reel._accent_times(clips, ()) == [] and probed == []   # no probe when none
+
+
+def test_the_click_and_the_flash_get_the_same_cut_times(tmp_path, monkeypatch):
+    got = _accent_world(tmp_path, monkeypatch)
+    assert got["mix"][0]["shutters"] == [2.0, 3.5]
+    assert got["deliver"][0]["flashes"] == [2.0, 3.5]
+    assert got["mix"][0]["shutters"] is got["deliver"][0]["flashes"]
+
+
+def test_a_shutter_alone_hands_mix_the_segments_its_bed_is_cut_to(tmp_path, monkeypatch):
+    got = _accent_world(tmp_path, monkeypatch, ambient=False, sfx=False)
+    assert got["mix"][0]["segments"] == [("s0.mp4", 2.0), ("s1.mp4", 2.0), ("s2.mp4", 2.0)]
+
+
+def test_a_silent_reel_still_flashes_on_its_accented_cuts(tmp_path, monkeypatch):
+    got = _accent_world(tmp_path, monkeypatch, music=False)
+    assert got["mix"] == [] and got["deliver"][0]["flashes"] == [2.0, 3.5]
+
+
+def test_a_reel_without_accents_keeps_the_mix_and_deliver_call_shapes(tmp_path, monkeypatch):
+    got = _accent_world(tmp_path, monkeypatch, shutters=())
+    assert "shutters" not in got["mix"][0] and "flashes" not in got["deliver"][0]
+    assert got["mix"][0]["segments"] is None               # ambient and sfx off, as before

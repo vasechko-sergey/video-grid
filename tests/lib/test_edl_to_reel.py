@@ -2436,3 +2436,23 @@ def test_a_cut_without_a_freeze_is_one_pool_over_every_episode(tmp_path, monkeyp
     edl_to_reel.build_geometry(_edl_file(tmp_path), _project(tmp_path), str(tmp_path),
                                work, out)
     assert calls == [None]
+
+
+# --- the shutter accent rides the reel manifest (design 2026-10-21 §4) ---------------
+
+def test_the_manifest_lists_the_episodes_whose_cut_carries_the_shutter(tmp_path, monkeypatch):
+    _wire_freeze(monkeypatch, frames=3)
+    work, out = _reel_dirs(tmp_path)
+    cut = [_ep(), _ep(start=1.9667, freeze=True, composition="center", shutter=True),
+           _ep(start=4.0)]
+    rm, stop = edl_to_reel._build_manifest(_edl_file(tmp_path, episodes=cut),
+                                           _project(tmp_path), str(tmp_path), work, out)
+    assert stop is None and rm.shutters == (1,)
+
+
+def test_a_cut_with_no_shutter_writes_no_shutter_key(tmp_path, monkeypatch):
+    _wire_freeze(monkeypatch, frames=3)
+    work, out = _reel_dirs(tmp_path)
+    rm, stop = edl_to_reel._build_manifest(_edl_file(tmp_path, episodes=_freeze_cut()),
+                                           _project(tmp_path), str(tmp_path), work, out)
+    assert stop is None and rm.shutters == () and "shutters" not in rm.to_dict()

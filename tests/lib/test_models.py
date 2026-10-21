@@ -2573,6 +2573,36 @@ def test_reel_manifest_refuses_music_in_app_without_music():
         m.ReelManifest.from_dict(_reel_dict(music_in_app=True))
 
 
+# --- the shutter accent's carrier (design 2026-10-21 §4) ---
+
+def test_reel_manifest_carries_the_accented_episodes_and_omits_them_when_none():
+    rm = m.ReelManifest.from_dict(_reel_dict(shutters=[0, 1]))
+    assert rm.shutters == (0, 1) and rm.to_dict()["shutters"] == [0, 1]
+    assert m.ReelManifest.from_dict(rm.to_dict()) == rm
+    # no accent: the key is absent, so an EPISODES.json written before the field stays
+    # byte-identical and reads back as no accent
+    plain = m.ReelManifest.from_dict(_reel_dict())
+    assert plain.shutters == () and "shutters" not in plain.to_dict()
+    assert json.dumps(plain.to_dict()) == json.dumps(
+        m.ReelManifest.from_dict(_reel_dict(shutters=[])).to_dict())
+
+
+@pytest.mark.parametrize("bad", [[1, 0], [0, 0], [2], [-1], [True], [0.0], ["0"], "01", 1,
+                                 {"0": 1}])
+def test_reel_manifest_refuses_a_shutter_list_it_cannot_place(bad):
+    with pytest.raises(ValueError, match=r"ReelManifest\.shutters.*edl_to_reel"):
+        m.ReelManifest.from_dict(_reel_dict(shutters=bad))
+
+
+def test_reel_manifest_reads_a_null_shutter_list_as_none():
+    assert m.ReelManifest.from_dict(_reel_dict(shutters=None)).shutters == ()
+
+
+def test_reel_manifest_refuses_a_shutter_list_built_in_code_that_is_not_a_tuple():
+    with pytest.raises(ValueError, match="tuple"):
+        _reel_with(shutters=[0])
+
+
 # --- PathMeta.still (design 2026-10-20 §5): the third provenance bit ---
 
 def test_pathmeta_records_a_still_and_omits_it_otherwise():

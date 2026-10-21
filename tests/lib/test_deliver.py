@@ -603,3 +603,84 @@ def test_since_last_survives_a_hand_corrupted_sidecar(tmp_path):
     reel.write_bytes(b"x")
     provenance.attest_path(reel).write_text(json.dumps({"edl": "x"}))
     assert deliver._since_last(str(tmp_path), 2, "mp4", {"edl": {"digest": "e"}}) == ""
+
+
+# --- the shutter flash is in the delivery and not in the master (design 2026-10-21 §4) --
+
+def test_title_times_takes_the_longest_flash_free_part_of_its_window():
+    from scripts.lib import look
+    items = (Title("hook", 2.0, 1.0),)
+    w = look.flash_windows([2.4], 30.0)                 # [2.3667, 2.5333)
+    t_in, _, skipped = deliver._title_times(items, 0, dur=34.0, fade=0.0, windows=w)
+    assert skipped == "" and t_in == pytest.approx((w[0][1] + 3.0) / 2)
+    assert look.clear_of_flash(t_in, w) == t_in
+    # with no flash the in-window time is the midpoint it always was
+    assert deliver._title_times(items, 0, dur=34.0, fade=0.0)[0] == 2.5
+
+
+def test_title_times_skips_a_title_that_sits_wholly_on_a_flash():
+    from scripts.lib import look
+    items = (Title("snap", 2.0, 0.1),)
+    _, _, skipped = deliver._title_times(items, 0, dur=34.0, fade=0.0,
+                                         windows=look.flash_windows([2.0], 30.0))
+    assert "shutter flash" in skipped and "[2, 2.1]" in skipped
+
+
+def test_title_times_drops_a_witness_that_sits_on_a_flash():
+    """The first title-free grid instant is 6.375s; without the flash it is the first
+    witness, so the drop is observable."""
+    from scripts.lib import look
+    items = (Title("a", 0.0, 5.0),)
+    assert deliver._title_times(items, 0, dur=34.0, fade=0.0)[1][0] == pytest.approx(6.375)
+    w = look.flash_windows([6.375], 30.0)
+    _, witnesses, skipped = deliver._title_times(items, 0, dur=34.0, fade=0.0, windows=w)
+    assert skipped == "" and witnesses
+    assert all(look.clear_of_flash(x, w) == x for x in witnesses)
+    assert 6.375 not in witnesses
+
+
+def _spy_verify(monkeypatch, seen):
+    import numpy as np
+    monkeypatch.setattr(deliver.assembly, "probe_duration", lambda p: 10.0)
+    monkeypatch.setattr(deliver.assembly, "probe_stream",
+                        lambda p: SimpleNamespace(w=100, h=200, fps=30.0))
+    monkeypatch.setattr(deliver.assembly, "frames_rgb",
+                        lambda p, ts, fps: (seen.append((p, tuple(ts))),
+                                            [np.zeros((200, 100, 3), np.uint8)] * len(ts))[1])
+    monkeypatch.setattr(deliver.assembly, "last_frame_rgb",
+                        lambda p, fps: np.zeros((200, 100, 3), np.uint8))
+    monkeypatch.setattr(deliver.lookcheck, "evaluate", lambda *a, **k: [])
+
+
+def test_verify_look_moves_an_interior_sample_off_a_flash(monkeypatch):
+    """A flash on 0.5 x the reel is exactly where the vignette is judged: the sample
+    moves to the end of the flash's window, the other two stay where they were."""
+    from scripts.lib import look
+    from scripts.lib.look import LookSpec
+    seen = []
+    _spy_verify(monkeypatch, seen)
+    deliver._verify_look("m.mp4", "d.mp4", LookSpec(vignette=0.3), None, "", flashes=[5.0])
+    end = look.flash_windows([5.0], 30.0)[0][1]
+    assert seen == [("m.mp4", (2.5, end, 7.5)), ("d.mp4", (2.5, end, 7.5))]
+    seen.clear()
+    deliver._verify_look("m.mp4", "d.mp4", LookSpec(vignette=0.3), None, "")
+    assert seen == [("m.mp4", (2.5, 5.0, 7.5)), ("d.mp4", (2.5, 5.0, 7.5))]
+
+
+def test_verify_look_keeps_the_titles_samples_off_a_flash(tmp_path, monkeypatch):
+    from scripts.lib import look
+    seen = []
+    _spy_verify(monkeypatch, seen)
+    tj = tmp_path / "TITLES.json"
+    titles_lib.Titles(items=(Title("hook", 2.0, 1.0, pos="top"),)).write(tj)
+    w = look.flash_windows([2.4, 6.0], 30.0)
+    deliver._verify_look("m.mp4", "d.mp4", None, str(tj), "", flashes=[2.4, 6.0])
+    sampled = {t for _, ts in seen for t in ts}
+    assert sampled and all(look.clear_of_flash(t, w) == t for t in sampled)
+
+
+def test_a_flash_alone_declares_nothing_for_the_gate_to_prove(monkeypatch):
+    seen = []
+    _spy_verify(monkeypatch, seen)
+    assert deliver._verify_look("m.mp4", "d.mp4", None, None, "", flashes=[1.0]) == []
+    assert seen == []

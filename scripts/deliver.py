@@ -6,6 +6,7 @@ import json
 import math
 import os
 import re
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 
@@ -123,7 +124,9 @@ def _title_band(t: Title, h: int, platform: str) -> tuple[int, int]:
 
 
 def _title_times(items: tuple[Title, ...], i: int, dur: float,
-                 fade: float, fade_in: float | None = None) -> tuple[float, tuple[float, ...], str]:
+                 fade: float, fade_in: float | None = None, *,
+                 windows: Sequence[tuple[float, float]] = ()
+                 ) -> tuple[float, tuple[float, ...], str]:
     """(in-window time, witness times, skip reason) for item `i`.
 
     Both ends are clamped into [fade, dur - fade] because BOTH break inside a ramp, in
@@ -133,7 +136,13 @@ def _title_times(items: tuple[Title, ...], i: int, dur: float,
     false pass respectively, and a no-waiver gate can afford neither.
 
     `fade` is the closing ramp and, unless `fade_in` sets it apart, the opening one: a
-    reel that opens on picture has no opening ramp to clamp out of (retro 2026-10-16 S6)."""
+    reel that opens on picture has no opening ramp to clamp out of (retro 2026-10-16 S6).
+
+    `windows` are the shutter flashes' (look.flash_windows): the flash is white in the
+    delivered file and absent from the master, so a sample on one reads as a title
+    where there is none. The in-window time is the midpoint of the longest flash-free
+    part of the clamped window, and a witness inside a flash is dropped. With no
+    flashes this is the sampling it always was (design 2026-10-21 §4)."""
     head = fade if fade_in is None else fade_in
     lo, hi = float(head), float(dur) - float(fade)
     t = items[i]
@@ -147,18 +156,29 @@ def _title_times(items: tuple[Title, ...], i: int, dur: float,
         return 0.0, (), (f"the title's window [{t.start:g}, {t.start + t.dur:g}] lies "
                          f"entirely inside the {ramps}, where a correctly "
                          f"rendered title is drawn too faint to measure")
+    parts = look_lib.flash_free(w_lo, w_hi, windows)
+    if not parts:
+        return 0.0, (), (f"every instant of the title's measurable window [{w_lo:g}, "
+                         f"{w_hi:g}] sits on a shutter flash or the frame either side of "
+                         f"one, where the delivered picture is white and the master's is not")
+    p_lo, p_hi = max(parts, key=lambda p: p[1] - p[0])
     covered = [(it.start, it.start + it.dur) for it in items]
     grid = [lo + (hi - lo) * (k + 0.5) / _WITNESS_GRID for k in range(_WITNESS_GRID)]
-    free = [x for x in grid if not any(a <= x <= b for a, b in covered)]
+    free = [x for x in grid if not any(a <= x <= b for a, b in covered)
+            and look_lib.clear_of_flash(x, windows) == x]
     if not free:
-        return 0.0, (), ("every instant of the reel carries a title, so there is no "
+        return 0.0, (), ("every instant of the reel carries a title or a shutter flash, "
+                         "so there is no title-free frame to compare against"
+                         if windows else
+                         "every instant of the reel carries a title, so there is no "
                          "title-free frame to compare against")
     step = max(1, len(free) // _TITLE_WITNESSES)
-    return (w_lo + w_hi) / 2, tuple(free[::step][:_TITLE_WITNESSES]), ""
+    return (p_lo + p_hi) / 2, tuple(free[::step][:_TITLE_WITNESSES]), ""
 
 
 def _verify_look(master: str, out: str, look: LookSpec | None,
-                 titles: str | None, platform: str = "") -> list[lookcheck.LookFinding]:
+                 titles: str | None, platform: str = "",
+                 flashes: Sequence[float] = ()) -> list[lookcheck.LookFinding]:
     """Prove the declared look reached the DELIVERED pixels (design 2026-08-15 §7).
 
     check_reel measured the master; everything below rides this encode and nothing
@@ -185,6 +205,14 @@ def _verify_look(master: str, out: str, look: LookSpec | None,
     witnesses — all gathered into ONE extra `frames_rgb` per file, which selects them
     in a single decode, so N titles do not cost N decodes.
 
+    `flashes` are the shutter accent's cut times (design 2026-10-21 §4). The flash is
+    in the delivered file and not in the master, so every sample this gate compares is
+    kept out of every look.flash_windows span: an interior sample inside one moves to
+    its end, and the titles' times avoid them (_title_times). The two bookend frames
+    are not moved — t=0 is black under a declared fade-in, flash or not, and a flash
+    deliver accepts ends a frame before the last. The flash itself is declared but not
+    proven here (design §7).
+
     With nothing declared this makes no ffmpeg call at all, so a look-less delivery
     costs exactly what it cost before this gate existed.
     """
@@ -194,9 +222,10 @@ def _verify_look(master: str, out: str, look: LookSpec | None,
     if not (vig or fade or head or titles is not None):
         return []
     out_dur = assembly.probe_duration(out)
-    ts = [out_dur * f for f in (0.25, 0.5, 0.75)]
     m_si, d_si = assembly.probe_stream(master), assembly.probe_stream(out)
     m_fps, d_fps = m_si.fps, d_si.fps
+    windows = look_lib.flash_windows(flashes, d_fps)
+    ts = [look_lib.clear_of_flash(out_dur * f, windows) for f in (0.25, 0.5, 0.75)]
     first_m = first_d = last_m = last_d = None
     if head:
         first_m = assembly.frames_rgb(master, [0.0], m_fps)[0]
@@ -207,7 +236,8 @@ def _verify_look(master: str, out: str, look: LookSpec | None,
     probes: list[lookcheck.TitleProbe] = []
     if titles is not None:
         items = Titles.from_json(titles).items
-        plan = [_title_times(items, i, out_dur, fade, head) for i in range(len(items))]
+        plan = [_title_times(items, i, out_dur, fade, head, windows=windows)
+                for i in range(len(items))]
         extra = sorted({t for t_in, ws, why in plan if not why for t in (t_in, *ws)})
         m_extra = dict(zip(extra, assembly.frames_rgb(master, extra, m_fps))) if extra else {}
         d_extra = dict(zip(extra, assembly.frames_rgb(out, extra, d_fps))) if extra else {}
@@ -231,7 +261,8 @@ def _verify_look(master: str, out: str, look: LookSpec | None,
 def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
             report: ReelReport, *, scratch_dir: str, audio: str | None = None,
             titles: str | None = None, platform: str = "",
-            look: LookSpec | None = None, run_provenance: dict | None = None) -> str:
+            look: LookSpec | None = None, run_provenance: dict | None = None,
+            flashes: Sequence[float] = ()) -> str:
     """Encode the checked master to the next REEL_v{n} and log the version. With
     `audio`, mux the pre-normalized aac stem alongside the encode (design §6).
     Hard gate: a failed reel is never shipped (no fix-forward, montage §176).
@@ -248,6 +279,11 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     (design §5.16) — no second pass. `platform` is the same safe-zone table key
     check_reel judges the PICTURE against; it must reach here too, or a bottom title
     is laid out against generic margins and lands under the app's chrome.
+
+    `flashes` are the shutter accent's cut times on the master (design 2026-10-21 §4):
+    a white flash on each, first in the chain so the titles sit over it and the
+    bookend fade still darkens it. Placed at the master's probed fps; with none the
+    argv is byte-for-byte what it was before the accent existed.
 
     With `look` (design 2026-08-13), a plateau vignette and/or a bookend fade ride
     this same encode. A vignette needs a second input (the mask), so the video
@@ -330,8 +366,22 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     title_chain = ""
     if titles is not None:
         title_chain = build_filterchain(Titles.from_json(titles), scratch_dir, platform=platform)
-    dur = assembly.probe_duration(master) if (look is not None and look.has_fade) else 0.0
-    parts = look_lib.chain(look, dur, title_chain)
+    dur = (assembly.probe_duration(master)
+           if (look is not None and look.has_fade) or flashes else 0.0)
+    flash_chain: list[str] = []
+    if flashes:
+        fps = assembly.probe_stream(master).fps
+        flash_chain = look_lib.flash_args(flashes, fps)
+        # Its frames and the frame after them inside the reel: a flash placed later
+        # renders partly or not at all, which nothing downstream would notice, and the
+        # look gate's fade-out reads the last frame unmoved (_verify_look).
+        late = [t for t in flashes if t + (look_lib.FLASH_FRAMES + 1) / fps > dur + 1e-6]
+        if late:
+            raise ValueError(
+                f"a shutter flash at {late[0]:g}s needs {look_lib.FLASH_FRAMES} frames and "
+                f"one after them before the {dur:g}s reel ends — the accented episode is "
+                f"shorter than its flash; lengthen it, or drop its `shutter` in the EDL")
+    parts = look_lib.chain(look, dur, title_chain, flashes=flash_chain)
     mask_in: list[str] = []
     graph: list[str] = []
     vmap: list[str] = []
@@ -368,7 +418,7 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     # stays on disk — deleting output nobody asked to delete is worse than leaving the
     # evidence — but no attestation is written, which montage status already reports as
     # an unattested delivery. No waiver (governance #8).
-    look_checks = _verify_look(master, out, look, titles, platform)
+    look_checks = _verify_look(master, out, look, titles, platform, flashes)
     bad = [f for f in look_checks if f.status == "fail"]
     if bad:
         raise RuntimeError(
