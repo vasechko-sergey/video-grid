@@ -7,12 +7,13 @@ driver here; the raw-findings → typed-artifact idiom is edit_plan's selection.
 """
 import argparse
 import json
+from collections.abc import Sequence
 from itertools import accumulate
 from pathlib import Path
 
 from PIL import Image
 
-from scripts.lib import assembly, fetch, prompts, provenance, runlayout
+from scripts.lib import assembly, fetch, look as look_lib, prompts, provenance, runlayout
 from scripts.lib.look import LookSpec
 from scripts.lib.models import MusicSpec, ReelManifest
 from scripts.lib.review import Finding, Review
@@ -21,6 +22,8 @@ from scripts.lib.review import Finding, Review
 # later than _END_MIN before the end, and both _CLEAR past the bookend fade, which
 # darkens a frame by the picture's own fade rather than by anything the `colour` axis
 # should read as a grade (deliver._title_times clamps its look-gate samples the same way).
+# The shutter flash whitens a frame the same way, so a still also steps off every flash
+# (still_times).
 _HOOK_MIN, _END_MIN, _CLEAR = 0.5, 1.0, 0.1
 
 
@@ -92,10 +95,18 @@ def _load_findings(path: str) -> tuple[list, str]:
                      f"got {type(data).__name__}")
 
 
-def still_times(clip_durs: list[float], reel_dur: float,
-                look: LookSpec | None) -> dict[str, float]:
+def still_times(clip_durs: list[float], reel_dur: float, look: LookSpec | None, *,
+                shutters: Sequence[int] = (), fps: float = 0.0) -> dict[str, float]:
     """The reviewer's stills: the hook, the ending and one mid-frame per episode, every
-    one clamped out of the reel's own bookend fade."""
+    one clamped out of the reel's own bookend fade — and off every shutter flash (design
+    2026-10-21 §4), which the delivered reel carries and which would read as a grade on
+    the `colour` axis just as a fade would.
+
+    `shutters` are EPISODES.json's accented indices. Each flash sits on its episode's
+    start — the sum of the probed durations before it, the cut build_reel flashed — and
+    its window is deliver's look gate's own (look.flash_windows at the reel's `fps`). A
+    still on one moves past it by deliver's rule (look.clear_of_flash), or back before
+    it when past it would leave [hook, ending] — the ending's later side is the fade."""
     head = look.head if look is not None else 0.0
     tail = look.tail if look is not None else 0.0
     lo, hi = max(_HOOK_MIN, head + _CLEAR), reel_dur - max(_END_MIN, tail + _CLEAR)
@@ -104,9 +115,21 @@ def still_times(clip_durs: list[float], reel_dur: float,
                          f"{tail:g}s bookend fades to grab a still from — shorten the "
                          f"fade in EDL.look, or review a longer cut")
     starts = [0.0, *accumulate(clip_durs)][:-1]
-    mids = {f"mid{i}": min(max(s + d / 2, lo), hi)
+    windows = look_lib.flash_windows([starts[i] for i in shutters], fps)
+
+    def clear(name: str, t: float) -> float:
+        for moved in (look_lib.clear_of_flash(t, windows),
+                      look_lib.clear_of_flash(t, windows, before=True)):
+            if lo <= moved <= hi:
+                return moved
+        raise ValueError(
+            f"the {name} still at {t:g}s sits on a shutter flash, and neither side of it "
+            f"has a clear frame inside [{lo:g}, {hi:g}]s, the part of the reel outside "
+            f"its bookend fades — review a longer cut, or drop a `shutter` in the EDL")
+
+    mids = {f"mid{i}": clear(f"mid{i}", min(max(s + d / 2, lo), hi))
             for i, (s, d) in enumerate(zip(starts, clip_durs))}
-    return {"hook": lo, "ending": hi, **mids}
+    return {"hook": clear("hook", lo), "ending": clear("ending", hi), **mids}
 
 
 def _report_bound(reel: str, report: dict, at: Path) -> bool:
@@ -207,11 +230,13 @@ def pack(reel: str, reel_dir: str, *, report: str | None = None, intent: str = "
                          f"clip from it; pass the --reel-dir of the run that delivered "
                          f"this reel")
     rm = ReelManifest.from_json(episodes)
+    fps = assembly.probe_stream(reel).fps
     times = still_times([assembly.probe_duration(e.clip) for e in rm.episodes],
-                        assembly.probe_duration(reel), rm.look)
+                        assembly.probe_duration(reel), rm.look, shutters=rm.shutters,
+                        fps=fps)
     out = lay.build / "_review"
     out.mkdir(parents=True, exist_ok=True)
-    frames = assembly.frames_rgb(reel, list(times.values()), assembly.probe_stream(reel).fps)
+    frames = assembly.frames_rgb(reel, list(times.values()), fps)
     stills = []
     for name, frame in zip(times, frames):
         Image.fromarray(frame).save(out / f"{name}.png")
@@ -248,7 +273,8 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--out-dir", required=True, help="dir for REVIEW.json + REVIEW.md")
     k = sub.add_parser("pack", help="grab the stills and write the reviewer's filled prompt",
                        description="grab the hook, ending and per-episode stills from the "
-                                   "delivered reel (clear of its bookend fade) and write "
+                                   "delivered reel (clear of its bookend fade and its "
+                                   "shutter flashes) and write "
                                    "build/_review/reviewer_prompt.md — the reviewer "
                                    "template filled with SPEC, EDL.md, the check_reel "
                                    "report and the music. Dispatch that file verbatim.")

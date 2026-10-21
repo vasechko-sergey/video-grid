@@ -241,17 +241,23 @@ def flash_windows(times: Sequence[float], fps: float) -> list[tuple[float, float
     return [(t - 1 / fps, t + (FLASH_FRAMES + 1) / fps) for t in times]
 
 
-def clear_of_flash(t: float, windows: Sequence[tuple[float, float]]) -> float:
-    """`t` itself when no window holds it, else the end of the window that does —
-    repeated, since that end can sit inside the next flash's window. The one
-    membership rule (lo <= t < hi) every look-gate sample is judged by: a time is
+def clear_of_flash(t: float, windows: Sequence[tuple[float, float]], *,
+                   before: bool = False) -> float:
+    """`t` itself when no window holds it, else the end of the window that does — or,
+    with `before`, one frame before that window's start, for a sample that must not
+    move later (reel_review's ending still, whose later side is the bookend fade) —
+    repeated, since either can sit inside another flash's window. The one membership
+    rule (lo <= t < hi) every sample of a flashed delivery is judged by: a time is
     clear exactly when this returns it unchanged."""
     moved = True
     while moved:
         moved = False
         for lo, hi in windows:
             if lo <= t < hi:
-                t, moved = hi, True
+                # flash_windows makes a window FLASH_FRAMES + 2 frames long, so this is
+                # one of its frames: the start itself is inside, a frame before is not
+                t = lo - (hi - lo) / (FLASH_FRAMES + 2) if before else hi
+                moved = True
     return t
 
 

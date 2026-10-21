@@ -204,7 +204,11 @@ at the master's real cut time (the probed clip durations `check_reel` already su
   `grade_faithful`) reads the episode or the master, and a white frame under any of their
   samples would read as a grade. Deliver's own look gate compares the delivered file
   against the master, so its samples are moved out of every flash window (the vignette's
-  mid sample, the titles' in-window times and witnesses).
+  mid sample, the titles' in-window times and witnesses). reel-review's stills step off
+  them too, by the same rule — they are grabbed from the delivered reel and feed its
+  `colour` axis, where a frame washed toward white reads as a grade; a still that cannot
+  move later without entering the fade-out (the ending) steps back a frame before the
+  window instead.
 - **a shutter click** in mix's SFX bed: two seeded 15 ms high-passed noise bursts 70 ms
   apart, at the cut, un-ducked, through the bed the whooshes already use (the stem is
   built when there is music; a reel without music has no stem and so no click).

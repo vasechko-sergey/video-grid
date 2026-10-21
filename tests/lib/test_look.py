@@ -247,6 +247,22 @@ def test_clear_of_flash_walks_through_windows_that_overlap():
         assert clear_of_flash(1.0, flash_windows(times, 25.0)) == pytest.approx(1.28)
 
 
+def test_clear_of_flash_before_moves_a_time_to_a_frame_ahead_of_the_window():
+    """For a sample that must not move later: the window's start is inside it, so the
+    move lands a frame earlier — here 1/25 s before 0.96."""
+    w = flash_windows([1.0], 25.0)                       # [0.96, 1.16)
+    assert clear_of_flash(1.0, w, before=True) == pytest.approx(0.92)
+    assert clear_of_flash(w[0][0], w, before=True) == pytest.approx(0.92)
+    assert clear_of_flash(0.5, w, before=True) == 0.5    # a clear time stays put
+    assert clear_of_flash(w[0][1], w, before=True) == w[0][1]
+
+
+def test_clear_of_flash_before_walks_back_through_windows_that_overlap():
+    for times in ([1.0, 1.12], [1.12, 1.0]):             # [0.96, 1.16), [1.08, 1.28)
+        assert clear_of_flash(1.1, flash_windows(times, 25.0),
+                              before=True) == pytest.approx(0.92)
+
+
 def test_flash_free_is_every_part_of_a_span_outside_the_windows():
     w = flash_windows([1.0, 3.0], 25.0)                  # [0.96, 1.16), [2.96, 3.16)
     free = flash_free(0.0, 4.0, w)
