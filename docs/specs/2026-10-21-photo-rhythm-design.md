@@ -216,7 +216,8 @@ at the master's real cut time (the probed clip durations `check_reel` already su
 `ReelManifest.shutters` lists the accented episodes' indices (omitted when empty);
 `edl_to_reel` fills it from the EDL. The delivery's attestation lists the flash times
 (`flashes`, omitted when none): the delivered file differs from the master there on
-purpose, and the attestation is where a reader holding `master_digest` looks.
+purpose, and the attestation is where a reader holding `master_digest` looks. `probe
+look` is deliver's own gate run by hand, and takes them as `--flash`.
 
 ## §5 · U8c — groups, and photos ranked among photos
 

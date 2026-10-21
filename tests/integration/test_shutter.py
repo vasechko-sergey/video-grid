@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 from scipy.io import wavfile
 
-from scripts import check_reel, deliver as deliver_mod, mix
+from scripts import check_reel, deliver as deliver_mod, mix, probe
 from scripts.lib import assembly, ffbin, proc, provenance
 from scripts.lib.look import FLASH_ALPHA, FLASH_FRAMES, LookSpec
 from scripts.lib.models import MusicSpec, REEL_H264, ReelCheckSpec, ReelReport
@@ -96,6 +96,13 @@ def test_the_flash_is_in_the_delivery_not_the_master_and_the_look_gate_steps_aro
     # bright as its centre, and the check fails.
     blind = deliver_mod._verify_look(master, out, look, str(tj), "")
     assert {f.check: f.status for f in blind}["vignette"] == "fail"
+    # and the hand re-check is the same gate: told the flashes (the attestation's own
+    # list) it agrees with deliver; not told, it fails the vignette the same way
+    by_hand = probe.probe_look(master, out, vignette=0.4, fade=0.5, titles=str(tj),
+                               flashes=att["flashes"])
+    assert {f["check"]: f["status"] for f in by_hand} == by
+    assert {f["check"]: f["status"] for f in probe.probe_look(
+        master, out, vignette=0.4, fade=0.5, titles=str(tj))}["vignette"] == "fail"
 
 
 def _rgb(path: str) -> np.ndarray:

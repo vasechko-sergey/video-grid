@@ -15,15 +15,17 @@ lane. The agent looks, edits the EDL, probes again.
 """
 import argparse
 import json
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
-from scripts import color_measure, process_episode, reframe
+from scripts import color_measure, deliver, process_episode, reframe
 from scripts.lib import (assembly, color, edl as edl_lib, ffbin, gates as gates_lib,
-                         gradedamage, lookcheck, naturalness, proc, provenance, sheet)
+                         gradedamage, naturalness, proc, provenance, sheet)
 from scripts.lib.edl import EDL
+from scripts.lib.look import LookSpec
 from scripts.lib.manifest import COLOUR_IDENTITY, COLOUR_KEYS
 from scripts.lib.models import CheckSpec, CropPath, PathMeta, ReelGeometry, ReelManifest
 
@@ -414,32 +416,22 @@ def probe_grade_geometry(geometry_path: str, index: int, *, out_dir: str | None 
 
 
 def probe_look(master: str, delivered: str, *, vignette: float = 0.0,
-               fade: float = 0.0, titles: bool = False,
-               fade_in: float | None = None) -> list[dict]:
-    """The delivered-look check deliver gates on, run by hand against two files."""
-    dur = assembly.probe_duration(delivered)
-    ts = [dur * 0.25, dur * 0.5, dur * 0.75]
-    m_fps, d_fps = assembly.probe_stream(master).fps, assembly.probe_stream(delivered).fps
-    mm = assembly.frames_rgb(master, ts, m_fps)
-    dd = assembly.frames_rgb(delivered, ts, d_fps)
-    f_m = f_d = l_m = l_d = None
-    head = fade if fade_in is None else fade_in
-    if head:
-        f_m = assembly.frames_rgb(master, [0.0], m_fps)[0]
-        f_d = assembly.frames_rgb(delivered, [0.0], d_fps)[0]
-    if fade:
-        # each file's TRUE last frame, via last_frame_rgb rather than a computed
-        # timestamp — sampling both sides at one shared timestamp would miss exactly
-        # the failure this check exists to catch (deliver derives the fade-out from
-        # the MASTER's duration; a shorter muxed audio stem truncates the DELIVERED
-        # file before the fade-out reaches black), and a computed `dur - 1/fps` can
-        # itself land past a file's real last frame (design 2026-08-15 §7, amended —
-        # final review I-3; see assembly.last_frame_rgb)
-        l_m = assembly.last_frame_rgb(master, m_fps)
-        l_d = assembly.last_frame_rgb(delivered, d_fps)
-    return [f.to_dict() for f in lookcheck.evaluate(
-        mm, dd, f_m, f_d, l_m, l_d, vignette=vignette, fade=fade, fade_in=fade_in,
-        fps=d_fps, titles=titles)]
+               fade: float = 0.0, titles: str | None = None,
+               fade_in: float | None = None, platform: str = "",
+               flashes: Sequence[float] = ()) -> list[dict]:
+    """The delivered-look check deliver gates on, run by hand against two files — and
+    it IS deliver's gate (deliver._verify_look), not a second copy of its sampling: the
+    bookend frames, the interior frames moved off every shutter flash, and each title's
+    in-window and witness frames (`titles`, the TITLES.json burned into the delivery,
+    laid out against `platform`).
+
+    `flashes` are the shutter flash times on the master, as the delivery's attestation
+    lists them (design 2026-10-21 §4). Leave them out on a flashed delivery and its
+    white frames are compared against the master as if they were a look — the false
+    vignette or title readings the real gate steps around."""
+    return [f.to_dict() for f in deliver._verify_look(
+        master, delivered, LookSpec(vignette=vignette, fade=fade, fade_in=fade_in),
+        titles, platform, flashes)]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -493,8 +485,16 @@ def build_parser() -> argparse.ArgumentParser:
     lk.add_argument("--fade-in", type=float, default=None,
                     help="the opening fade that was declared, seconds, when it differs "
                          "from --fade (0 = the reel opens on picture)")
-    lk.add_argument("--titles", action="store_true",
-                    help="also check that title ink reached the pixels")
+    lk.add_argument("--titles", default=None,
+                    help="the TITLES.json burned into the delivery — also check that its "
+                         "ink reached the pixels")
+    lk.add_argument("--platform", default="",
+                    help="the safe-zone table key the titles were laid out against "
+                         "(reel/tiktok/shorts/…), as deliver was given it")
+    lk.add_argument("--flash", type=float, action="append", default=[], metavar="SECONDS",
+                    help="a shutter flash's time on the master, in seconds — repeat per "
+                         "flash; the delivery's attestation lists them as `flashes`. The "
+                         "check steps around each, as deliver's does")
     return ap
 
 
@@ -521,8 +521,8 @@ def main() -> None:
         print(json.dumps(r, indent=2))
     else:
         print(json.dumps(probe_look(a.master, a.delivered, vignette=a.vignette,
-                                    fade=a.fade, fade_in=a.fade_in,
-                                    titles=a.titles), indent=2))
+                                    fade=a.fade, fade_in=a.fade_in, titles=a.titles,
+                                    platform=a.platform, flashes=a.flash), indent=2))
 
 
 if __name__ == "__main__":
