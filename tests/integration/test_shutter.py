@@ -79,6 +79,7 @@ def test_the_flash_is_in_the_delivery_not_the_master_and_the_look_gate_steps_aro
     by = {f["check"]: f["status"] for f in att["look_checks"]}
     assert by == {"vignette": "pass", "fade-in": "pass", "fade-out": "pass",
                   "titles:0 hook": "pass"}
+    assert att["flashes"] == flashes            # where the delivery differs from the master
 
     m, d = _gray(master), _gray(out)
     for t in flashes:

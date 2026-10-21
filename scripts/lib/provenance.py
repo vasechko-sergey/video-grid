@@ -185,6 +185,11 @@ class Attestation:
     # look_checks: an empty list here would change the sidecar of every run that authored
     # nothing, and a run that authored nothing must be byte-identical to one made before the
     # field existed (design 2026-09-30 §3).
+    flashes: list[float] = field(default_factory=list)   # the shutter accent's flash times
+    # on the master (design 2026-10-21 §4): the delivered file is white there and the master
+    # is not, ON PURPOSE — so a reader comparing the two against master_digest knows why.
+    # Declared, not proven: the look gate only steps around them (§7). Absent when empty,
+    # for `gates`' reason.
 
     def to_dict(self) -> dict:
         d = {"v": self.v, "reel": self.reel, "reel_digest": self.reel_digest,
@@ -195,6 +200,8 @@ class Attestation:
              "delivered_at": self.delivered_at, "look_checks": list(self.look_checks)}
         if self.gates:
             d["gates"] = list(self.gates)
+        if self.flashes:
+            d["flashes"] = list(self.flashes)
         return d
 
     @classmethod
@@ -210,7 +217,8 @@ class Attestation:
                    edl=d.get("edl") or {}, overrides=d.get("overrides") or [],
                    episode_qc=d.get("episode_qc") or {},
                    delivered_at=d.get("delivered_at", ""), v=d.get("v", PROV_V),
-                   look_checks=d.get("look_checks") or [], gates=d.get("gates") or [])
+                   look_checks=d.get("look_checks") or [], gates=d.get("gates") or [],
+                   flashes=d.get("flashes") or [])
 
     def write(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2))

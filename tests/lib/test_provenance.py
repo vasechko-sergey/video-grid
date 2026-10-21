@@ -345,6 +345,17 @@ def test_an_attestation_that_authored_no_gates_has_no_gates_key(tmp_path):
     assert provenance.Attestation.from_dict(old).gates == []
 
 
+def test_the_attestation_records_the_flash_times_and_omits_none(tmp_path):
+    """design 2026-10-21 §4: the delivered file is white where the master is not, on
+    purpose. A sidecar with no accent — or written before the field — reads as none."""
+    p = tmp_path / "REEL_v1.attest.json"
+    _att(flashes=[1.0, 3.433333]).write(p)
+    assert json.loads(p.read_text())["flashes"] == [1.0, 3.433333]
+    assert provenance.Attestation.from_json(p).flashes == [1.0, 3.433333]
+    assert "flashes" not in _att().to_dict()
+    assert provenance.Attestation.from_dict(_att().to_dict()).flashes == []
+
+
 def test_verify_delivery_surfaces_the_authored_gates_beside_overrides(tmp_path):
     """montage status reads deliveries[] from this function, and it is the one place a human
     looks. `overrides` covers only reel-scope bars, with no reason (design §2.4: spec_overrides

@@ -341,6 +341,24 @@ def test_a_delivery_with_no_flash_keeps_its_argv_byte_for_byte(tmp_path, monkeyp
                        str(d / "out" / ".REEL_v1.part.mp4")]
 
 
+def test_the_attestation_lists_the_flashes_and_a_delivery_without_one_has_no_key(
+        tmp_path, monkeypatch):
+    """design 2026-10-21 §4: the delivered file is deliberately not the master at the
+    accents, and the attestation is where a reader holding master_digest looks."""
+    _stub_probes(monkeypatch)
+    _capture(monkeypatch)
+    monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **k: [])
+    for name, extra, want in (("a", {"flashes": [1.0, 2.0 + 1 / 3]}, [1.0, 2.333333]),
+                              ("b", {}, None)):
+        d = tmp_path / name
+        d.mkdir()
+        master, rep = _bound(d)
+        out = deliver_mod.deliver(master, REEL_H264, str(d / "out"), "cl", rep,
+                                  scratch_dir=str(d / "scratch"), **extra)
+        att = json.loads(Path(provenance.attest_path(out)).read_text())
+        assert att.get("flashes") == want
+
+
 def test_a_flash_alone_still_takes_the_vf_slot(tmp_path, monkeypatch):
     seen = []
     _stub_probes(monkeypatch, seen=seen)

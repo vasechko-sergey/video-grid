@@ -214,7 +214,9 @@ at the master's real cut time (the probed clip durations `check_reel` already su
   built when there is music; a reel without music has no stem and so no click).
 
 `ReelManifest.shutters` lists the accented episodes' indices (omitted when empty);
-`edl_to_reel` fills it from the EDL.
+`edl_to_reel` fills it from the EDL. The delivery's attestation lists the flash times
+(`flashes`, omitted when none): the delivered file differs from the master there on
+purpose, and the attestation is where a reader holding `master_digest` looks.
 
 ## §5 · U8c — groups, and photos ranked among photos
 

@@ -283,7 +283,8 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
     `flashes` are the shutter accent's cut times on the master (design 2026-10-21 §4):
     a white flash on each, first in the chain so the titles sit over it and the
     bookend fade still darkens it. Placed at the master's probed fps; with none the
-    argv is byte-for-byte what it was before the accent existed.
+    argv is byte-for-byte what it was before the accent existed. The attestation
+    lists them, since the delivered file differs from the master there on purpose.
 
     With `look` (design 2026-08-13), a plateau vignette and/or a bookend fade ride
     this same encode. A vignette needs a second input (the mask), so the video
@@ -443,6 +444,7 @@ def deliver(master: str, profile: ExportProfile, out_dir: str, changelog: str,
         gates=rp.get("gates") or [],
         episode_qc=rp.get("episode_qc") or {},
         look_checks=[f.to_dict() for f in look_checks],
+        flashes=[round(float(t), 6) for t in flashes],
         delivered_at=datetime.now().isoformat(timespec="seconds"),
     ).write(provenance.attest_path(out))
     return out
