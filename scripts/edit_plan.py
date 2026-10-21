@@ -502,16 +502,19 @@ def _freeze_entry(sel: dict, episodes: list[EDLEpisode], k: int) -> EDLEpisode:
     time; its `start` is a placeholder until _resolve_freezes, because the previous cut
     may still move (pacing, the outro fit). It is not tracked: edl_to_reel renders it
     over the previous episode's last route sample, held."""
+    # The value first: `"freeze": false` beside a source and a window is a played window
+    # with a stray key, and "drop the key" is the remedy that applies — not "a freeze
+    # carries only freeze, shutter, hold", which reads it as a freeze.
+    if sel["freeze"] is not True:
+        raise ValueError(f"selection episode {k}: `freeze` must be true, got "
+                         f"{sel['freeze']!r} — to cut a played window, drop the key and "
+                         f"name a source and a window")
     extra = sorted(set(sel) - set(FREEZE_KEYS))
     if extra:
         raise ValueError(
             f"selection episode {k}: a freeze carries only {', '.join(FREEZE_KEYS)} — got "
             f"{', '.join(extra)}. It inherits the previous episode's framing (source, "
             f"window, layout, crop, hero, colour) and composes center; author those there")
-    if sel["freeze"] is not True:
-        raise ValueError(f"selection episode {k}: `freeze` must be true, got "
-                         f"{sel['freeze']!r} — to cut a played window, drop the key and "
-                         f"name a source and a window")
     prev = episodes[-1] if episodes else None
     if prev is None or prev.held():
         why = ("it cannot open the cut" if prev is None else

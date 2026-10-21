@@ -2135,6 +2135,15 @@ def test_freeze_must_be_true(value):
         edit_plan.build_edl(_freeze_footage(), sel)
 
 
+def test_freeze_false_beside_a_window_is_told_to_drop_the_key():
+    # a played window with a stray `"freeze": false`: the remedy that applies is "drop the
+    # key", not "a freeze carries only freeze, shutter, hold"
+    sel = {"episodes": [_turn(), {**_turn(), "freeze": False}]}
+    with pytest.raises(ValueError, match="selection episode 1: `freeze` must be true, got "
+                                         "False — to cut a played window, drop the key"):
+        edit_plan.build_edl(_freeze_footage(), sel)
+
+
 def test_a_freeze_is_not_a_new_use_of_footage_in_the_variety_census():
     sel = {"episodes": [_turn(), {"freeze": True}]}
     edl = edit_plan.build_edl(_freeze_footage(), sel, aspect=(16, 9),
