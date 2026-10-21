@@ -36,12 +36,16 @@ from scripts.lib.footage import FootageClip
 # embeddings (was a 24-d colour histogram) and CastEntry carries presence, so a v5
 # result must miss. An all-or-nothing version beats a per-field logic hash nobody
 # can audit.
-CACHE_VERSION = 9   # 8→9 (2026-09-03): the carve band joins the key. carve_windows runs
+CACHE_VERSION = 10  # 8→9 (2026-09-03): the carve band joins the key. carve_windows runs
                     # inside the cached Phase 1, so before this a changed WIN_MIN/WIN_MAX
                     # returned boundaries carved under the OLD band, silently — the band
                     # was the only carve input absent from the key (design
                     # 2026-09-03 §0.5). The bump exists so the reason is recorded rather
                     # than inferred from a key that merely happens to differ.
+                    # 9→10 (2026-10-21): a photo's capture time and sharpness join the
+                    # payload — Phase 2 groups photos on the first and ranks them on the
+                    # second, and a v9 photo carries neither (design 2026-10-21 §5). A
+                    # miss only re-scans; nothing a v9 entry holds is lost.
 
 
 @dataclass
@@ -63,6 +67,8 @@ class ClipResult:
     clip: FootageClip
     phashes: list[str] = field(default_factory=list)   # hex, parallel to clip.windows
     cast: list[CastEntry] = field(default_factory=list)
+    taken: float | None = None       # a photo's capture time, seconds since the epoch
+    sharpness: float | None = None   # a photo's Laplacian variance at the analysis scale
 
 
 def clip_key(path: str, sample_fps: float, model: str, proxy_long_side: int,
@@ -113,10 +119,14 @@ def store(out_dir: str, path: str, sample_fps: float, result: ClipResult,
                "cast": [{"source": e.source, "tid": e.tid, "conf": e.conf,
                          "descriptor": e.descriptor, "presence": e.presence,
                          "crop": e.crop} for e in cached]}
+    for k in ("taken", "sharpness"):              # photos only: a video entry carries neither
+        if getattr(result, k) is not None:
+            payload[k] = getattr(result, k)
     tmp = d / "clip.json.tmp"
     tmp.write_text(json.dumps(payload))
     os.replace(tmp, d / "clip.json")               # atomic commit; presence == committed
-    return ClipResult(clip=result.clip, phashes=list(result.phashes), cast=cached)
+    return ClipResult(clip=result.clip, phashes=list(result.phashes), cast=cached,
+                      taken=result.taken, sharpness=result.sharpness)
 
 
 def load(out_dir: str, path: str, sample_fps: float, model: str,
@@ -139,6 +149,7 @@ def load(out_dir: str, path: str, sample_fps: float, model: str,
         cast = [CastEntry(source=c["source"], tid=c["tid"], conf=c["conf"],
                           descriptor=c["descriptor"], presence=c.get("presence", 0.0),
                           crop=c["crop"]) for c in payload["cast"]]
-        return ClipResult(clip=clip, phashes=payload["phashes"], cast=cast)
+        return ClipResult(clip=clip, phashes=payload["phashes"], cast=cast,
+                          taken=payload.get("taken"), sharpness=payload.get("sharpness"))
     except (FileNotFoundError, OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         return None

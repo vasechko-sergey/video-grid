@@ -8,6 +8,7 @@ A FootageWindow projects onto an EDLEpisode (source lives on the parent clip),
 so 5.7 edit-plan promotes a window to an episode by a mechanical field map.
 """
 import json
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -34,6 +35,10 @@ CLOSE_AREA, MEDIUM_AREA = 0.30, 0.08     # subject-area fractions bounding the t
 # validates a FOOTAGE.json against it, and lib may not import a driver (the same
 # reason SHOT_TYPES lives here and moodpreset imports it).
 SCORE_TERMS = ("present", "motion", "shake")
+# ...and the two a PHOTO's score blends. Photos rank among photos only (design
+# 2026-10-21 §5): a still's motion and shake are 0 by construction, which beside video
+# ranks it last on one term and first on the other.
+PHOTO_SCORE_TERMS = ("present", "sharpness")
 
 
 def shot_type(subject_w: float, subject_h: float) -> str:
@@ -137,6 +142,7 @@ class FootageClip:
     scene_cuts: list[float] = field(default_factory=list)
     windows: list[FootageWindow] = field(default_factory=list)
     kind: str = "video"
+    group: str | None = None    # a photo's burst/near-duplicate group id (design 2026-10-21 §5)
 
     def __post_init__(self) -> None:
         if not (isinstance(self.source, str) and self.source):
@@ -175,6 +181,17 @@ class FootageClip:
         for k, w in enumerate(self.windows):
             if not isinstance(w, FootageWindow):
                 raise ValueError(f"FootageClip.windows[{k}] must be a FootageWindow")
+        if self.group is not None:
+            if not (isinstance(self.group, str) and self.group):
+                raise ValueError(f"FootageClip.group must be a non-empty string (a photo "
+                                 f"group id such as 'g1'), or absent for a photo in no "
+                                 f"group; got {self.group!r} — re-run footage-intake to "
+                                 f"regenerate FOOTAGE.json")
+            if self.kind != "photo":
+                raise ValueError(f"FootageClip.group: only a photo is grouped (a burst or "
+                                 f"its near-identical retakes); {self.source} is a "
+                                 f"{self.kind} — re-run footage-intake to regenerate "
+                                 f"FOOTAGE.json")
 
     @classmethod
     def from_dict(cls, d: dict) -> "FootageClip":
@@ -216,6 +233,8 @@ class FootageClip:
              "windows": [w.to_dict() for w in self.windows]}
         if self.kind != "video":       # omitted for video: every FOOTAGE.json and cache
             d["kind"] = self.kind      # entry written before photos stays byte-identical
+        if self.group is not None:     # omitted for a lone photo, and for every video
+            d["group"] = self.group
         return d
 
     def room_after(self, start: float) -> float:
@@ -290,29 +309,23 @@ class Footage:
             self.band = (float(self.band[0]), float(self.band[1]))
         if self.scoring is not None:
             s = self.scoring
-            if not isinstance(s, dict) or set(s) != {"windows", "separated"}:
+            if not (isinstance(s, dict)
+                    and {"windows", "separated"} <= set(s) <= {"windows", "separated", "photos"}):
                 raise ValueError(
-                    f"Footage.scoring must be {{'windows': int, 'separated': {{term: int}}}}, "
-                    f"or null on an artifact written before 2026-09-10. Got {s!r} — re-run "
-                    f"footage-intake to regenerate FOOTAGE.json")
-            n = s["windows"]
-            if isinstance(n, bool) or not isinstance(n, int) or n < 0:
-                raise ValueError(
-                    f"Footage.scoring['windows'] must be an int >= 0, got {n!r} — re-run "
-                    f"footage-intake to regenerate FOOTAGE.json")
-            sep = s["separated"]
-            if not isinstance(sep, dict) or set(sep) != set(SCORE_TERMS):
-                raise ValueError(
-                    f"Footage.scoring['separated'] must carry one count per {SCORE_TERMS}, "
-                    f"got {sep!r} — re-run footage-intake to regenerate FOOTAGE.json")
-            for k in SCORE_TERMS:
-                v = sep[k]
-                if isinstance(v, bool) or not isinstance(v, int) or not 0 <= v <= n:
+                    f"Footage.scoring must be {{'windows': int, 'separated': {{term: int}}}} "
+                    f"(plus an optional 'photos' block of the same shape), or null on an "
+                    f"artifact written before 2026-09-10. Got {s!r} — re-run footage-intake "
+                    f"to regenerate FOOTAGE.json")
+            out = _separation(s, SCORE_TERMS, "Footage.scoring")
+            if "photos" in s:
+                p = s["photos"]
+                if not isinstance(p, dict) or set(p) != {"windows", "separated"}:
                     raise ValueError(
-                        f"Footage.scoring['separated'][{k!r}] must be an int in [0, {n}] — a "
-                        f"term cannot separate more windows than the pool holds; got {v!r} — "
-                        f"re-run footage-intake to regenerate FOOTAGE.json")
-            self.scoring = {"windows": n, "separated": {k: int(sep[k]) for k in SCORE_TERMS}}
+                        f"Footage.scoring['photos'] must be {{'windows': int, 'separated': "
+                        f"{{term: int}}}} over {PHOTO_SCORE_TERMS} — the photos' own pool. "
+                        f"Got {p!r} — re-run footage-intake to regenerate FOOTAGE.json")
+                out["photos"] = _separation(p, PHOTO_SCORE_TERMS, "Footage.scoring['photos']")
+            self.scoring = out
 
     @classmethod
     def from_dict(cls, d: dict) -> "Footage":
@@ -349,7 +362,11 @@ class Footage:
                 "band": None if self.band is None else list(self.band),
                 "scoring": None if self.scoring is None else {
                     "windows": self.scoring["windows"],
-                    "separated": dict(self.scoring["separated"])}}
+                    "separated": dict(self.scoring["separated"]),
+                    # omitted without photos, so a video-only FOOTAGE.json is byte-identical
+                    **({"photos": {"windows": self.scoring["photos"]["windows"],
+                                   "separated": dict(self.scoring["photos"]["separated"])}}
+                       if "photos" in self.scoring else {})}}
 
     def ranked_windows(self) -> list[tuple["FootageClip", "FootageWindow"]]:
         pairs = [(c, w) for c in self.clips for w in c.windows]
@@ -358,7 +375,15 @@ class Footage:
     def to_markdown(self) -> str:
         wins = [w for c in self.clips for w in c.windows]
         n_best = sum(1 for w in wins if w.best)
-        lines = [f"# Footage — {len(self.clips)} clips, {len(wins)} windows ({n_best} best)", "",
+        photos = [c for c in self.clips if c.kind == "photo"]
+        size = Counter(c.group for c in photos if c.group is not None)
+        counted = ""                   # nothing for a video-only set: its header is unchanged
+        if photos:
+            counted = f" · {_n(len(photos), 'photo')}"
+            if size:
+                counted += f" in {_n(len(size), 'group')}"
+        lines = [f"# Footage — {len(self.clips)} clips, {len(wins)} windows ({n_best} best)"
+                 f"{counted}", "",
                  "`score` is a percentile within THIS footage set (design "
                  "2026-08-06-intake-motion-scoring §4.2) — never an absolute quality bar, and "
                  "never comparable to another shoot's numbers. `motion` is mean per-sample "
@@ -370,11 +395,20 @@ class Footage:
                       "ordering — it is not a quality signal here, whatever its weight "
                       "(design 2026-09-10 §4): "
                       + ", ".join(f"**{t}** {sep[t]}/{n}" for t in SCORE_TERMS) + ".", ""]
+            if "photos" in self.scoring:
+                pn, psep = self.scoring["photos"]["windows"], self.scoring["photos"]["separated"]
+                lines += ["A photo's `score` is its percentile among the PHOTOS only — a still "
+                          "has no motion or shake, which beside video would rank it last on "
+                          "one and first on the other (design 2026-10-21 §5). Its two terms: "
+                          + ", ".join(f"**{t}** {psep[t]}/{pn}" for t in PHOTO_SCORE_TERMS)
+                          + ".", ""]
         for c in self.clips:
             flag = " · shaky" if c.shaky else ""
             if c.kind == "photo":
+                grouped = (f" · group {c.group} ({_n(size[c.group], 'photo')})"
+                           if c.group is not None else "")
                 lines.append(f"## {c.source}  (photo · {c.res[0]}×{c.res[1]} · may hold up "
-                             f"to {c.dur:.1f}s)")
+                             f"to {c.dur:.1f}s){grouped}")
             else:
                 lines.append(f"## {c.source}  ({c.dur:.1f}s · {c.res[0]}×{c.res[1]} @{c.fps:g}{flag})")
             if c.scene_cuts:
@@ -387,6 +421,30 @@ class Footage:
                              f"{w.motion:.4f} | {w.shake:.4f} | {w.score:.2f} | {star} | {w.description} |")
             lines.append("")
         return "\n".join(lines)
+
+
+def _n(k: int, noun: str) -> str:
+    return f"{k} {noun}" + ("" if k == 1 else "s")
+
+
+def _separation(s: dict, terms: tuple[str, ...], where: str) -> dict:
+    """One separation report's `windows` and `separated`, validated and normalised —
+    the shape the video pool and the photo pool share (design 2026-09-10 §4)."""
+    n = s["windows"]
+    if isinstance(n, bool) or not isinstance(n, int) or n < 0:
+        raise ValueError(f"{where}['windows'] must be an int >= 0, got {n!r} — re-run "
+                         f"footage-intake to regenerate FOOTAGE.json")
+    sep = s["separated"]
+    if not isinstance(sep, dict) or set(sep) != set(terms):
+        raise ValueError(f"{where}['separated'] must carry one count per {terms}, got "
+                         f"{sep!r} — re-run footage-intake to regenerate FOOTAGE.json")
+    for k in terms:
+        v = sep[k]
+        if isinstance(v, bool) or not isinstance(v, int) or not 0 <= v <= n:
+            raise ValueError(f"{where}['separated'][{k!r}] must be an int in [0, {n}] — a "
+                             f"term cannot separate more windows than the pool holds; got "
+                             f"{v!r} — re-run footage-intake to regenerate FOOTAGE.json")
+    return {"windows": n, "separated": {k: int(sep[k]) for k in terms}}
 
 
 @dataclass

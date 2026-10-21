@@ -135,12 +135,12 @@ def test_a_version_1_entry_is_a_miss(tmp_path):
     assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND) is None
 
 
-def test_clip_key_includes_proxy_long_side_and_v9(tmp_path):
+def test_clip_key_includes_proxy_long_side_and_v10(tmp_path):
     from scripts.lib import intake_cache
     f = tmp_path / "c.mp4"; f.write_bytes(b"x")
     k = intake_cache.clip_key(str(f), sample_fps=3.0, model="m", proxy_long_side=960,
                               band=carve.DEFAULT_BAND)
-    assert k["version"] == 9
+    assert k["version"] == 10
     assert k["proxy_long_side"] == 960
     k2 = intake_cache.clip_key(str(f), sample_fps=3.0, model="m", proxy_long_side=1280,
                                band=carve.DEFAULT_BAND)
@@ -196,13 +196,12 @@ def test_load_is_none_on_changed_band(tmp_path):
                    reid_model="", band=(1.2, 6.0)) is None
 
 
-def test_cache_version_is_nine_for_the_carve_band_key():
-    # the carve band joins clip_key (design 2026-09-03 §0.5/§3): carve_windows runs
-    # inside the cached Phase 1, so a cached v8 ClipResult was carved under whatever
-    # band scanned it, with no key term recording which — a changed WIN_MIN/WIN_MAX
-    # must miss instead of silently returning boundaries carved under the old band
+def test_cache_version_is_ten_for_the_photo_fields():
+    # a photo's capture time and sharpness join the cached payload (design 2026-10-21
+    # §5): a v9 photo result carries neither, and Phase 2 would group and rank it as a
+    # photo with no time and zero sharpness — so it must miss and re-scan instead
     from scripts.lib import intake_cache as ic
-    assert ic.CACHE_VERSION == 9
+    assert ic.CACHE_VERSION == 10
 
 
 def test_clip_key_carries_the_band(tmp_path):
@@ -229,5 +228,36 @@ def test_band_is_a_required_keyword(tmp_path):
         intake_cache.clip_key(str(p), 2.0, "m.pt", 960)
 
 
-def test_cache_version_is_nine():
-    assert intake_cache.CACHE_VERSION == 9
+def _photo_result(name="IMG_1.jpg", taken=1_760_000_000.25, sharpness=812.375):
+    w = FootageWindow(start=0.0, dur=2.0, shot_type="wide", people=0, motion=0.0, shake=0.0)
+    clip = FootageClip(source=name, dur=8.0, res=(400, 300), fps=0.0, windows=[w],
+                       kind="photo")
+    return ClipResult(clip=clip, phashes=["8f3c2a1b0d4e5f60"], taken=taken,
+                      sharpness=sharpness)
+
+
+def test_a_photos_capture_time_and_sharpness_round_trip(tmp_path):
+    out, src = tmp_path / "out", _src(tmp_path, "IMG_1.jpg")
+    stored = intake_cache.store(str(out), str(src), 3.0, _photo_result(), _M, _PROXY,
+                                band=carve.DEFAULT_BAND)
+    loaded = intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
+    assert (stored.taken, stored.sharpness) == (1_760_000_000.25, 812.375)
+    assert (loaded.taken, loaded.sharpness) == (1_760_000_000.25, 812.375)
+    assert loaded.clip.to_dict() == _photo_result().clip.to_dict()
+
+
+def test_a_video_result_writes_no_photo_fields_and_reads_back_none(tmp_path):
+    out, src = tmp_path / "out", _src(tmp_path)
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY, band=carve.DEFAULT_BAND)
+    payload = json.loads((out / ".intake_cache" / "a.mp4" / "clip.json").read_text())
+    assert "taken" not in payload and "sharpness" not in payload
+    loaded = intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
+    assert (loaded.taken, loaded.sharpness) == (None, None)
+
+
+def test_a_photo_without_a_capture_time_round_trips_none(tmp_path):
+    out, src = tmp_path / "out", _src(tmp_path, "IMG_2.png")
+    intake_cache.store(str(out), str(src), 3.0, _photo_result("IMG_2.png", taken=None),
+                       _M, _PROXY, band=carve.DEFAULT_BAND)
+    loaded = intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
+    assert (loaded.taken, loaded.sharpness) == (None, 812.375)
