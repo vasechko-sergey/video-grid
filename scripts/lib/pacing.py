@@ -224,6 +224,13 @@ class Spine:
                           f"measurements — `fit_spine` falls back to 0.5 and labels "
                           f"from it. A window whose beats start well into the reel is "
                           f"the usual cause.*"]
+        if any(s.held for s in self.slots):
+            # the kind cell and the count answer two different spans, and a reader who
+            # takes them for one sees "release · held 1 beat" contradict "shorter where
+            # louder" (design 2026-10-21 §2.1)
+            lines += ["", "*A held slot's kind is the energy band of its own span; its beat "
+                          "count was planned from the bar that opens it (or authored), so the "
+                          "two can disagree.*"]
         return "\n".join(lines) + "\n"
 
 

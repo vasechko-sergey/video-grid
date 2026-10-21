@@ -612,4 +612,14 @@ def test_the_markdown_names_a_held_slots_beats_and_leaves_footage_rows_alone():
         "| 0 | 0.00–2.00 | 2.00 | 0.10 | hook | 2.00 | 0.000 |\n"
         "| 1 | 2.00–3.00 | 1.00 | 0.60 | build · held 2 beats | 3.00 | 0.000 |\n"
         "| 2 | 3.00–3.50 | 0.50 | 0.90 | peak · held 1 beat | 3.50 | 0.000 |\n"
-        "| 3 | 3.50–5.00 | 1.50 | 0.90 | peak | – | – |\n")
+        "| 3 | 3.50–5.00 | 1.50 | 0.90 | peak | – | – |\n"
+        "\n"
+        "*A held slot's kind is the energy band of its own span; its beat count was planned "
+        "from the bar that opens it (or authored), so the two can disagree.*\n")
+
+
+def test_a_spine_with_no_held_slot_carries_no_held_note():
+    sp = Spine(slots=(Slot(0, 0.0, 2.0, 0.1, "hook", line=2.0, dev=0.0, beats_in=4),
+                      Slot(1, 2.0, 1.5, 0.9, "peak", line=None, dev=0.0, beats_in=3)),
+               target_dur=3.5, tempo=120.0)
+    assert "held" not in sp.to_markdown()
