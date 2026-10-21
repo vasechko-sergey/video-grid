@@ -203,3 +203,86 @@ def test_a_jpeg_named_heic_is_still_turned_by_its_exif_tag(tmp_path):
     st = still.load(named)
     assert st.dims == (800, 1200) and _near(st.rgb[5, 800 - 6], RED)
     assert st.record["orientation"] == 6
+
+
+# --- capture time (design 2026-10-21 §5) -------------------------------------------
+
+def _dated_jpeg(path: Path, date=None, subsec=None, offset=None, im=None) -> Path:
+    """A JPEG whose EXIF IFD carries the three capture-time tags given (None = absent)."""
+    ex = Image.Exif()
+    ifd = ex.get_ifd(still.EXIF_IFD)
+    for tag, v in ((still.DATE_ORIGINAL, date), (still.SUBSEC_ORIGINAL, subsec),
+                   (still.OFFSET_ORIGINAL, offset)):
+        if v is not None:
+            ifd[tag] = v
+    (im or _marked(64, 48)).save(path, exif=ex.tobytes(), quality=95)
+    return path
+
+
+def _epoch(*ymdhms, tz=0.0) -> float:
+    import datetime as dt
+    return dt.datetime(*ymdhms, tzinfo=dt.timezone(dt.timedelta(hours=tz))).timestamp()
+
+
+def test_the_capture_time_is_read_from_exif_with_subseconds_and_offset(tmp_path):
+    st = still.load(_dated_jpeg(tmp_path / "a.jpg", "2026:10:21 12:34:56", "25", "+02:00"))
+    assert st.record["taken"] == _epoch(2026, 10, 21, 12, 34, 56, tz=2.0) + 0.25
+
+
+@pytest.mark.parametrize("sub, frac", [("5", 0.5), ("007", 0.007), ("12345", 0.12345)])
+def test_subseconds_are_digits_of_a_fraction_not_a_count(tmp_path, sub, frac):
+    # three digits alone cannot tell a fraction from a millisecond count: "5" and
+    # "12345" can
+    st = still.load(_dated_jpeg(tmp_path / "a.jpg", "2026:10:21 12:34:56", sub, "-05:30"))
+    assert st.record["taken"] == _epoch(2026, 10, 21, 12, 34, 56, tz=-5.5) + frac
+
+
+def test_a_date_without_subseconds_or_offset_is_read_as_whole_seconds_utc(tmp_path):
+    st = still.load(_dated_jpeg(tmp_path / "a.jpg", "2026:10:21 12:34:56"))
+    assert st.record["taken"] == _epoch(2026, 10, 21, 12, 34, 56)
+
+
+def test_two_photos_a_burst_apart_differ_by_the_burst_interval(tmp_path):
+    a = still.load(_dated_jpeg(tmp_path / "a.jpg", "2026:10:21 12:34:56", "900"))
+    b = still.load(_dated_jpeg(tmp_path / "b.jpg", "2026:10:21 12:34:57", "200"))
+    assert round(b.record["taken"] - a.record["taken"], 6) == 0.3
+
+
+def test_a_photo_without_a_capture_time_has_no_taken_key(tmp_path):
+    p = tmp_path / "plain.png"
+    _marked(64, 48).save(p)
+    assert "taken" not in still.load(p).record
+    assert "taken" not in still.load(_dated_jpeg(tmp_path / "o.jpg", subsec="5",
+                                                 offset="+01:00")).record
+
+
+@pytest.mark.parametrize("date", ["garbage", "0000:00:00 00:00:00", "2026:13:40 99:99:99",
+                                  "2026-10-21 12:34:56", ""])
+def test_an_unparseable_date_is_absent_never_a_failure(tmp_path, date):
+    st = still.load(_dated_jpeg(tmp_path / "a.jpg", date, "12", "+02:00"))
+    assert "taken" not in st.record and st.dims == (64, 48)
+
+
+def test_garbage_subseconds_and_offset_leave_the_date_standing(tmp_path):
+    st = still.load(_dated_jpeg(tmp_path / "a.jpg", "2026:10:21 12:34:56", "x1", "zz"))
+    assert st.record["taken"] == _epoch(2026, 10, 21, 12, 34, 56)
+
+
+def test_garbage_exif_bytes_do_not_stop_the_decode(tmp_path):
+    p = tmp_path / "g.jpg"
+    _marked(64, 48).save(p, exif=b"Exif\x00\x00garbagegarbage")
+    st = still.load(p)
+    assert "taken" not in st.record and st.dims == (64, 48)
+
+
+@needs_sips
+def test_a_heic_carries_its_capture_time_the_same_way(tmp_path):
+    """pi_heif cannot ENCODE (no HEIF encoder in its build), so sips writes the fixture;
+    sips carries the JPEG's EXIF into the HEIF, and pi_heif hands it to Pillow."""
+    jpg = _dated_jpeg(tmp_path / "a.jpg", "2026:10:21 12:34:56", "5", "+02:00")
+    heic = tmp_path / "a.heic"
+    subprocess.run(["sips", "-s", "format", "heic", str(jpg), "--out", str(heic)],
+                   check=True, capture_output=True)
+    st = still.load(heic)
+    assert st.record["decoder"] == "HEIF"
+    assert st.record["taken"] == _epoch(2026, 10, 21, 12, 34, 56, tz=2.0) + 0.5

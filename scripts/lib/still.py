@@ -7,8 +7,10 @@ people()  one YOLO pass on the still; subject() the box a move aims at.
 render()  a planned move (lib/kenburns) warped in float and streamed into one x264
           encode on the video segment's contract (§4).
 """
+import datetime as dt
 import io
 import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,6 +31,11 @@ DETECT_IMGSZ = 960       # the inference size track.py and intake use
 MAX_DENSITY = 2.0        # source pixels per output pixel a frame is warped from at most;
                          # past it the renderer drops to a half-size level (render)
 _SRGB = ImageCms.createProfile("sRGB")
+EXIF_IFD = 0x8769                    # the EXIF sub-IFD the capture-time tags live in
+DATE_ORIGINAL = 0x9003               # DateTimeOriginal, "YYYY:MM:DD HH:MM:SS"
+SUBSEC_ORIGINAL = 0x9291             # SubSecTimeOriginal, the fraction's digits
+OFFSET_ORIGINAL = 0x9011             # OffsetTimeOriginal, "+HH:MM"
+_OFFSET = re.compile(r"([+-])(\d{2}):(\d{2})")
 
 
 @dataclass(frozen=True)
@@ -64,12 +71,16 @@ def load(path: str | Path) -> Still:
         heif = im.format == "HEIF"
         rec: dict = {"decoder": im.format, "source_dims": list(im.size)}
         icc = im.info.get("icc_profile")
+        exif = im.getexif()                # pi_heif hands a HEIF's EXIF to Pillow the same way
+        taken = _taken(exif)
+        if taken is not None:
+            rec["taken"] = taken
         if heif:
             rec["orientation"] = ("heif transforms, applied by libheif "
                                   f"(EXIF tag was {im.info.get('original_orientation')})")
             up = im
         else:
-            rec["orientation"] = int(im.getexif().get(0x0112, 1))
+            rec["orientation"] = int(exif.get(0x0112, 1))
             up = ImageOps.exif_transpose(im)
         mode = up.mode
         if mode.startswith("I;16"):
@@ -115,6 +126,36 @@ def load(path: str | Path) -> Still:
         rgb = np.ascontiguousarray(np.asarray(up, dtype=np.uint8))
     rec["dims"] = [int(rgb.shape[1]), int(rgb.shape[0])]
     return Still(rgb=rgb, record=rec)
+
+
+def _taken(exif: Image.Exif) -> float | None:
+    """When the photo was taken, in seconds since the epoch, or None when it carries no
+    capture time that parses (design 2026-10-21 §5). Absence is not a failure: a
+    screenshot or an exported PNG has none, and grouping then rests on the pHash alone.
+
+    No OffsetTimeOriginal reads as UTC. Only DIFFERENCES between photos are used, and
+    inside one camera those are right whatever its zone; across two cameras with
+    different clocks they are not (§7). An unparseable sub-second or offset is dropped
+    rather than taking the date with it."""
+    ifd = exif.get_ifd(EXIF_IFD) or {}    # a corrupt IFD pointer comes back as None
+    date = ifd.get(DATE_ORIGINAL)
+    if not isinstance(date, str):
+        return None
+    try:
+        t = dt.datetime.strptime(date.strip("\x00 "), "%Y:%m:%d %H:%M:%S")
+    except ValueError:                    # "0000:00:00 00:00:00" is a camera's "unset"
+        return None
+    tz = dt.timezone.utc
+    m = _OFFSET.fullmatch(str(ifd.get(OFFSET_ORIGINAL, "")).strip("\x00 "))
+    if m and int(m[2]) < 24 and int(m[3]) < 60:
+        sign = 1 if m[1] == "+" else -1
+        tz = dt.timezone(sign * dt.timedelta(hours=int(m[2]), minutes=int(m[3])))
+    sub = str(ifd.get(SUBSEC_ORIGINAL, "")).strip("\x00 ")
+    frac = float("0." + sub) if sub.isascii() and sub.isdigit() else 0.0
+    try:
+        return t.replace(tzinfo=tz).timestamp() + frac
+    except (OverflowError, OSError, ValueError):   # a year the platform clock cannot hold
+        return None
 
 
 def people(rgb: np.ndarray, model_path: str) -> list[tuple[float, float, float, float]]:
