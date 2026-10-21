@@ -233,6 +233,9 @@ def _resolve_window(clip: FootageClip, window: object, source: str, k: int) -> F
 
 _SNAP_TOL = 1e-3      # s of float slack when comparing a slot against its episode
 
+_HOLD_TOL = 1e-6      # s of float slack on a held slot's [HOLD_MIN, HOLD_ROOM]: every
+                      # planned length the fit writes lies within 1e-9 of that range
+
 _TEMPO_TOL = 0.5      # BPM. A spine copies MusicSpec.tempo straight through, so an honest
                       # pair is bit-identical; half a BPM is far below any musically
                       # meaningful difference and far above float round-trip noise.
@@ -289,6 +292,24 @@ def _bind_pacing(episodes: list, spine: Spine) -> list:
                 f"{i} now authors {_hold_word(ep.hold)} — re-run pacing against the current "
                 f"EDL.json before binding, so the grid places the count it now asks for")
         if ep.held():
+            # Where the half-beat guard stood, the one thing a held length can be checked
+            # against: the range the fit writes it in. An authored count keeps its own
+            # detected beat even a hair outside that range (gridfit._held_cut), so its
+            # slot may also sit within half a beat of the count itself
+            beat = 2.0 * gridfit.allowance(spine.tempo)
+            in_range = hold.HOLD_MIN - _HOLD_TOL <= slot.dur <= hold.HOLD_ROOM + _HOLD_TOL
+            on_count = (slot.hold is not None
+                        and abs(slot.dur - slot.hold * beat) <= beat / 2 + _HOLD_TOL)
+            if not (in_range or on_count):
+                count = ("" if slot.hold is None else
+                         f" and further than half a beat from its authored {slot.hold} "
+                         f"beat{'' if slot.hold == 1 else 's'}")
+                raise ValueError(
+                    f"pacing: slot {i} holds {slot.dur:.3f}s, outside the "
+                    f"[{hold.HOLD_MIN:.2f}, {hold.HOLD_ROOM:.1f}]s a held episode may last"
+                    f"{count} — the fit never writes that, so this PACING.json was edited "
+                    f"or is corrupt. Re-run pacing against the current EDL.json before "
+                    f"binding")
             bound.append(dataclasses.replace(ep, beat_slot=i, dur=slot.dur))
             continue
         # PLAYED time on both sides, and the SCENARIO's played time on the episode

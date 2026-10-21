@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 from scripts import edit_plan
-from scripts.lib import hold, mood, outro, provenance
+from scripts.lib import gridfit, hold, mood, outro, pacing, provenance
 from scripts.lib.constraints import Constraints
 from scripts.lib.edl import EDL, EDLEpisode
 from scripts.lib.footage import Footage, FootageClip, FootageWindow
@@ -2360,6 +2360,50 @@ def test_a_held_episode_binds_when_its_hold_is_the_one_the_slot_was_fitted_with(
     spine = Spine((Slot(0, 0.0, 3.0, 0.5, "hook"),
                    Slot(1, 3.0, 1.5, 0.5, "build", held=True, hold=3)), 4.5, 120.0)
     assert edit_plan._bind_pacing(eps, spine)[1] == replace(eps[1], beat_slot=1, dur=1.5)
+
+
+def _one_held(dur, hold=None, tempo=120.0):
+    return (_edl_ep(source="IMG_1.HEIC", start=0.0, dur=2.0, base_dur=2.0, hold=hold),
+            Spine((Slot(0, 0.0, dur, 0.5, "hook", held=True, hold=hold),), dur, tempo))
+
+
+@pytest.mark.parametrize("dur, hold_", [
+    (30.0, None), (0.05, None),                       # a hand-edited or corrupt file
+    (hold.HOLD_ROOM + 1e-5, None), (hold.HOLD_MIN - 1e-5, None),
+    (8.3, 16),                                        # 0.3 s from its 16 beats
+])
+def test_a_held_slot_the_fit_cannot_have_written_is_refused(dur, hold_):
+    ep, spine = _one_held(dur, hold_)
+    said = re.escape(f"slot 0 holds {dur:.3f}s, outside the [0.33, 8.0]s a held episode "
+                     f"may last")
+    with pytest.raises(ValueError, match=f"{said}.* was edited or is corrupt\\. Re-run pacing"):
+        edit_plan._bind_pacing([ep], spine)
+    if hold_ is not None:
+        with pytest.raises(ValueError, match="further than half a beat from its authored 16 "
+                                             "beats"):
+            edit_plan._bind_pacing([ep], spine)
+
+
+@pytest.mark.parametrize("dur, hold_, tempo", [
+    (hold.HOLD_ROOM + 1e-7, None, 120.0), (hold.HOLD_MIN - 1e-7, None, 120.0),  # slack
+    (8.016, 16, 120.0),        # an authored 16 beats on a grid 0.2 % slow (gridfit keeps it)
+    (1 / 3 - 0.001, 1, 180.0), # an authored beat detected 1 ms early, at 180 BPM's floor
+])
+def test_a_held_slot_the_fit_can_write_binds(dur, hold_, tempo):
+    ep, spine = _one_held(dur, hold_, tempo)
+    assert edit_plan._bind_pacing([ep], spine)[0].dur == dur
+
+
+def test_an_authored_count_at_the_range_edge_is_fitted_and_bound_whole():
+    # the fit keeps an authored 16 beats on its own 16th detected beat, 8.016 s on a grid
+    # 0.2 % slow — past HOLD_ROOM by the tracker's jitter — and binding takes it
+    spine, _, _ = pacing.fit_spine([2.0, 3.0], [i * 0.501 for i in range(40)], [0.5] * 20,
+                                   1.0, 120.0, [(0.0, 0.0), (-0.25, 0.25)],
+                                   held=[gridfit.Held(16, hold.HOLD_MIN, hold.HOLD_ROOM), None])
+    ep = _edl_ep(source="IMG_1.HEIC", start=0.0, dur=2.0, base_dur=2.0, hold=16)
+    tail = _edl_ep(source="A.mp4", start=5.0, dur=3.0, base_dur=3.0)
+    bound = edit_plan._bind_pacing([ep, tail], spine)
+    assert bound[0].dur == pytest.approx(16 * 0.501) and spine.slots[0].hold == 16
 
 
 def test_a_footage_episode_keeps_the_half_beat_guard_beside_held_ones():
