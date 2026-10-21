@@ -118,9 +118,10 @@ def _held_cut(i: int, h: Held, pos: float, run: tuple[int, ...], run_end: bool,
     (`run_end`, the next episode is footage) chooses among the level's lines instead, so
     the cut back to footage is as musical as every other cut — but only lines within
     [k/2, 2k] beats of its plan, falling back to the beats when none is there. An
-    authored count is never moved for the level. A target more than half a beat past
-    the last detected beat (music shorter than the reel), or nothing in range → the
-    target itself, clamped into the range."""
+    authored count is never moved for the level, and takes the detected beat within
+    half a beat of its target even a hair outside the range. A target more than half a
+    beat past the last detected beat (music shorter than the reel), or nothing in range
+    → the target itself, clamped into the range."""
     k = h.beats if h.beats is not None else plan(pos, run)
     if isinstance(k, bool) or not isinstance(k, int) or k < 1:
         raise ValueError(f"gridfit.fit_level: plan returned {k!r} for held episode {i} at "
@@ -133,6 +134,14 @@ def _held_cut(i: int, h: Held, pos: float, run: tuple[int, ...], run_end: bool,
         # is used, and its distance to the nearest line or beat (fit_level) is a dev the
         # fit can see, as a footage cut past the last line has
         return min(max(target, lo), hi), target
+    if h.beats is not None:
+        # An authored count was checked against [HOLD_MIN, HOLD_ROOM] at this tempo before
+        # the fit (scripts/pacing.py), so its own beat — the detected one nearest the
+        # target — is taken even a hair outside the range: the tracker's jitter must not
+        # cost or add a beat to a count the author wrote
+        near = [x for x in beats if abs(x - target) <= period / 2 + _SLACK]
+        if near:
+            return min(near, key=lambda c: (abs(c - target), c)), target
 
     def inside(xs: list[float], a: float = lo, b: float = hi) -> list[float]:
         return [x for x in xs if max(lo, a) - _SLACK <= x <= min(hi, b) + _SLACK]

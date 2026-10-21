@@ -439,6 +439,37 @@ def test_an_authored_hold_is_never_moved_to_a_line():
     assert planned.devs == (0.0, 0.0)
 
 
+@pytest.mark.parametrize("beats, allow, k, beat", [
+    # `hold: 16` at 120 BPM is exactly HOLD_ROOM; on a grid 0.2 % slow its 16th beat is
+    # at 8.016, outside [lo, hi], and the range alone took the 15th
+    ([i * 0.501 for i in range(40)], 0.25, 16, 16),
+    # `hold: 1` at 180 BPM is exactly HOLD_MIN; with its beat detected 1 ms early the
+    # range alone took the second
+    ([0.0, 1 / 3 - 0.001] + [i / 3 for i in range(2, 40)], 1 / 6, 1, 1),
+])
+def test_an_authored_count_keeps_its_own_beat_against_the_trackers_jitter(beats, allow, k,
+                                                                           beat):
+    f = gridfit.fit_level([2.0, 2.0], beats, [(-allow, allow)] * 2, allow, beats=beats,
+                          held=[_h(beats=k), None], plan=_never)
+    assert f.shifts[0] == pytest.approx(beats[beat] - 2.0, abs=1e-12)
+    assert f.devs == (0.0,)
+
+
+def test_an_authored_count_with_no_beat_near_its_target_falls_back_to_the_range():
+    # beats every 1.0 s against a 0.5 s period: the 3-beat target 1.5 has no beat within
+    # half a period of it, so the range's nearest wins (1.0, the earlier of a tie)
+    beats = [float(i) for i in range(20)]
+    f = gridfit.fit_level([2.0, 2.0], beats, [(-0.25, 0.25)] * 2, 0.25, beats=beats,
+                          held=[_h(beats=3), None], plan=_never)
+    assert f.shifts[0] == pytest.approx(-1.0, abs=1e-12)
+    # a beat further than half a period is not the count's own: 16 beats (8.0) with the
+    # tracker's next beat at 8.4 stays inside HOLD_ROOM, on 7.0
+    beats = [float(i) for i in range(8)] + [8.4 + i for i in range(10)]
+    f = gridfit.fit_level([2.0, 2.0], beats, [(-0.25, 0.25)] * 2, 0.25, beats=beats,
+                          held=[_h(beats=16), None], plan=_never)
+    assert f.shifts[0] == pytest.approx(5.0, abs=1e-12)
+
+
 def test_a_held_tail_is_placed_on_a_beat_and_its_shift_is_not_forced_to_zero():
     f = gridfit.fit_level([2.0, 2.0], _BAR_120, [(-0.25, 0.25)] * 2, 0.25,
                           beats=_BEATS_120, held=[None, _h()], plan=lambda pos, run: 3)
