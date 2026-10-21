@@ -216,7 +216,7 @@ def build_pacing(edl_json: str, footage_json: str, music_jsons: list[str], out_d
         # A window the fitted reel overruns ranks below every window that covers it,
         # whatever its level: build_reel refuses a reel longer than its window, and held
         # lengths the grid authored can grow the reel past the length the window was
-        # analysed for (design 2026-10-21 §2.2). Then the coarsest FITTING level wins — a
+        # analysed for (design 2026-10-21 §2.3). Then the coarsest FITTING level wins — a
         # window whose best level misses ranks below every window that fits — and ties
         # break on the smaller worst deviation.
         covers = spine.target_dur <= m.duration + COVER_TOL

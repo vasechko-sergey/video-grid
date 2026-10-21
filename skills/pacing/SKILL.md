@@ -96,6 +96,9 @@ project. If `"$VG"` says there is no runtime, it has not been set up yet: run th
    energy is `fit_spine`'s `0.5` fallback rather than a measurement, a footnote
    naming how many. A miss is actionable, not fatal: try another window, change a
    scenario length, or accept an off-grid reel (check_reel's beat gate is advisory).
+   A window the fitted reel overruns ranks below every window that covers it, and an
+   overrun on the chosen one is named on stderr with the `--duration` to re-analyse at
+   — photos and freezes are the usual cause, since the grid sets their length.
 5. **Apply.** `"$VG" scripts.edit_plan build ... --pacing <run>/reels/<reel>/PACING.json
    [--spec <run>/reels/<reel>/SPEC.json] [--music <run>/reels/<reel>/MUSIC.json]` — this is what writes the
    snapped durations and `beat_slot` into `EDL.json`. Carry `--spec` through when a
