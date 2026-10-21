@@ -3,10 +3,12 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from scripts import deliver
-from scripts.lib import provenance, titles as titles_lib
+from scripts.lib import look, provenance, titles as titles_lib
+from scripts.lib.look import LookSpec
 from scripts.lib.titles import Title
 from scripts.lib.models import CheckResult, ExportProfile, ReelReport, REEL_H264
 
@@ -608,7 +610,6 @@ def test_since_last_survives_a_hand_corrupted_sidecar(tmp_path):
 # --- the shutter flash is in the delivery and not in the master (design 2026-10-21 §4) --
 
 def test_title_times_takes_the_longest_flash_free_part_of_its_window():
-    from scripts.lib import look
     items = (Title("hook", 2.0, 1.0),)
     w = look.flash_windows([2.4], 30.0)                 # [2.3667, 2.5333)
     t_in, _, skipped = deliver._title_times(items, 0, dur=34.0, fade=0.0, windows=w)
@@ -619,7 +620,6 @@ def test_title_times_takes_the_longest_flash_free_part_of_its_window():
 
 
 def test_title_times_skips_a_title_that_sits_wholly_on_a_flash():
-    from scripts.lib import look
     items = (Title("snap", 2.0, 0.1),)
     _, _, skipped = deliver._title_times(items, 0, dur=34.0, fade=0.0,
                                          windows=look.flash_windows([2.0], 30.0))
@@ -629,7 +629,6 @@ def test_title_times_skips_a_title_that_sits_wholly_on_a_flash():
 def test_title_times_drops_a_witness_that_sits_on_a_flash():
     """The first title-free grid instant is 6.375s; without the flash it is the first
     witness, so the drop is observable."""
-    from scripts.lib import look
     items = (Title("a", 0.0, 5.0),)
     assert deliver._title_times(items, 0, dur=34.0, fade=0.0)[1][0] == pytest.approx(6.375)
     w = look.flash_windows([6.375], 30.0)
@@ -640,7 +639,6 @@ def test_title_times_drops_a_witness_that_sits_on_a_flash():
 
 
 def _spy_verify(monkeypatch, seen):
-    import numpy as np
     monkeypatch.setattr(deliver.assembly, "probe_duration", lambda p: 10.0)
     monkeypatch.setattr(deliver.assembly, "probe_stream",
                         lambda p: SimpleNamespace(w=100, h=200, fps=30.0))
@@ -655,8 +653,6 @@ def _spy_verify(monkeypatch, seen):
 def test_verify_look_moves_an_interior_sample_off_a_flash(monkeypatch):
     """A flash on 0.5 x the reel is exactly where the vignette is judged: the sample
     moves to the end of the flash's window, the other two stay where they were."""
-    from scripts.lib import look
-    from scripts.lib.look import LookSpec
     seen = []
     _spy_verify(monkeypatch, seen)
     deliver._verify_look("m.mp4", "d.mp4", LookSpec(vignette=0.3), None, "", flashes=[5.0])
@@ -668,13 +664,20 @@ def test_verify_look_moves_an_interior_sample_off_a_flash(monkeypatch):
 
 
 def test_verify_look_keeps_the_titles_samples_off_a_flash(tmp_path, monkeypatch):
-    from scripts.lib import look
+    """Both halves discriminate: the first flash sits on the title's own midpoint, the
+    second on a witness the gate picks when it is blind to flashes (review M7 — a
+    second flash between two witnesses left the witness filter unobserved)."""
     seen = []
     _spy_verify(monkeypatch, seen)
     tj = tmp_path / "TITLES.json"
-    titles_lib.Titles(items=(Title("hook", 2.0, 1.0, pos="top"),)).write(tj)
-    w = look.flash_windows([2.4, 6.0], 30.0)
-    deliver._verify_look("m.mp4", "d.mp4", None, str(tj), "", flashes=[2.4, 6.0])
+    items = (Title("hook", 2.0, 1.0, pos="top"),)
+    titles_lib.Titles(items=items).write(tj)
+    on_witness = 10.0 * (9 + 0.5) / deliver._WITNESS_GRID          # 3.958s
+    assert on_witness in deliver._title_times(items, 0, 10.0, 0.0)[1]
+    assert deliver._title_times(items, 0, 10.0, 0.0)[0] == 2.5     # and on the midpoint
+    flashes = [2.4, on_witness]
+    w = look.flash_windows(flashes, 30.0)
+    deliver._verify_look("m.mp4", "d.mp4", None, str(tj), "", flashes=flashes)
     sampled = {t for _, ts in seen for t in ts}
     assert sampled and all(look.clear_of_flash(t, w) == t for t in sampled)
 

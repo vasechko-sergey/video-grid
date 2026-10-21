@@ -359,6 +359,23 @@ def test_the_attestation_lists_the_flashes_and_a_delivery_without_one_has_no_key
         assert att.get("flashes") == want
 
 
+def test_deliver_hands_its_flashes_to_the_look_gate(tmp_path, monkeypatch):
+    """Review M7: every other unit test stubs the gate away, so a deliver that dropped
+    the argument passed the whole unit tier and sampled the white frames blind."""
+    _stub_probes(monkeypatch)
+    _capture(monkeypatch)
+    seen = []
+
+    def gate(master, out, look, titles, platform="", flashes=()):
+        seen.append(list(flashes))
+        return []
+    monkeypatch.setattr(deliver_mod, "_verify_look", gate)
+    master, rep = _bound(tmp_path)
+    deliver_mod.deliver(master, REEL_H264, str(tmp_path / "out"), "cl", rep,
+                        scratch_dir=str(tmp_path / "scratch"), flashes=[1.0, 2.5])
+    assert seen == [[1.0, 2.5]]
+
+
 def test_a_flash_alone_still_takes_the_vf_slot(tmp_path, monkeypatch):
     seen = []
     _stub_probes(monkeypatch, seen=seen)
