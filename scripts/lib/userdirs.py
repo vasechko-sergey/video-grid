@@ -10,6 +10,7 @@ test (or a user) setting XDG_* sees its own directories.
 bin/vg and setup.sh are shell and spell the same two roots; tests/test_userdirs.py
 pins that they agree with this module.
 """
+import hashlib
 import os
 from pathlib import Path
 
@@ -39,6 +40,23 @@ def models_dir() -> Path:
     """bin/vg's working directory: ultralytics downloads a bare model name into the
     working directory (packaging design §1.1), so this is where the weights land."""
     return data_dir() / "models"
+
+
+REQUIREMENTS_STAMP = ".video-grid-requirements"   # setup.sh writes it into the venv
+
+
+def requirements_digest(root: Path = REPO) -> str:
+    """What a venv built by `root`'s setup.sh contains, as one sha256: requirements.txt,
+    plus every `pip" install` line of setup.sh itself — demucs and torchreid with its
+    named extras are installed OUTSIDE requirements.txt (a failed torch wheel must not
+    abort the venv), so a digest of the file alone misses an update that changes them
+    (the 2026-10-21 review). setup.sh and verify_runtime both call this, so the writer
+    and the reader cannot hash two different things."""
+    h = hashlib.sha256((root / "requirements.txt").read_bytes())
+    for line in (root / "setup.sh").read_text().splitlines():
+        if 'pip" install' in line:
+            h.update(b"\n" + line.strip().encode())
+    return h.hexdigest()
 
 
 def launcher() -> Path:

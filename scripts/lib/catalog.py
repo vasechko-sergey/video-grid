@@ -102,7 +102,7 @@ def ytdlp_cmd() -> list[str]:
     yt-dlp is absent (callers may gate on has_ytdlp() first — defense-in-depth)."""
     if not has_ytdlp():
         raise ValueError("yt-dlp is not installed — install it with "
-                         "`bash setup.sh --with-sourcing` (opt-in; the any lane needs it)")
+                         "setup (/video-grid:setup, or `bash setup.sh`) — the any lane needs it")
     return [sys.executable, "-m", "yt_dlp"]
 
 
@@ -198,7 +198,7 @@ def _search_jamendo(query: str, n: int) -> list[Candidate]:
     cid = _jamendo_client_id()
     if not cid:
         raise ValueError("_search_jamendo needs a Jamendo client_id — set JAMENDO_CLIENT_ID "
-                         "or run `bash setup.sh --with-sourcing` (else the ccMixter fallback runs)")
+                         "or add it to ~/.config/video-grid/sourcing.env (else the ccMixter fallback runs)")
     url = ("https://api.jamendo.com/v3.0/tracks/?"
            + urllib.parse.urlencode({"client_id": cid, "format": "json", "limit": n,
                                      "fuzzytags": query, "audioformat": "mp32",

@@ -82,6 +82,39 @@ def test_engine_stamp_without_git_digests_the_engine_files(tmp_path, monkeypatch
     assert provenance.engine_stamp() != first             # the code is
 
 
+def _engine_copy(root):
+    (root / "scripts").mkdir(parents=True)
+    (root / "scripts" / "a.py").write_text("x = 1\n")
+    return root
+
+
+def test_an_enclosing_git_repo_does_not_speak_for_a_plugin_copy(tmp_path, monkeypatch):
+    """The review's I1: git walks up, so a plugin cache inside a dotfiles repo got
+    that repo's HEAD — which a plugin update never moves."""
+    from scripts.lib import proc
+    proc.run(["git", "init", "-q", str(tmp_path)])
+    proc.run(["git", "-C", str(tmp_path), "-c", "user.email=t@t", "-c", "user.name=t",
+              "commit", "-q", "--allow-empty", "-m", "dotfiles"])
+    copy = _engine_copy(tmp_path / ".claude" / "plugins" / "cache" / "0.27.0")
+    monkeypatch.setattr(provenance, "_ROOT", copy)
+    assert provenance.engine_stamp()["sha"].startswith("tree:")
+
+
+def test_the_tree_digest_ignores_junk_and_binds_each_file_to_its_path(tmp_path, monkeypatch):
+    """The review's M1: three mutations survived the first test — the .DS_Store and
+    __pycache__ exclusions, and hashing bytes without their paths."""
+    root = _engine_copy(tmp_path)
+    monkeypatch.setattr(provenance, "_ROOT", root)
+    first = provenance.engine_stamp()
+    (root / "scripts" / ".DS_Store").write_bytes(b"finder")
+    (root / "scripts" / "__pycache__").mkdir()
+    (root / "scripts" / "__pycache__" / "notes.txt").write_text("not bytecode by suffix")
+    assert provenance.engine_stamp() == first
+    (root / "skills").mkdir()
+    (root / "scripts" / "a.py").rename(root / "skills" / "a.py")      # same bytes, moved
+    assert provenance.engine_stamp() != first
+
+
 def test_engine_stamp_on_this_repo_reports_a_sha():
     st = provenance.engine_stamp()
     assert isinstance(st["sha"], str) and len(st["sha"]) >= 7

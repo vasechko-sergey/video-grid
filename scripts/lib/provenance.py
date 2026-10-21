@@ -58,14 +58,21 @@ def _tree_digest() -> str | None:
 
 
 def engine_stamp() -> dict:
-    """{"sha": <short HEAD>, "dirty": <bool>} from git; without git — an installed
-    plugin's version directory is a plain copy, not a checkout — {"sha":
+    """{"sha": <short HEAD>, "dirty": <bool>} from git when this code's root is a
+    work tree's own top; otherwise — an installed plugin's version directory is a
+    plain copy, not a checkout — {"sha":
     "tree:<12 hex>", "dirty": False}, a digest of the engine's own files (design
     2026-10-21 §4). Without either, {"sha": "", "dirty": None}. Unknown is RECORDED,
     never guessed — and an unknown stamp cannot prove drift, so it never stops a run
     (design §7): which is exactly why the plugin case cannot be left unknown, or the
     guard would go quiet for every user who installs the plugin."""
-    sha = _git("rev-parse", "--short", "HEAD")
+    # git walks UP: a plugin cache under a dotfiles repo (~/.claude kept in git) would
+    # answer with THAT repo's HEAD, which an update of the plugin never moves — the
+    # same silence the tree digest exists to remove (the 2026-10-21 review). So git
+    # counts only when its work tree IS this code's root.
+    top = _git("rev-parse", "--show-toplevel")
+    sha = (_git("rev-parse", "--short", "HEAD")
+           if top is not None and Path(top.strip()).resolve() == _ROOT.resolve() else None)
     if sha is None:
         tree = _tree_digest()
         return {"sha": f"tree:{tree}", "dirty": False} if tree else dict(_UNKNOWN)

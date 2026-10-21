@@ -33,8 +33,9 @@ loads the skill, so resolve it once:
     ROOT="${CLAUDE_PLUGIN_ROOT}"
     VG="$ROOT/bin/vg"
 
-If `ROOT` comes out empty — a harness that does not fill the line in — it is the
-directory two levels above this skill's base directory. Then run every step as
+If `ROOT` comes out empty, or `"$VG"` does not exist — a harness that did not fill
+the line in — `ROOT` is the directory two levels above this skill's base directory.
+Then run every step as
 `"$VG" scripts.X`, read every reference as `"$ROOT/references/…"`, and pass
 **absolute** paths for every footage / run / output directory. Nothing here is
 relative to your working directory — a skill runs from the user's footage
@@ -57,9 +58,10 @@ project. If `"$VG"` says there is no runtime, it has not been set up yet: run th
      A failing **`deps_stamp`** means the plugin was updated with new dependencies
      since setup last ran: the same remedy.
    - A failing **`plugin`** check is the one gap whose remedy is not `bash setup.sh`:
-     the code running the check and the installed skills disagree about which
-     version is running — which happens from a developer's clone, not from the
-     installed plugin itself. Relay `claude plugin update …` verbatim as above, and add that Claude
+     the code running the check and the install record disagree about which
+     version is installed — from a developer's clone, after `claude plugin update`
+     in a session that loaded the old skills (restart), or with two install scopes
+     at different versions. Relay `claude plugin update …` verbatim as above, and add that Claude
      Code must be **restarted** afterwards — the update rewrites the cache, it does
      not reload the skills this session already has in context.
    - **Optional (advisory) gaps** (e.g. `reid`): mention them as "only needed for

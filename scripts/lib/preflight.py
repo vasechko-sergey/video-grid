@@ -38,7 +38,7 @@ class Check:
 #: the same case (no install-record file at all) without ever calling
 #: `plugin_staleness`. One constant so the two call sites cannot drift apart —
 #: they used to be two independently-typed copies of the same sentence.
-NO_RECORD_DETAIL = "no install record — running from the clone"
+NO_RECORD_DETAIL = "no install record — the plugin is not installed for this user"
 
 
 CHECKS: tuple[Check, ...] = (

@@ -62,10 +62,18 @@ A new `setup` skill runs the plugin's own `setup.sh`, after saying what it insta
 and asking. `setup.sh` runs from any directory it is copied to: the plugin cache, or
 a clone.
 
-`setup.sh` stamps the venv with the sha256 of the `requirements.txt` it installed.
-`verify_runtime` gains a required `deps_stamp` check that compares the stamp with the
-running plugin's `requirements.txt`, so an update that changes the dependencies says
-"run setup again" instead of failing on the first import that moved.
+`setup.sh` stamps the venv with `userdirs.requirements_digest`: `requirements.txt`
+plus `setup.sh`'s own `pip" install` lines, since demucs and torchreid with its named
+extras are installed outside the file (a failed torch wheel must not abort the venv).
+`verify_runtime` gains a required `deps_stamp` check calling the same function, so an
+update that changes the dependencies says "run setup again" instead of failing on the
+first import that moved.
+
+Coming from a clone install, the old `~/.config/video-grid/root` is read ONCE, by
+setup, to carry the Jamendo key and the YOLO weights over from that clone: a plugin
+installed from GitHub carries no `config/` of its own. Nothing else reads it. The
+README names the two marketplace paths, because Claude Code keeps one marketplace per
+name and the old install registered the clone itself as `video-grid`.
 
 ## §4 · The engine stamp without git
 
@@ -74,16 +82,25 @@ cache is not a git checkout, so every run from an installed plugin would have
 recorded an unknown engine — and an unknown stamp never stops a run, so the guard
 against a run straddling an engine change (design 2026-08-04 §3) would have gone
 quiet for every user who installs the plugin. Without git it now digests the files of
-`ENGINE_PATHS` (`tree:<12 hex>`); a git checkout still reports its commit.
+`ENGINE_PATHS` (`tree:<12 hex>`); a git checkout still reports its commit — but only
+when the work tree's top IS the code's root. git walks up, and the review found a
+plugin cache inside a dotfiles repo stamped with that repo's HEAD, which a plugin
+update never moves.
 
 ## §5 · Honest limits
 
-- Substitution of `${CLAUDE_PLUGIN_ROOT}` into skill text is observed behaviour of
-  this Claude Code, not a documented contract for skills; the fallback covers its
-  absence.
+- Substitution of `${CLAUDE_PLUGIN_ROOT}` into skill text is documented for plugin
+  skills and observed here; the fallback covers a harness that does not do it.
 - `setup.sh` is still macOS/Homebrew and installs system packages; the skill asks
   first, and verify-runtime still never installs.
-- Old version directories in the plugin cache keep their copies; the venv, weights
-  and config are shared across versions, so a downgrade runs against the newer venv.
+- Claude Code marks a replaced version directory orphaned and deletes it 14 days
+  later. A run is not that long, but a `judge_prompt.md` packed by the old version
+  names that version's `bin/vg`.
+- The venv, weights and config are shared by every version and by a clone: a
+  developer whose branch changes the dependencies and runs setup from the clone makes
+  the installed plugin's `deps_stamp` fail until setup runs from it again — accurate,
+  since the venv no longer matches it.
+- A run started through a clone (a git sha) and finished through the installed
+  plugin (a tree digest) is refused as drift even at the same commit. It fails safe.
 - A developer who wants runs to use their clone's code installs the plugin from the
   clone (`/plugin marketplace add ./`) and updates it after each change, as before.

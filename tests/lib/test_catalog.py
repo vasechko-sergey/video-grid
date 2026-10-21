@@ -63,7 +63,7 @@ def test_free_source_reads_config_file(tmp_path, monkeypatch):
 
 def test_ytdlp_cmd_raises_when_absent(monkeypatch):
     monkeypatch.setattr(catalog, "has_ytdlp", lambda: False)
-    with pytest.raises(ValueError, match="setup.sh --with-sourcing"):
+    with pytest.raises(ValueError, match="the any lane needs it"):
         catalog.ytdlp_cmd()
 
 

@@ -35,7 +35,7 @@ _Last updated: 2026-07-20._
   rather than shelling out — that probe is the seam where production and the
   test guards can drift onto different binaries.
 - **The PATH rung is the portability fallback,** not the normal path: `setup.sh`
-  is macOS/homebrew-only, so a Linux box has no `config/ffmpeg.env` and must
+  is macOS/homebrew-only, so a Linux box has no recorded `ffmpeg.env` and must
   still import. `$FFMPEG` is the override for CI or for bisecting a build.
 - **Fonts are baseline too.** drawtext needs an actual `.ttf`/`.ttc` on disk as
   well as the filter — the two are decoupled, and it needs an explicit
@@ -56,7 +56,7 @@ _Last updated: 2026-07-20._
   it did not fail — it answered *wrong* (0 vocal-free spans against demucs's 2 on the
   same track), and a wrong music in-point is silent. yt-dlp (the `any` music-source
   lane) ships in `requirements.txt`. A Jamendo `client_id` is an optional
-  non-blocking notice (`config/sourcing.env`), not a flag.
+  non-blocking notice (`~/.config/video-grid/sourcing.env`), not a flag.
 - `setup.sh` is **macOS/homebrew only for now** (cross-platform auto-install is a
   TODO), and warns-and-continues without brew so the venv still gets built. The
   runtime code is already portable — `scripts/lib/fonts.py` `FONT_CANDIDATES`

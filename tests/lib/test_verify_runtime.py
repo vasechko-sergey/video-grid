@@ -1,4 +1,3 @@
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -6,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from scripts import verify_runtime
-from scripts.lib import preflight
+from scripts.lib import preflight, userdirs
 
 
 def test_probe_deps_reports_missing(monkeypatch):
@@ -44,6 +43,7 @@ def _stamped(tmp_path, monkeypatch, requirements: bytes, stamp: str | None):
     code.mkdir()
     venv.mkdir()
     (code / "requirements.txt").write_bytes(requirements)
+    (code / "setup.sh").write_text('"$VENV/bin/pip" install demucs\n')
     if stamp is not None:
         (venv / verify_runtime.STAMP).write_text(stamp + "\n")
     monkeypatch.setattr(verify_runtime, "_ROOT", code)
@@ -51,15 +51,22 @@ def _stamped(tmp_path, monkeypatch, requirements: bytes, stamp: str | None):
     return verify_runtime._probe_deps_stamp()
 
 
+def _digest(tmp_path, requirements: bytes) -> str:
+    probe = tmp_path / "probe"
+    probe.mkdir(exist_ok=True)
+    (probe / "requirements.txt").write_bytes(requirements)
+    (probe / "setup.sh").write_text('"$VENV/bin/pip" install demucs\n')
+    return userdirs.requirements_digest(probe)
+
+
 def test_the_deps_stamp_passes_when_setup_built_this_requirements_txt(tmp_path, monkeypatch):
-    ok, detail = _stamped(tmp_path, monkeypatch, b"numpy\n",
-                          hashlib.sha256(b"numpy\n").hexdigest())
+    ok, detail = _stamped(tmp_path, monkeypatch, b"numpy\n", _digest(tmp_path, b"numpy\n"))
     assert ok is True
 
 
 def test_the_deps_stamp_fails_after_an_update_changed_the_requirements(tmp_path, monkeypatch):
     ok, detail = _stamped(tmp_path, monkeypatch, b"numpy\npi-heif\n",
-                          hashlib.sha256(b"numpy\n").hexdigest())
+                          _digest(tmp_path, b"numpy\n"))
     assert ok is False and "dependencies changed" in detail
 
 
@@ -68,12 +75,12 @@ def test_the_deps_stamp_fails_without_a_record(tmp_path, monkeypatch):
     assert ok is False and "before 0.27.0" in detail
 
 
-def test_setup_and_the_check_hash_the_same_way():
-    """setup.sh writes the stamp with the venv's own Python; the check computes
-    hashlib.sha256 of the same file. Pin the writer's spelling to the reader's."""
+def test_setup_and_the_check_hash_through_the_same_function():
+    """setup.sh writes the stamp by calling userdirs.requirements_digest, the function
+    the check calls — so writer and reader cannot hash two different things."""
     setup = (Path(verify_runtime.__file__).resolve().parents[1] / "setup.sh").read_text()
-    assert "hashlib.sha256(open(sys.argv[1], \"rb\").read()).hexdigest()" in setup
-    assert f'> "$VENV/{verify_runtime.STAMP}"' in setup
+    i = setup.index(f'> "$VENV/{verify_runtime.STAMP}"')
+    assert "print(userdirs.requirements_digest())" in setup[i - 200:i]
 
 
 def test_probe_reid_reports_installed_and_absent(monkeypatch):

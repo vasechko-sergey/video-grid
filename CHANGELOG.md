@@ -16,6 +16,7 @@ file is the short "what changed for someone who installs it" list.
   `/plugin install video-grid@video-grid`, restart, `/video-grid:setup`. The
   installed plugin carries the code and the skills run it: they read their own
   directory, which Claude Code fills in as they load, instead of a recorded clone.
+  Update with `claude plugin update video-grid@video-grid` in a terminal.
 - **A `setup` skill** runs the plugin's own `setup.sh` after saying what it installs
   and asking.
 - **State moved out of the code.** The venv and the YOLO weights live in
@@ -24,13 +25,17 @@ file is the short "what changed for someone who installs it" list.
   moves an old clone's Jamendo key over; an old clone's `config/ffmpeg.env` is still
   read until setup runs again.
 - **`verify-runtime` checks the dependencies are current** (`deps_stamp`): after an
-  update that changed `requirements.txt` it says to run setup again, instead of a run
-  failing on the first import that moved.
+  update that changed `requirements.txt` or the packages setup installs beside it, it
+  says to run setup again, instead of a run failing on the first import that moved.
 - The engine stamp no longer needs git: an installed plugin, which is a plain copy,
   stamps a digest of its engine files, so the stop on a run straddling an engine
-  change keeps working there.
+  change keeps working there — including when the plugin cache sits inside a git
+  repository (a dotfiles `~/.claude`), whose commits say nothing about the plugin.
 - Run `/video-grid:setup` (or `bash setup.sh` from a clone) once after updating: it
-  writes the new stamp and moves the weights and config.
+  writes the new stamp, records ffmpeg in `~/.config/video-grid/`, and copies the
+  Jamendo key and the YOLO weights over from the clone 0.26.0 recorded. Coming from
+  a clone install, the README's "Upgrading" section has the two marketplace paths:
+  the GitHub one is refused while the clone is still registered under the same name.
 
 ## 0.26.0 — 2026-10-20
 

@@ -61,3 +61,18 @@ def test_the_users_config_beats_an_old_clones_in_tree_file(monkeypatch, tmp_path
 
 def test_the_launcher_is_this_codes_own():
     assert userdirs.launcher() == REPO / "bin" / "vg"
+
+
+def test_the_requirements_digest_sees_setups_own_pip_lines_not_its_comments(tmp_path):
+    """demucs and torchreid are installed outside requirements.txt, so an update that
+    changes them must move the digest too (the review's M5) — and a comment must not."""
+    (tmp_path / "requirements.txt").write_text("numpy\n")
+    (tmp_path / "setup.sh").write_text('# install\n"$VENV/bin/pip" install demucs\n')
+    first = userdirs.requirements_digest(tmp_path)
+    (tmp_path / "setup.sh").write_text('# install it, really\n"$VENV/bin/pip" install demucs\n')
+    assert userdirs.requirements_digest(tmp_path) == first
+    (tmp_path / "setup.sh").write_text('"$VENV/bin/pip" install demucs tensorboard\n')
+    assert userdirs.requirements_digest(tmp_path) != first
+    (tmp_path / "setup.sh").write_text('"$VENV/bin/pip" install demucs\n')
+    (tmp_path / "requirements.txt").write_text("numpy\nscipy\n")
+    assert userdirs.requirements_digest(tmp_path) != first

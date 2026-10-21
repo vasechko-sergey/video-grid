@@ -17,7 +17,6 @@ Imports are kept LIGHT on purpose: a broken heavy dep must be REPORTED by
 _probe_deps, not crash this checker on import. models.MODELS pulls no numpy/cv2.
 """
 import argparse
-import hashlib
 import importlib
 import json
 import os
@@ -34,7 +33,7 @@ _DEPS = ("numpy", "scipy", "PIL", "cv2", "pi_heif", "librosa", "ultralytics",
          "scenedetect", "imagehash", "yt_dlp", "requests", "certifi", "fontTools")
 
 _ROOT = Path(__file__).resolve().parent.parent   # the code's root: a plugin version dir or a clone
-STAMP = ".video-grid-requirements"               # setup.sh writes it into the venv
+STAMP = userdirs.REQUIREMENTS_STAMP
 
 
 def _probe_deps() -> tuple[bool, str]:
@@ -111,10 +110,10 @@ def _probe_weights() -> tuple[bool, str]:
 
 
 def _probe_deps_stamp() -> tuple[bool, str]:
-    """The venv's record of the requirements.txt setup.sh installed, against this
-    code's own. `sys.prefix`, not userdirs.venv_dir(): the question is about the venv
-    RUNNING this check."""
-    want = hashlib.sha256((_ROOT / "requirements.txt").read_bytes()).hexdigest()
+    """The venv's record of what setup.sh installed (userdirs.requirements_digest),
+    against this code's own. `sys.prefix`, not userdirs.venv_dir(): the question is
+    about the venv RUNNING this check."""
+    want = userdirs.requirements_digest(_ROOT)
     stamp = Path(sys.prefix) / STAMP
     if not stamp.is_file():
         return False, (f"no record of which requirements built {sys.prefix} — set up "

@@ -414,7 +414,7 @@ class CastMember:
                              f"(an OSNet person-re-ID embedding), got {len(self.descriptor)} — a "
                              f"24-d colour histogram is a stale pre-2026-08-04 cast.json; re-run "
                              f"footage-intake to regenerate it "
-                             f"(`.venv/bin/python -m scripts.intake <footage_root> <out_dir>`)")
+                             f"(the footage-intake skill, or `bin/vg scripts.intake <footage_root> <out_dir>`)")
         if not isinstance(self.notes, str):
             raise ValueError("CastMember.notes must be a string")
         if not (isinstance(self.ref_crops, list) and all(isinstance(p, str) for p in self.ref_crops)):

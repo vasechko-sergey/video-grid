@@ -189,13 +189,17 @@ mkdir -p "$(dirname "$VENV")"
 if [ ! -d "$VENV" ]; then
   "$PYTHON" -m venv "$VENV"
 fi
-# Migrate a pre-existing in-repo real venv to the symlink layout, then link. `ln -sfn`
+# In a CLONE (a .git beside this script), link .venv to the venv for the developer's
+# own `.venv/bin/python`; migrate a pre-existing in-repo real venv first. `ln -sfn`
 # replaces an existing symlink atomically; a real dir must be removed first (its 1.1 GB
-# is exactly what we are moving out of the tree).
-if [ -e "$SKILL_DIR/.venv" ] && [ ! -L "$SKILL_DIR/.venv" ]; then
-  rm -rf "$SKILL_DIR/.venv"
+# is exactly what we are moving out of the tree). Never in a plugin's version
+# directory: nothing there reads it, and nothing of the runtime lands inside the plugin.
+if [ -e "$SKILL_DIR/.git" ]; then
+  if [ -e "$SKILL_DIR/.venv" ] && [ ! -L "$SKILL_DIR/.venv" ]; then
+    rm -rf "$SKILL_DIR/.venv"
+  fi
+  ln -sfn "$VENV" "$SKILL_DIR/.venv"
 fi
-ln -sfn "$VENV" "$SKILL_DIR/.venv"
 "$VENV/bin/pip" install --upgrade pip >/dev/null
 "$VENV/bin/pip" install -r "$SKILL_DIR/requirements.txt"
 # demucs: vocal separation for phrase-aware music in/out-point (§5.5, backlog #2 —
@@ -251,12 +255,23 @@ ln -sfn "$VENV" "$SKILL_DIR/.venv"
 # NON-BLOCKING notice (no interactive read, so a non-interactive/CI `bash setup.sh`
 # never stalls). Add the key yourself when you want it.
 SRC_ENV="$VG_CONFIG/sourcing.env"
-# A clone set up before 0.27.0 kept the key in its own config/; move it to where the
-# runtime reads it now, once, so the user's key survives the move.
-if [ ! -e "$SRC_ENV" ] && [ -f "$SKILL_DIR/config/sourcing.env" ]; then
-  cp "$SKILL_DIR/config/sourcing.env" "$SRC_ENV"
-  echo "moved config/sourcing.env -> $SRC_ENV"
-fi
+# Before 0.27.0 the runtime lived in a clone, which kept the Jamendo key in its own
+# config/ and the YOLO weights in its root, and setup recorded that clone in
+# $VG_CONFIG/root. Read here ONLY to carry those two over, once: a plugin installed
+# from GitHub carries no config/ of its own, so this script's own directory alone
+# would leave the key behind (the 2026-10-21 review). Nothing else reads the record.
+OLD_CLONE="$(cat "$VG_CONFIG/root" 2>/dev/null || true)"
+for old in "$SKILL_DIR" "$OLD_CLONE"; do
+  [ -n "$old" ] || continue
+  if [ ! -e "$SRC_ENV" ] && [ -f "$old/config/sourcing.env" ]; then
+    cp "$old/config/sourcing.env" "$SRC_ENV"
+    echo "moved $old/config/sourcing.env -> $SRC_ENV"
+  fi
+  if [ ! -e "$MODELS_DIR/yolo11n-seg.pt" ] && [ -f "$old/yolo11n-seg.pt" ]; then
+    cp "$old/yolo11n-seg.pt" "$MODELS_DIR/"
+    echo "copied $old/yolo11n-seg.pt -> $MODELS_DIR/"
+  fi
+done
 if [ -z "${JAMENDO_CLIENT_ID:-}" ] && ! grep -qs '^JAMENDO_CLIENT_ID=' "$SRC_ENV" 2>/dev/null; then
   echo "note: the free music lane uses ccMixter (no key). For Jamendo's richer CC catalog,"
   echo "  add 'JAMENDO_CLIENT_ID=...' to $SRC_ENV (get one at https://devportal.jamendo.com/)."
@@ -273,10 +288,10 @@ from scripts.lib.models import MODELS
 from scripts import track
 Path(MODELS[0]).exists() or (print("fetching YOLO weights " + MODELS[0] + "..."), track.ensure_model(MODELS[0]))') \
   || echo "WARNING: could not fetch the YOLO weights (offline?) -> verify_runtime will report them missing until setup is re-run online."
-# Stamp the venv with the requirements it was built from, so verify_runtime can tell
-# a plugin update that changed the dependencies from one that did not (design §3).
-# Computed by the venv's own Python — the same sha256 verify_runtime computes — so no
-# platform's shasum/sha256sum spelling can make the two disagree.
-"$VENV/bin/python" -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' \
-  "$SKILL_DIR/requirements.txt" > "$VENV/.video-grid-requirements"
+# Stamp the venv with what it was built from, so verify_runtime can tell a plugin
+# update that changed the dependencies from one that did not (design §3). The digest
+# is computed by the SAME function verify_runtime calls (userdirs.requirements_digest:
+# requirements.txt plus this script's own pip lines), so writer and reader agree.
+PYTHONPATH="$SKILL_DIR" "$VENV/bin/python" -c 'from scripts.lib import userdirs
+print(userdirs.requirements_digest())' > "$VENV/.video-grid-requirements"
 echo "venv ready: $VENV ($("$VENV/bin/python" -V))"

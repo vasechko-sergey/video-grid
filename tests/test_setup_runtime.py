@@ -17,8 +17,9 @@ def test_venv_is_built_at_an_external_xdg_path():
     assert 'VENV="$VG_DATA/venv"' in SETUP
 
 
-def test_a_clones_dot_venv_is_a_symlink_into_the_external_venv():
-    assert 'ln -sfn "$VENV" "$SKILL_DIR/.venv"' in SETUP
+def test_a_clones_dot_venv_is_a_symlink_into_the_external_venv_and_only_a_clones():
+    i = SETUP.index('ln -sfn "$VENV" "$SKILL_DIR/.venv"')
+    assert 'if [ -e "$SKILL_DIR/.git" ]; then' in SETUP[i - 300:i]
 
 
 def test_setup_records_its_state_in_the_users_config_dir_not_beside_the_code():
@@ -26,12 +27,18 @@ def test_setup_records_its_state_in_the_users_config_dir_not_beside_the_code():
     assert '> "$VG_CONFIG/ffmpeg.env"' in SETUP
     assert 'SRC_ENV="$VG_CONFIG/sourcing.env"' in SETUP
     assert '"$SKILL_DIR/config/ffmpeg.env"' not in SETUP       # the in-tree record is gone
-    assert '/root"' not in SETUP                               # nothing reads a recorded root
+    assert '> "$VG_CONFIG/root"' not in SETUP                  # the root is never recorded
 
 
-def test_an_old_clones_jamendo_key_is_moved_not_lost():
-    i = SETUP.index('cp "$SKILL_DIR/config/sourcing.env" "$SRC_ENV"')
-    assert '[ ! -e "$SRC_ENV" ]' in SETUP[SETUP.rfind("\n", 0, i - 120):i]
+def test_an_old_clones_jamendo_key_and_weights_are_carried_over_not_lost():
+    """A plugin installed from GitHub has no config/, so the key must also be looked
+    for in the clone 0.26.0 recorded (the review's I2) — and its weights, so an
+    offline upgrade is not blocked by `weights` (M3)."""
+    assert 'OLD_CLONE="$(cat "$VG_CONFIG/root" 2>/dev/null || true)"' in SETUP
+    assert 'for old in "$SKILL_DIR" "$OLD_CLONE"; do' in SETUP
+    i = SETUP.index('cp "$old/config/sourcing.env" "$SRC_ENV"')
+    assert '[ ! -e "$SRC_ENV" ]' in SETUP[i - 120:i]
+    assert 'cp "$old/yolo11n-seg.pt" "$MODELS_DIR/"' in SETUP
 
 
 def test_setup_fetches_the_weights_where_bin_vg_works():
@@ -46,7 +53,8 @@ def test_setup_fetches_the_weights_where_bin_vg_works():
     assert 'MODELS_DIR="$VG_DATA/models"' in SETUP
 
 
-def test_setup_stamps_the_venv_with_the_requirements_it_installed():
+def test_setup_stamps_the_venv_after_everything_it_installs():
     i = SETUP.index('> "$VENV/.video-grid-requirements"')
     assert SETUP.index('install -r "$SKILL_DIR/requirements.txt"') < i
-    assert '"$SKILL_DIR/requirements.txt"' in SETUP[i - 200:i]
+    assert SETUP.rindex('pip" install') < i                   # demucs, torchreid: before it
+    assert 'PYTHONPATH="$SKILL_DIR"' in SETUP[i - 200:i]

@@ -30,8 +30,9 @@ loads the skill, so resolve it once:
     ROOT="${CLAUDE_PLUGIN_ROOT}"
     VG="$ROOT/bin/vg"
 
-If `ROOT` comes out empty — a harness that does not fill the line in — it is the
-directory two levels above this skill's base directory. Then run every step as
+If `ROOT` comes out empty, or `"$VG"` does not exist — a harness that did not fill
+the line in — `ROOT` is the directory two levels above this skill's base directory.
+Then run every step as
 `"$VG" scripts.X`, read every reference as `"$ROOT/references/…"`, and pass
 **absolute** paths for every footage / run / output directory. Nothing here is
 relative to your working directory — a skill runs from the user's footage

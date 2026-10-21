@@ -11,8 +11,8 @@ from scripts.lib.models import (HERO_KINDS, HERO_RULES, INTENTS, RoutePoint, Tra
                                 TrackSpec, route_to_json)
 
 # Ultralytics resolves bare model NAMES (auto-download on first use); an absolute
-# path would NOT auto-download (landmine, design §12). setup.sh redirects the
-# weight cache into models/.
+# path would NOT auto-download (landmine, design §12). bin/vg works in the shared
+# models directory, so that is where a bare name lands (design 2026-10-21 §1).
 MODEL = "yolo11n-seg.pt"
 
 AMBIG_MARGIN = 0.8      # §6.1a margin rule: top-2 within ~20% ⇒ ambiguous ⇒ stop-and-report.
