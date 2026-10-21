@@ -1,20 +1,30 @@
 #!/usr/bin/env bash
-# The one place that knows HOW to run the video-grid pipeline (design 2026-07-22 §2.1).
-# Self-resolves the repo root from its OWN location so it is correct from any cwd,
-# guards the venv (the fail-loud remedy point), then cd's to root — mandatory, not
-# cosmetic: ultralytics downloads the YOLO weights by bare name into cwd (design
-# §1.1), so PYTHONPATH alone would re-download them into the wrong directory.
+# The one place that knows HOW to run the video-grid pipeline (design 2026-07-22 §2.1,
+# 2026-10-21). Self-resolves the code root from its OWN location — an installed
+# plugin's version directory or a developer's clone, either works — and runs it with
+# the venv kept OUTSIDE the code, because a plugin version directory holds no state.
+#
+# The cd is mandatory, not cosmetic: ultralytics downloads the YOLO weights by bare
+# name into cwd (design 2026-07-22 §1.1). It goes to the shared models directory, so
+# every installed version finds the same weights, and PYTHONPATH supplies the code.
+# These two directories are spelled here, in setup.sh and in scripts/lib/userdirs.py;
+# tests/lib/test_userdirs.py pins that the three agree.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if [ ! -x "$ROOT/.venv/bin/python" ]; then
-  echo "video-grid: no venv at $ROOT/.venv — run: bash \"$ROOT/setup.sh\"" >&2
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/video-grid"
+PY="$DATA/venv/bin/python"
+if [ ! -x "$PY" ]; then
+  echo "video-grid: no runtime at $DATA/venv — run /video-grid:setup in Claude Code," \
+       "or: bash \"$ROOT/setup.sh\"" >&2
   exit 1
 fi
-cd "$ROOT"
+mkdir -p "$DATA/models"
+cd "$DATA/models"
+export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 # A `-c` snippet needs the same cd and the same venv guard as a module run, and
 # cannot go through `-m`. The launcher is the one door either way (design
 # 2026-07-22 §2.1); this is the second spelling of the same contract.
 if [ "${1:-}" = "-c" ]; then
-  exec "$ROOT/.venv/bin/python" "$@"
+  exec "$PY" "$@"
 fi
-exec "$ROOT/.venv/bin/python" -m "$@"
+exec "$PY" -m "$@"

@@ -38,13 +38,18 @@ class Check:
 #: the same case (no install-record file at all) without ever calling
 #: `plugin_staleness`. One constant so the two call sites cannot drift apart —
 #: they used to be two independently-typed copies of the same sentence.
-NO_RECORD_DETAIL = "no install record — running from the clone"
+NO_RECORD_DETAIL = "no install record — the plugin is not installed for this user"
 
 
 CHECKS: tuple[Check, ...] = (
-    Check("plugin", "installed plugin matches the clone", True,
+    Check("plugin", "installed plugin matches the code running this check", True,
           "claude plugin update video-grid@video-grid"),
     Check("deps", "Python runtime deps import", True, "bash setup.sh"),
+    # A plugin update is a new code directory against the SAME venv: an update that
+    # changed requirements.txt would otherwise surface as the first import that moved
+    # (design 2026-10-21 §3).
+    Check("deps_stamp", "the venv was built from this code's requirements.txt", True,
+          "bash setup.sh"),
     Check("ffmpeg_bin", "ffmpeg + ffprobe resolve", True, "bash setup.sh"),
     Check("drawtext", "ffmpeg drawtext filter (titles, draft labels)", True, "bash setup.sh"),
     Check("vidstab", "ffmpeg vidstab filters (intake shake, stabilize)", True, "bash setup.sh"),

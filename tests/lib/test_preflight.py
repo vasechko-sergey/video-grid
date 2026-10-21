@@ -12,7 +12,7 @@ def test_registry_keys_unique_and_expected_split():
     keys = [c.key for c in CHECKS]
     assert len(keys) == len(set(keys))
     assert [c.key for c in CHECKS if c.required] == [
-        "plugin", "deps", "ffmpeg_bin", "drawtext", "vidstab", "font",
+        "plugin", "deps", "deps_stamp", "ffmpeg_bin", "drawtext", "vidstab", "font",
         "weights", "demucs"]
     assert [c.key for c in CHECKS if not c.required] == ["reid", "icon_font"]
 
@@ -66,7 +66,7 @@ def test_to_dict_shape():
     d = RuntimeReport(results=results).to_dict()
     assert d["ok"] is True
     assert d["results"][0] == {
-        "key": "plugin", "label": "installed plugin matches the clone",
+        "key": "plugin", "label": "installed plugin matches the code running this check",
         "required": True, "ok": True, "detail": "ok",
         "remedy": "claude plugin update video-grid@video-grid"}
 

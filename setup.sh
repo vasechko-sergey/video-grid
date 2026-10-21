@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# The venv lives OUTSIDE the repo so `/plugin install`'s cp -R does not copy 1.1 GB
-# into the plugin cache; <repo>/.venv becomes a symlink to it (below), which keeps
-# every `.venv/bin/python` path working. (design 2026-07-22 runtime-resolution §3)
-VENV="${XDG_DATA_HOME:-$HOME/.local/share}/video-grid/venv"
+# This script runs from wherever the code is: an installed plugin's version directory
+# (the setup skill runs it there) or a developer's clone. Neither may hold state — a
+# plugin update is a new directory — so everything it installs or records goes to the
+# user's XDG directories (design 2026-10-21 §1). These spellings are pinned against
+# bin/vg and scripts/lib/userdirs.py by tests/lib/test_userdirs.py.
+VG_DATA="${XDG_DATA_HOME:-$HOME/.local/share}/video-grid"
+VG_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/video-grid"
+VENV="$VG_DATA/venv"
+MODELS_DIR="$VG_DATA/models"
+mkdir -p "$VG_CONFIG" "$MODELS_DIR"
 PYTHON="${PYTHON:-python3.13}"
 export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"   # corporate mirrors time out off-VPN
 # freeze brew version drift: a bare `brew install X` normally runs `brew update` first and
@@ -27,7 +33,7 @@ export HOMEBREW_NO_AUTO_UPDATE=1
 # drawtext-capable ffmpeg + a .ttf/.ttc font by hand (need_brew below degrades to a
 # message). Cross-platform auto-install is a TODO — the runtime code is already
 # portable (scripts/lib/fonts.py FONT_CANDIDATES carries Linux font paths too, and
-# scripts/lib/ffbin.py falls through to PATH when config/ffmpeg.env is absent).
+# scripts/lib/ffbin.py falls through to PATH when no ffmpeg.env is recorded).
 need_brew() {
   command -v brew >/dev/null || {
     echo "ERROR: '$1' is missing and homebrew is not installed -> install brew (https://brew.sh) or install '$1' manually"; exit 1; }
@@ -105,9 +111,8 @@ else
   # path is the one thing the runtime cannot rediscover; scripts/lib/ffbin.py reads
   # this file. The FILTERS are deliberately NOT recorded — a stale path fails loud,
   # a stale capability record fails silently (design §4).
-  mkdir -p "$SKILL_DIR/config"
-  printf 'FFMPEG=%s\nFFPROBE=%s\n' "$FFMPEG_BIN" "$FFPROBE_BIN" > "$SKILL_DIR/config/ffmpeg.env"
-  echo "recorded config/ffmpeg.env -> $FFMPEG_BIN"
+  printf 'FFMPEG=%s\nFFPROBE=%s\n' "$FFMPEG_BIN" "$FFPROBE_BIN" > "$VG_CONFIG/ffmpeg.env"
+  echo "recorded $VG_CONFIG/ffmpeg.env -> $FFMPEG_BIN"
 
   # Pin so a later `brew upgrade` cannot drift the version out from under the goldens —
   # boxblur/drawtext behavior is version-sensitive (8.1.2 changed boxblur validation).
@@ -178,18 +183,23 @@ for cask in font-montserrat font-inter font-bebas-neue font-oswald font-noto-emo
 done
 fi
 
-# --- venv (external; <repo>/.venv is a symlink to it) + python deps ---
+# --- venv (external; a clone's .venv is a symlink to it, for the developer's own
+# `.venv/bin/python` — bin/vg reads $VENV directly) + python deps ---
 mkdir -p "$(dirname "$VENV")"
 if [ ! -d "$VENV" ]; then
   "$PYTHON" -m venv "$VENV"
 fi
-# Migrate a pre-existing in-repo real venv to the symlink layout, then link. `ln -sfn`
+# In a CLONE (a .git beside this script), link .venv to the venv for the developer's
+# own `.venv/bin/python`; migrate a pre-existing in-repo real venv first. `ln -sfn`
 # replaces an existing symlink atomically; a real dir must be removed first (its 1.1 GB
-# is exactly what we are moving out of the tree).
-if [ -e "$SKILL_DIR/.venv" ] && [ ! -L "$SKILL_DIR/.venv" ]; then
-  rm -rf "$SKILL_DIR/.venv"
+# is exactly what we are moving out of the tree). Never in a plugin's version
+# directory: nothing there reads it, and nothing of the runtime lands inside the plugin.
+if [ -e "$SKILL_DIR/.git" ]; then
+  if [ -e "$SKILL_DIR/.venv" ] && [ ! -L "$SKILL_DIR/.venv" ]; then
+    rm -rf "$SKILL_DIR/.venv"
+  fi
+  ln -sfn "$VENV" "$SKILL_DIR/.venv"
 fi
-ln -sfn "$VENV" "$SKILL_DIR/.venv"
 "$VENV/bin/pip" install --upgrade pip >/dev/null
 "$VENV/bin/pip" install -r "$SKILL_DIR/requirements.txt"
 # demucs: vocal separation for phrase-aware music in/out-point (§5.5, backlog #2 —
@@ -200,7 +210,7 @@ ln -sfn "$VENV" "$SKILL_DIR/.venv"
 # BLOCKING check, so a run cannot start without it.
 #
 # This block still CONTINUES on failure rather than aborting, and that is deliberate:
-# `set -e` here would leave torchreid, the models dir and the recorded runtime root
+# `set -e` here would leave torchreid, the weights and the requirements stamp
 # unconfigured, turning one missing wheel into a half-built install that is harder to
 # diagnose. Installing is this script's job; GATING is verify_runtime's. Kept OUT of
 # requirements.txt for the same reason — a failed torch wheel must not abort the whole
@@ -244,30 +254,52 @@ ln -sfn "$VENV" "$SKILL_DIR/.venv"
 # ccMixter (no key); Jamendo's richer CC catalog needs a free client_id, surfaced as a
 # NON-BLOCKING notice (no interactive read, so a non-interactive/CI `bash setup.sh`
 # never stalls). Add the key yourself when you want it.
-SRC_ENV="$SKILL_DIR/config/sourcing.env"
+SRC_ENV="$VG_CONFIG/sourcing.env"
+# Before 0.27.0 the runtime lived in a clone, which kept the Jamendo key in its own
+# config/ and the YOLO weights in its root, and setup recorded that clone in
+# $VG_CONFIG/root. Read here ONLY to carry those two over, once: a plugin installed
+# from GitHub carries no config/ of its own, so this script's own directory alone
+# would leave the key behind (the 2026-10-21 review). Nothing else reads the record.
+OLD_CLONE="$(cat "$VG_CONFIG/root" 2>/dev/null || true)"
+for old in "$SKILL_DIR" "$OLD_CLONE"; do
+  [ -n "$old" ] || continue
+  if [ ! -e "$SRC_ENV" ] && [ -f "$old/config/sourcing.env" ]; then
+    cp "$old/config/sourcing.env" "$SRC_ENV"
+    echo "moved $old/config/sourcing.env -> $SRC_ENV"
+  fi
+  if [ ! -e "$MODELS_DIR/yolo11n-seg.pt" ] && [ -s "$old/yolo11n-seg.pt" ]; then
+    cp "$old/yolo11n-seg.pt" "$MODELS_DIR/"
+    echo "copied $old/yolo11n-seg.pt -> $MODELS_DIR/"
+  fi
+done
 if [ -z "${JAMENDO_CLIENT_ID:-}" ] && ! grep -qs '^JAMENDO_CLIENT_ID=' "$SRC_ENV" 2>/dev/null; then
   echo "note: the free music lane uses ccMixter (no key). For Jamendo's richer CC catalog,"
-  echo "  add 'JAMENDO_CLIENT_ID=...' to config/sourcing.env (get one at https://devportal.jamendo.com/)."
+  echo "  add 'JAMENDO_CLIENT_ID=...' to $SRC_ENV (get one at https://devportal.jamendo.com/)."
 fi
-mkdir -p "$SKILL_DIR/models"
-# YOLO segmentation weights. verify_runtime REQUIRES them at <clone>/yolo11n-seg.pt with
-# `bash setup.sh` as the remedy, and using-montage stops at step 0 on a failed check —
-# so they are fetched HERE, or a fresh clone's first run dead-ends on a remedy that
-# cannot fix it. Ultralytics downloads a bare model name into the CURRENT directory, so
-# the fetch runs from the clone root, and names the file the probe checks (MODELS[0]).
-# OSNet and demucs weights still download on first use: neither is a required check.
-(cd "$SKILL_DIR" && "$VENV/bin/python" -c 'from pathlib import Path
+# YOLO segmentation weights. verify_runtime REQUIRES them in $MODELS_DIR, and
+# using-montage stops at step 0 on a failed check — so they are fetched HERE, or a
+# fresh install's first run dead-ends on a remedy that cannot fix it. Ultralytics
+# downloads a bare model name into the CURRENT directory, so the fetch runs from
+# $MODELS_DIR — bin/vg's own working directory — with the code on PYTHONPATH, and
+# names the file the probe checks (MODELS[0]). OSNet and demucs weights still
+# download on first use: neither is a required check.
+(cd "$MODELS_DIR" && PYTHONPATH="$SKILL_DIR" "$VENV/bin/python" -P -c 'from pathlib import Path
 from scripts.lib.models import MODELS
 from scripts import track
 Path(MODELS[0]).exists() or (print("fetching YOLO weights " + MODELS[0] + "..."), track.ensure_model(MODELS[0]))') \
-  || echo "WARNING: could not fetch the YOLO weights (offline?) -> verify_runtime will report them missing until 'bash setup.sh' is re-run online."
+  || echo "WARNING: could not fetch the YOLO weights (offline?) -> verify_runtime will report them missing until setup is re-run online."
+# Stamp the venv with what it was built from, so verify_runtime can tell a plugin
+# update that changed the dependencies from one that did not (design §3). The digest
+# is computed by the SAME function verify_runtime calls (userdirs.requirements_digest:
+# requirements.txt plus this script's own pip lines), so writer and reader agree.
+# Run like the YOLO fetch above: from $MODELS_DIR, with -P so the caller's working
+# directory never lands on sys.path — run from a user's project or an old clone, a
+# `scripts/` there would otherwise be imported instead of this one (the 2026-10-21
+# re-review) — and with this script's directory passed as the root explicitly. Written
+# to a temp file and moved, so a failure here never blanks a stamp that was good.
+(cd "$MODELS_DIR" && PYTHONPATH="$SKILL_DIR" "$VENV/bin/python" -P -c 'import sys
+from pathlib import Path
+from scripts.lib import userdirs
+print(userdirs.requirements_digest(Path(sys.argv[1])))' "$SKILL_DIR") > "$VENV/.video-grid-requirements.tmp"
+mv "$VENV/.video-grid-requirements.tmp" "$VENV/.video-grid-requirements"
 echo "venv ready: $VENV ($("$VENV/bin/python" -V))"
-
-# Record where the runtime lives. Claude Code installs the montage skills by COPYING
-# them into a runtime-less plugin cache, so a skill cannot find this checkout from its
-# own (copied) location — it reads this file and runs <clone>/bin/vg. Outside the tree
-# on purpose. (design 2026-07-22 runtime-resolution §2)
-VG_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/video-grid"
-mkdir -p "$VG_CONFIG"
-printf '%s\n' "$SKILL_DIR" > "$VG_CONFIG/root"
-echo "recorded runtime root -> $VG_CONFIG/root ($SKILL_DIR)"

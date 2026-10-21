@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 
 from scripts import contact_sheet, probe, process_episode, reframe
-from scripts.lib import assembly, color, naturalness, prompts, provenance
+from scripts.lib import assembly, color, naturalness, prompts, provenance, userdirs
 from scripts.lib.episode_qc import EpisodeFinding, EpisodeVerdict, ReelQC
 from scripts.lib.models import ReelManifest
 
@@ -224,8 +224,8 @@ def _sidecar(ev: dict, key: str, name: str) -> str:
 def judge_prompt(ev: dict, d: Path) -> str:
     """The judge's prompt for one episode, filled from its own evidence.json (retro
     2026-10-16 S14: the second real run's agent wrote a script to do this by hand).
-    Paths are absolute: the judge runs its commands through bin/vg, which cds to the
-    repo root, and writes its findings with a tool that wants one."""
+    Paths are absolute: the judge runs its commands through bin/vg, which works in
+    its own models directory, and writes its findings with a tool that wants one."""
     def px(v):
         return _NONE if v is None else "x".join(str(n) for n in v)
     return prompts.render(prompts.JUDGE_TEMPLATE, {
@@ -241,6 +241,10 @@ def judge_prompt(ev: dict, d: Path) -> str:
         "STORYBOARD_PX": px(ev["storyboard_px"]),
         "CLIP": str(Path(ev["clip"]).resolve()),
         "FINDINGS_PATH": str((d / "findings.json").resolve()),
+        # the launcher of the code that packed this evidence: a dispatched judge's
+        # prompt is not a skill, so nothing fills the plugin root into it (design
+        # 2026-10-21 §2)
+        "VG": str(userdirs.launcher()),
     })
 
 

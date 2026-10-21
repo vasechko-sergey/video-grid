@@ -4,36 +4,45 @@ from pathlib import Path
 
 import pytest
 
-from scripts.lib import ffbin
+from scripts.lib import ffbin, userdirs
 
 
-def test_the_environment_variable_wins(monkeypatch, tmp_path):
+@pytest.fixture
+def cfg_home(tmp_path, monkeypatch):
+    """A config dir of the test's own (XDG_CONFIG_HOME) and a code root with no old
+    in-tree config/, so the machine's real ffmpeg.env is never read. Returns the
+    path ffbin reads first."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.setattr(userdirs, "REPO", tmp_path / "code")
+    d = tmp_path / "xdg" / userdirs.APP
+    d.mkdir(parents=True)
+    return d / ffbin.ENV_FILE
+
+
+def test_the_environment_variable_wins(monkeypatch, tmp_path, cfg_home):
     monkeypatch.setenv("FFMPEG", "/from/env/ffmpeg")
-    cfg = tmp_path / "ffmpeg.env"
+    cfg = cfg_home
     cfg.write_text("FFMPEG=/from/file/ffmpeg\n")
-    monkeypatch.setattr(ffbin, "_FFMPEG_ENV", cfg)
     assert ffbin.ffmpeg() == "/from/env/ffmpeg"
 
 
-def test_the_config_file_beats_PATH(monkeypatch, tmp_path):
+def test_the_config_file_beats_PATH(monkeypatch, tmp_path, cfg_home):
     monkeypatch.delenv("FFMPEG", raising=False)
-    cfg = tmp_path / "ffmpeg.env"
+    cfg = cfg_home
     cfg.write_text("FFMPEG=/from/file/ffmpeg\nFFPROBE=/from/file/ffprobe\n")
-    monkeypatch.setattr(ffbin, "_FFMPEG_ENV", cfg)
     assert ffbin.ffmpeg() == "/from/file/ffmpeg"
     assert ffbin.ffprobe() == "/from/file/ffprobe"
 
 
-def test_a_missing_config_falls_through_to_PATH(monkeypatch, tmp_path):
+def test_a_missing_config_falls_through_to_PATH(monkeypatch, tmp_path, cfg_home):
     # the portability rung: setup.sh is macOS-only, so a Linux box has no config
     # file and import must still work (design §3).
     monkeypatch.delenv("FFMPEG", raising=False)
-    monkeypatch.setattr(ffbin, "_FFMPEG_ENV", tmp_path / "absent.env")
     monkeypatch.setattr(ffbin.shutil, "which", lambda name: f"/usr/bin/{name}")
     assert ffbin.ffmpeg() == "/usr/bin/ffmpeg"
 
 
-def test_a_relative_PATH_hit_is_made_absolute(monkeypatch, tmp_path):
+def test_a_relative_PATH_hit_is_made_absolute(monkeypatch, tmp_path, cfg_home):
     """shutil.which returns a RELATIVE path when PATH carries a relative entry —
     a bare "." is enough. The contract says absolute, so passing which's result
     straight through would make it false as soon as anything chdir'd.
@@ -44,25 +53,22 @@ def test_a_relative_PATH_hit_is_made_absolute(monkeypatch, tmp_path):
     already pinned by test_a_missing_config_falls_through_to_PATH.
     """
     monkeypatch.delenv("FFMPEG", raising=False)
-    monkeypatch.setattr(ffbin, "_FFMPEG_ENV", tmp_path / "absent.env")
     monkeypatch.setattr(ffbin.shutil, "which", lambda name: f"./{name}")
     assert ffbin.ffmpeg() == str(Path.cwd() / "ffmpeg")
 
 
-def test_an_empty_value_in_the_file_is_not_a_path(monkeypatch, tmp_path):
+def test_an_empty_value_in_the_file_is_not_a_path(monkeypatch, tmp_path, cfg_home):
     monkeypatch.delenv("FFMPEG", raising=False)
-    cfg = tmp_path / "ffmpeg.env"
+    cfg = cfg_home
     cfg.write_text("FFMPEG=\n")
-    monkeypatch.setattr(ffbin, "_FFMPEG_ENV", cfg)
     monkeypatch.setattr(ffbin.shutil, "which", lambda name: f"/usr/bin/{name}")
     assert ffbin.ffmpeg() == "/usr/bin/ffmpeg"
 
 
-def test_nothing_resolves_fails_loud_with_the_remedy(monkeypatch, tmp_path):
+def test_nothing_resolves_fails_loud_with_the_remedy(monkeypatch, tmp_path, cfg_home):
     monkeypatch.delenv("FFMPEG", raising=False)
-    monkeypatch.setattr(ffbin, "_FFMPEG_ENV", tmp_path / "absent.env")
     monkeypatch.setattr(ffbin.shutil, "which", lambda name: None)
-    with pytest.raises(ValueError, match="bash setup.sh"):
+    with pytest.raises(ValueError, match="video-grid:setup"):
         ffbin.ffmpeg()
 
 
@@ -210,3 +216,14 @@ def test_no_integration_test_names_a_binary_instead_of_resolving_it():
               and node.value in _BANNED_BARE_BINARIES]
     assert guilty == [], (
         f"use ffbin.ffmpeg()/ffbin.ffprobe() instead of a bare literal: {guilty}")
+
+
+def test_a_clone_set_up_before_0_27_still_reads_its_in_tree_record(monkeypatch, tmp_path,
+                                                                   cfg_home):
+    monkeypatch.delenv("FFMPEG", raising=False)
+    old = tmp_path / "code" / "config"
+    old.mkdir(parents=True)
+    (old / "ffmpeg.env").write_text("FFMPEG=/old/ffmpeg\n")
+    assert ffbin.ffmpeg() == "/old/ffmpeg"
+    cfg_home.write_text("FFMPEG=/new/ffmpeg\n")                 # the user's dir wins
+    assert ffbin.ffmpeg() == "/new/ffmpeg"

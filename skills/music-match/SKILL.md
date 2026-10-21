@@ -29,20 +29,22 @@ Announce on entry: **"Using music-match to shortlist the reel's track by mood."*
 1. **Recon.** Read `SPEC.json` (note `mood`, `length_s`) and confirm the candidate
    folder path with the user.
 
-**Launcher and references.** Run every pipeline step through the repo's launcher
+**Launcher and references.** Run every pipeline step through the plugin's launcher
 `bin/vg`, never a bare `python`, and resolve every `references/…` read the same
-way. `setup.sh` records the runtime's location at
-`${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root`, so resolve it once:
+way. Claude Code writes this plugin's own directory into the line below when it
+loads the skill, so resolve it once:
 
-    ROOT="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")"
+    ROOT="${CLAUDE_PLUGIN_ROOT}"
     VG="$ROOT/bin/vg"
 
-Then run every step as `"$VG" scripts.X`, read every reference as
-`"$ROOT/references/…"`, and pass **absolute** paths for every footage / run /
-output directory. Nothing here is relative to your working directory — a skill
-runs from the user's footage project, not from the clone. If that file is
-missing, the user has not run `bash setup.sh` — stop and say so rather than
-guessing a path.
+If `ROOT` comes out empty, or `"$VG"` does not exist — a harness that did not fill
+the line in — `ROOT` is the directory two levels above this skill's base directory.
+Then run every step as
+`"$VG" scripts.X`, read every reference as `"$ROOT/references/…"`, and pass
+**absolute** paths for every footage / run / output directory. Nothing here is
+relative to your working directory — a skill runs from the user's footage
+project. If `"$VG"` says there is no runtime, it has not been set up yet: run the
+`setup` skill (`/video-grid:setup`), which asks before installing anything.
 
 2. **Rank** (you type the flags; the user never does):
    `"$VG" scripts.mood --folder <dir> --spec <run>/reels/<reel>/SPEC.json --out-dir <run>/reels/<reel>`

@@ -40,13 +40,42 @@ def _git(*args: str) -> str | None:
     return r.stdout.decode("utf-8", errors="replace")
 
 
+def _tree_digest() -> str | None:
+    """12 hex of sha256 over every file under ENGINE_PATHS — path and bytes, sorted —
+    or None when there are none. Bytecode and Finder droppings are not the engine."""
+    h, n = hashlib.sha256(), 0
+    for top in ENGINE_PATHS:
+        base = _ROOT / top
+        if not base.is_dir():
+            continue
+        for p in sorted(base.rglob("*")):
+            if (not p.is_file() or "__pycache__" in p.parts or p.suffix == ".pyc"
+                    or p.name == ".DS_Store"):
+                continue
+            h.update(p.relative_to(_ROOT).as_posix().encode() + b"\0" + p.read_bytes() + b"\0")
+            n += 1
+    return h.hexdigest()[:12] if n else None
+
+
 def engine_stamp() -> dict:
-    """{"sha": <short HEAD>, "dirty": <bool>}, or {"sha": "", "dirty": None} when git
-    cannot answer. Unknown is RECORDED, never guessed — and an unknown stamp cannot
-    prove drift, so it never stops a run (design §7)."""
-    sha = _git("rev-parse", "--short", "HEAD")
+    """{"sha": <short HEAD>, "dirty": <bool>} from git when this code's root is a
+    work tree's own top; otherwise — an installed plugin's version directory is a
+    plain copy, not a checkout — {"sha":
+    "tree:<12 hex>", "dirty": False}, a digest of the engine's own files (design
+    2026-10-21 §4). Without either, {"sha": "", "dirty": None}. Unknown is RECORDED,
+    never guessed — and an unknown stamp cannot prove drift, so it never stops a run
+    (design §7): which is exactly why the plugin case cannot be left unknown, or the
+    guard would go quiet for every user who installs the plugin."""
+    # git walks UP: a plugin cache under a dotfiles repo (~/.claude kept in git) would
+    # answer with THAT repo's HEAD, which an update of the plugin never moves — the
+    # same silence the tree digest exists to remove (the 2026-10-21 review). So git
+    # counts only when its work tree IS this code's root.
+    top = _git("rev-parse", "--show-toplevel")
+    sha = (_git("rev-parse", "--short", "HEAD")
+           if top is not None and Path(top.strip()).resolve() == _ROOT.resolve() else None)
     if sha is None:
-        return dict(_UNKNOWN)
+        tree = _tree_digest()
+        return {"sha": f"tree:{tree}", "dirty": False} if tree else dict(_UNKNOWN)
     status = _git("status", "--porcelain", "--", *ENGINE_PATHS)
     if status is None:
         return dict(_UNKNOWN)

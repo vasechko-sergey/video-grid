@@ -58,4 +58,4 @@ One row per `--help` surface. It answers *which tool*; `--help` answers
 | `titles build` | `titles` | `TITLES.json` | draft TITLES.json + TITLES.md from SPEC's on-screen text and the reel's length — the words open the reel at the top; hook and ending are shots, never copy |
 | `titles check` | `titles` | `TITLES.json` | refuse a TITLES.json whose rendered ink leaves the platform's safe zone |
 | `track` | — | — | track the episode's subject through a segment → route.json, the per-frame subject box every later stage composes against |
-| `verify_runtime` | — | — | verify the video-grid runtime is installed: the setup.sh baseline (deps, ffmpeg, filters, font, weights, demucs) and whether the installed plugin matches this clone (design 2026-08-01, 2026-09-25) |
+| `verify_runtime` | — | — | verify the video-grid runtime is installed: the setup.sh baseline (deps, ffmpeg, filters, font, weights, demucs) and whether the installed plugin matches this code (design 2026-08-01, 2026-09-25) |

@@ -91,39 +91,66 @@ grows.
 
 ## Install
 
-The plugin distributes the skills, and `setup.sh` installs the runtime they drive.
-You need both. A plugin install alone cannot make a reel.
+Everything happens inside Claude Code; there is nothing to clone.
 
-**1. The runtime.**
-
-```bash
-git clone https://github.com/vasechko-sergey/video-grid.git
-cd video-grid
-bash setup.sh
-```
-
-`setup.sh` installs everything with no opt-in flags: a Python 3.13 venv,
-`ffmpeg-full` (drawtext and vidstab), the title fonts, demucs, yt-dlp and the
-YOLO weights. The OSNet and demucs weights download the first time they are
-needed. Keep the clone where it is: the skills run its `bin/vg`, whose path
-`setup.sh` records.
-
-**2. The plugin**, from inside Claude Code in the clone:
+**1. The plugin.**
 
 ```
-/plugin marketplace add ./
+/plugin marketplace add vasechko-sergey/video-grid
 /plugin install video-grid@video-grid
 ```
 
-Then restart Claude Code. Check the install at any time with
-`/video-grid:verify-runtime`, which names each missing piece and the command
-that fixes it.
+Then restart Claude Code.
+
+**2. The runtime.**
+
+```
+/video-grid:setup
+```
+
+The plugin carries the code; `setup` installs what it runs on, after telling you
+what and asking: a Python 3.13 venv, `ffmpeg-full` (drawtext and vidstab; installed
+beside any ffmpeg you already have and never replacing it), the title fonts,
+demucs, yt-dlp and the YOLO weights. The first run takes 10–20 minutes, mostly
+downloads. Nothing lands inside the plugin: the venv and the weights go to
+`~/.local/share/video-grid/`, the recorded ffmpeg path to `~/.config/video-grid/`,
+so every plugin version shares them. The OSNet and demucs weights download the first
+time they are needed.
+
+Check the install at any time with `/video-grid:verify-runtime`, which names each
+missing piece and the command that fixes it.
 
 **3. Make a reel.** From any directory, describe what you want and give the
 absolute path to the footage folder. Most stages also have their own skill if you
 want to re-run just one: `project-init`, `footage-intake`, `reel-brief`,
 `edit-plan`, `music-match`, `music-source`, `pacing`, `match-grade`, `titles`,
 `episode-qc`, `reel-review`.
+
+**Updating.** In a terminal:
+
+```bash
+claude plugin update video-grid@video-grid
+```
+
+(or `/plugin` → Installed → video-grid → Update now), then restart Claude Code. If
+the new version changed the Python dependencies, `verify-runtime` blocks on
+`deps_stamp` and names the fix: run `/video-grid:setup` again.
+
+**Upgrading from a clone install (before 0.27.0).** The old install registered the
+clone itself as the `video-grid` marketplace, and Claude Code keeps one marketplace
+per name, so `/plugin marketplace add vasechko-sergey/video-grid` is refused while
+that one exists. Two ways forward:
+
+- **Keep the clone as the marketplace.** `git pull` in the clone, then
+  `claude plugin marketplace update video-grid` and
+  `claude plugin update video-grid@video-grid`, restart, and run
+  `/video-grid:setup` once.
+- **Switch to GitHub.** `claude plugin marketplace remove video-grid` — this also
+  uninstalls the plugin — then install as above and run `/video-grid:setup`.
+
+Either way, setup carries over your Jamendo key and the YOLO weights from the old
+clone (it reads the path 0.26.0 recorded) and records ffmpeg in
+`~/.config/video-grid/`. After that the clone is only needed to work on the code.
 
 ## Honest limits
 
@@ -150,10 +177,26 @@ Start at **[CLAUDE.md](CLAUDE.md)**, a registry that points to the
 [development workflow](docs/development-workflow.md), the
 [build status](docs/build-status.md) and the [pipeline map](docs/pipeline-map.md).
 
+To work on the code, clone it and set the runtime up from the clone — the same
+`setup.sh` the setup skill runs, sharing the same venv:
+
+```bash
+git clone https://github.com/vasechko-sergey/video-grid.git
+cd video-grid
+bash setup.sh
+```
+
+To have your reels run the clone's code, install the plugin from it instead of
+from GitHub (`/plugin marketplace add ./` from inside the clone, then
+`/plugin install video-grid@video-grid`) and update it after each change: the
+skills always run the copy Claude Code installed. Running a script straight from
+the clone — `.venv/bin/python -m scripts.X` in its root — is for tests and quick
+checks: unlike `bin/vg`, it works in the clone root, not the shared models
+directory.
+
 The code is laid out in three places:
 
-- `scripts/` holds the engine and its CLIs, run as modules: `bin/vg scripts.X …`
-  or `.venv/bin/python -m scripts.X`.
+- `scripts/` holds the engine and its CLIs, run as modules: `bin/vg scripts.X …`.
 - `scripts/lib/` holds the typed contracts.
 - `skills/*/SKILL.md` holds the editorial judgment.
 

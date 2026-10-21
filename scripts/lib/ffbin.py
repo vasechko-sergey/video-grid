@@ -2,7 +2,9 @@
 
 setup.sh installs a full-featured ffmpeg (drawtext + vidstab) and records where it
 put it, because homebrew's ffmpeg-full is keg-only and never lands on PATH. This
-module reads that record.
+module reads that record: `<config_dir>/ffmpeg.env` since 0.27.0 (lib/userdirs —
+the code may run from a plugin cache that holds no state), else the old in-tree
+`config/ffmpeg.env` of a clone set up before it.
 
 The PATH is frozen at install time; the FILTERS are probed at runtime, every time
 (design §4). A stale path fails loud — the file is gone and subprocess raises. A
@@ -11,27 +13,19 @@ false premise, which is the §12 failure shape this repo exists to avoid.
 """
 import os
 import shutil
-from pathlib import Path
 
-from scripts.lib import proc
+from scripts.lib import proc, userdirs
 
-# repo-root/config — mirrors catalog._SOURCING_ENV, and gitignored for the same
-# reason: the resolved path is per-machine, not per-checkout.
-_FFMPEG_ENV = Path(__file__).resolve().parents[2] / "config" / "ffmpeg.env"
+ENV_FILE = "ffmpeg.env"
 
 
 def _from_file(key: str) -> str | None:
-    """`KEY=value` out of config/ffmpeg.env, or None. Same shape as sourcing.env."""
-    if not _FFMPEG_ENV.exists():
-        return None
-    for line in _FFMPEG_ENV.read_text().splitlines():
-        if line.startswith(f"{key}="):
-            return line.split("=", 1)[1].strip() or None
-    return None
+    """`KEY=value` out of the recorded ffmpeg.env, or None. Same shape as sourcing.env."""
+    return userdirs.read_key(ENV_FILE, key)
 
 
 def _resolve(key: str, binary: str) -> str:
-    """$KEY -> config/ffmpeg.env -> PATH. Always an ABSOLUTE path.
+    """$KEY -> the recorded ffmpeg.env -> PATH. Always an ABSOLUTE path.
 
     The PATH rung goes through shutil.which rather than returning a bare name, so
     a log or an error message always names the binary that actually ran — the
@@ -49,9 +43,9 @@ def _resolve(key: str, binary: str) -> str:
     if found:
         return os.path.abspath(found)
     raise ValueError(
-        f"cannot find {binary}: ${key} is unset, {_FFMPEG_ENV} has no {key}=, and "
-        f"{binary} is not on PATH — run `bash setup.sh`, which installs ffmpeg-full "
-        f"and records where it landed")
+        f"cannot find {binary}: ${key} is unset, {userdirs.config_dir() / ENV_FILE} "
+        f"has no {key}=, and {binary} is not on PATH — run setup (/video-grid:setup, "
+        f"or `bash setup.sh`), which installs ffmpeg-full and records where it landed")
 
 
 def ffmpeg() -> str:

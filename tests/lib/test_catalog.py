@@ -34,9 +34,18 @@ def test_sources_are_the_five_lanes():
 from scripts.lib import catalog
 
 
+def _cfg(tmp_path, monkeypatch):
+    from scripts.lib import userdirs
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.setattr(userdirs, "REPO", tmp_path / "code")       # no old in-tree config/
+    d = tmp_path / "xdg" / userdirs.APP
+    d.mkdir(parents=True)
+    return d / catalog.SOURCING_ENV
+
+
 def test_free_source_is_ccmixter_without_key(tmp_path, monkeypatch):
     monkeypatch.delenv("JAMENDO_CLIENT_ID", raising=False)
-    monkeypatch.setattr(catalog, "_SOURCING_ENV", tmp_path / "sourcing.env")  # absent
+    _cfg(tmp_path, monkeypatch)                                     # absent
     assert catalog._free_source() == "ccmixter"
 
 
@@ -47,16 +56,14 @@ def test_free_source_is_jamendo_with_env_key(monkeypatch):
 
 def test_free_source_reads_config_file(tmp_path, monkeypatch):
     monkeypatch.delenv("JAMENDO_CLIENT_ID", raising=False)
-    env = tmp_path / "sourcing.env"
-    env.write_text("JAMENDO_CLIENT_ID=fromfile\n")
-    monkeypatch.setattr(catalog, "_SOURCING_ENV", env)
+    _cfg(tmp_path, monkeypatch).write_text("JAMENDO_CLIENT_ID=fromfile\n")
     assert catalog._jamendo_client_id() == "fromfile"
     assert catalog._free_source() == "jamendo"
 
 
 def test_ytdlp_cmd_raises_when_absent(monkeypatch):
     monkeypatch.setattr(catalog, "has_ytdlp", lambda: False)
-    with pytest.raises(ValueError, match="setup.sh --with-sourcing"):
+    with pytest.raises(ValueError, match="the any lane needs it"):
         catalog.ytdlp_cmd()
 
 

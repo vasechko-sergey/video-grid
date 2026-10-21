@@ -144,7 +144,7 @@ write it back into **both** places that carry a copy, not only the scratch file:
     from scripts import probe
     ep_path = '<run>/reels/<reel>/episodes/EPISODES.json'
     rm = json.load(open(ep_path))
-    regraded = probe.regrade(rm['episodes'][<N>]['manifest'], 'EDL.json', <N>)
+    regraded = probe.regrade(rm['episodes'][<N>]['manifest'], '<run>/reels/<reel>/EDL.json', <N>)
     json.dump(regraded, open('<run>/reels/<reel>/build/ep<N>/manifest.json', 'w'), indent=2)
     rm['episodes'][<N>]['manifest'] = regraded
     json.dump(rm, open(ep_path, 'w'), indent=2)

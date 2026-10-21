@@ -46,6 +46,7 @@ SKILL_ROLES: dict[str, str] = {
     "music-match": "serves the music-and-mood stage",
     "music-source": "serves the music-and-mood stage",
     "process-episode": "a per-episode worker under the episodes stage",
+    "setup": "installs the runtime the other skills drive",
 }
 
 

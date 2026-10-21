@@ -179,7 +179,7 @@ only the next one.
 0. **Verify the runtime (gate).** After resolving `$VG` (below), run
    `"$VG" scripts.verify_runtime`. It checks **two** layers: the `setup.sh`
    baseline (deps/ffmpeg/filters/font/weights/demucs) and, since 2026-09-25,
-   whether the **installed plugin** matches this clone. Exit 0 → proceed.
+   whether the **installed plugin** matches the code running it. Exit 0 → proceed.
    Non-zero → surface each `BLOCKED` check with its remedy and **stop** — do not
    run project-init against a broken runtime, and never run an installer
    yourself. A failing **`plugin`** check's remedy is
@@ -191,8 +191,8 @@ only the next one.
    are named, not blocking (they only affect optional lanes — without `reid`
    intake still produces windows, only cast identity is unavailable). `demucs`
    is **not** advisory: it blocks, because the music in/out-point has no
-   fallback sensor. The venv and the recorded root are the
-   pre-venv layer, checked by the launcher preamble and `bin/vg` before this runs.
+   fallback sensor. The venv is the pre-venv layer, checked by `bin/vg` before
+   this runs.
    The dedicated `verify-runtime` skill runs the same check on demand.
 
    If `montage status` reports `"legacy_layout": true`, this run was written before the
@@ -202,20 +202,22 @@ only the next one.
    `EPISODES.json` alone carries 57 absolute paths, and moving it breaks the QC digest
    bindings and the delivery attestation.
 
-**Launcher and references.** Run every pipeline step through the repo's launcher
+**Launcher and references.** Run every pipeline step through the plugin's launcher
 `bin/vg`, never a bare `python`, and resolve every `references/…` read the same
-way. `setup.sh` records the runtime's location at
-`${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root`, so resolve it once:
+way. Claude Code writes this plugin's own directory into the line below when it
+loads the skill, so resolve it once:
 
-    ROOT="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")"
+    ROOT="${CLAUDE_PLUGIN_ROOT}"
     VG="$ROOT/bin/vg"
 
-Then run every step as `"$VG" scripts.X`, read every reference as
-`"$ROOT/references/…"`, and pass **absolute** paths for every footage / run /
-output directory. Nothing here is relative to your working directory — a skill
-runs from the user's footage project, not from the clone. If that file is
-missing, the user has not run `bash setup.sh` — stop and say so rather than
-guessing a path.
+If `ROOT` comes out empty, or `"$VG"` does not exist — a harness that did not fill
+the line in — `ROOT` is the directory two levels above this skill's base directory.
+Then run every step as
+`"$VG" scripts.X`, read every reference as `"$ROOT/references/…"`, and pass
+**absolute** paths for every footage / run / output directory. Nothing here is
+relative to your working directory — a skill runs from the user's footage
+project. If `"$VG"` says there is no runtime, it has not been set up yet: run the
+`setup` skill (`/video-grid:setup`), which asks before installing anything.
 
 1. **Locate the run.** `"$VG" scripts.montage status --run-dir <run> --reel <reel>` prints
    the ordered stages, each with a `state`, plus the `next` stage. **Resume from

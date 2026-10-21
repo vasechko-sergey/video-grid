@@ -48,6 +48,12 @@ is where its neighbours were.
 | ✅ | **S9 · "Both heroes equally" is never checked** — free text in `SPEC.notes`; `EDL.md` shows no screen time per hero though `hero` × played length is exact. `REEL_v3` shipped 55/45 and was re-cut after the operator asked. **Fixed 2026-10-19 (0.17.0):** `SPEC.cast_share` (`reel_brief --cast-share equal` or `NAME=WEIGHT`) rides onto `EDL.cast_share`; `EDL.md` gains a **Screen time** section (played seconds and share per hero beside the brief's), and `edit_plan` logs the same line. A report at CP2, not a gate. | S | [retro 2](retro/2026-10-16-second-real-run.md) S9 |
 | ✅ | **S6 · One fade value serves three ends** — `LookSpec.fade` fades the picture in, out, and is the audio bookend: the hook's first frame is black (all four reviews), and a music ending gets only 0.8 s. **Fixed 2026-10-19 (0.16.0):** `LookSpec.fade_in` sets the opening apart (absent = the same as `fade`); every preset opens on picture; `mix` and the look gate treat each end separately, with a 20 ms anti-click floor on the music's opening. | S | [retro 2](retro/2026-10-16-second-real-run.md) S6 |
 
+## Closed — install (2026-10-21)
+
+| | Item | Size | Source |
+|---|------|------|--------|
+| ✅ | **U11 · Install from the marketplace, without a clone** — the plugin install already copies the whole repository, so the clone was needed only because `setup.sh` recorded its path and the skills ran `<clone>/bin/vg`. **Done 2026-10-21 (0.27.0)** — [design](specs/2026-10-21-install-without-clone-design.md). Skills read `${CLAUDE_PLUGIN_ROOT}`, filled in by Claude Code as a plugin skill loads; the venv, weights and config moved to the XDG directories (`lib/userdirs`); `bin/vg` works in the shared models directory; a `setup` skill runs the plugin's own `setup.sh`; `verify_runtime` gained `deps_stamp`. Found while building it: the engine stamp read git, which a plugin copy does not have, so the stop on a run straddling an engine change would have gone quiet for every plugin user — it now digests the engine files. The episode judge's prompt is not a skill, so its launcher path is filled in as a token. | M | user, 2026-10-20 |
+
 ## Closed — photos, first slice (2026-10-20)
 
 | | Item | Size | Source |
