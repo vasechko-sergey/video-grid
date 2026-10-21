@@ -368,6 +368,51 @@ def test_the_runs_last_hold_reaches_a_line_only_within_half_to_double_its_plan()
     assert landed([0.0, 2.0, 2.5, 30.0], 4) == pytest.approx((4.0, 1.5), abs=1e-12)
 
 
+def test_a_reel_opening_on_a_hold_takes_the_phase_where_it_keeps_its_plan():
+    # The hold re-syncs every later cut to whichever line it ends on, so every 2-bar phase
+    # whose line falls in its band fits and ties at (0, 0): 1 beat, 2, 3 or 4. Without a
+    # third key the first phase tried — the SHORTEST — won by the order of a range()
+    durs, bounds, held = [2.0, 4.0, 3.0], [(-0.25, 0.25)] * 3, [_h(), None, None]
+    plan = lambda pos, run: 2                                        # noqa: E731
+    ties = [gridfit.fit_level(durs, gridfit.lines_at(_BEATS_120, 8, p), bounds, 0.25,
+                              beats=_BEATS_120, held=held, plan=plan) for p in (1, 2, 3, 4)]
+    assert [(f.worst, f.total, f.fits) for f in ties] == [(0.0, 0.0, True)] * 4
+    assert [f.drift for f in ties] == pytest.approx([0.5, 0.0, 0.5, 1.0], abs=1e-12)
+    chosen, _ = gridfit.best_fit(durs, _BEATS_120, bounds, 0.25, held=held, plan=plan)
+    assert (chosen.level, chosen.phase, chosen.fits, chosen.drift) == ("2-bar", 2, True, 0.0)
+    assert chosen.shifts == pytest.approx((-1.0, 0.0, 0.0), abs=1e-12)    # its 2 beats
+
+
+def test_a_run_of_two_opening_holds_takes_the_phase_where_the_last_keeps_its_plan():
+    chosen, _ = gridfit.best_fit([2.0, 2.0, 4.0, 3.0], _BEATS_120, [(-0.25, 0.25)] * 4, 0.25,
+                                 held=[_h(), _h(), None, None], plan=lambda pos, run: 2)
+    assert (chosen.level, chosen.phase, chosen.fits, chosen.drift) == ("2-bar", 4, True, 0.0)
+    assert chosen.shifts == pytest.approx((-1.0, -1.0, 0.0, 0.0), abs=1e-12)
+
+
+def test_drift_sums_the_held_cuts_distance_from_their_counts_and_skips_a_held_tail():
+    # planned 3 beats from 2.0 (target 3.5), pulled to the bar line at 4.0
+    f = gridfit.fit_level([2.0, 2.0, 2.0], _BAR_120, [(-0.25, 0.25)] * 3, 0.25,
+                          beats=_BEATS_120, held=[None, _h(), None], plan=lambda pos, run: 3)
+    assert f.drift == pytest.approx(0.5, abs=1e-12)
+    # a held tail (target 12.0, placed at 10.0) is the reel's end, not a cut
+    f = gridfit.fit_level([2.0, 2.0], _BAR_120, [(-0.25, 0.25)] * 2, 0.25,
+                          beats=_BEATS_120, held=[None, _h()], plan=lambda pos, run: 20)
+    assert f.shifts[1] == pytest.approx(6.0) and f.drift == 0.0
+
+
+def test_when_nothing_fits_the_least_bad_level_breaks_its_tie_toward_the_plan():
+    # the video cut at 0.7 cannot move and misses beat and bar alike by 0.2; the hold
+    # after it, planned at 2 beats (1.7), reaches the beat at 1.5 or the bar line at 2.5
+    chosen, rejected = gridfit.best_fit([0.7, 2.0, 1.0], _BEATS_120, [(0.0, 0.0)] * 3, 0.25,
+                                        levels=(("beat", 1), ("bar", 4)),
+                                        held=[None, _h(), None], plan=lambda pos, run: 2)
+    bar = next(f for f in rejected if f.level == "bar")
+    assert (chosen.level, chosen.fits) == ("beat", False)
+    assert (bar.worst, bar.total) == (chosen.worst, chosen.total)
+    assert (chosen.drift, bar.drift) == pytest.approx((0.2, 0.8), abs=1e-12)
+
+
 def test_a_runs_last_hold_that_reaches_no_line_rejects_the_level():
     # a 60-beat level: every phase's next line after the video cut is 30 s on, far past
     # HOLD_ROOM — the run's last hold keeps a beat, misses, and the fit falls to the beat

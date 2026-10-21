@@ -63,7 +63,12 @@ class Fit:
     per CUT (one fewer than the episodes). `needs` is what the cut asked for before
     clamping, `devs` what is left after — the pair is what lets the report say "phrase
     needed 0.42s, the allowance is 0.29" instead of only "it did not fit". A held cut is
-    chosen, not clamped, so its two are equal."""
+    chosen, not clamped, so its two are equal.
+
+    `drift` is how far the held cuts landed from the counts they were planned or authored
+    at, Σ |out − target| in seconds — best_fit's third key, after `worst` and `total`
+    (design 2026-10-21 §2.2). 0.0 with no held episode, so a video-only comparison is the
+    one it always was."""
     level: str
     level_n: int
     phase: int
@@ -73,6 +78,7 @@ class Fit:
     worst: float
     total: float
     fits: bool
+    drift: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -104,15 +110,16 @@ _SLACK = 1e-9      # s: a candidate exactly at pos + lo / pos + hi is in range d
 
 def _held_cut(i: int, h: Held, pos: float, run: tuple[int, ...], run_end: bool,
               lines: list[float], beats: list[float], period: float,
-              plan: Callable[[float, tuple[int, ...]], int]) -> float:
-    """Where held episode `i` ends: CHOSEN, not snapped (design 2026-10-21 §2.2). The
-    target is `k` beats from its in-point; inside a run the detected beat nearest it
-    wins, so the cut is on a beat by construction. The run's last hold (`run_end`, the
-    next episode is footage) chooses among the level's lines instead, so the cut back to
-    footage is as musical as every other cut — but only lines within [k/2, 2k] beats of
-    its plan, falling back to the beats when none is there. An authored count is never
-    moved for the level. Nothing in range (music shorter than the reel) → the target
-    itself, clamped into the range."""
+              plan: Callable[[float, tuple[int, ...]], int]) -> tuple[float, float]:
+    """(out-point, target) of held episode `i` — where it ends, and where its count
+    alone would have put it. The out-point is CHOSEN, not snapped (design 2026-10-21
+    §2.2). The target is `k` beats from its in-point; inside a run the detected beat
+    nearest it wins, so the cut is on a beat by construction. The run's last hold
+    (`run_end`, the next episode is footage) chooses among the level's lines instead, so
+    the cut back to footage is as musical as every other cut — but only lines within
+    [k/2, 2k] beats of its plan, falling back to the beats when none is there. An
+    authored count is never moved for the level. Nothing in range (music shorter than
+    the reel) → the target itself, clamped into the range."""
     k = h.beats if h.beats is not None else plan(pos, run)
     if isinstance(k, bool) or not isinstance(k, int) or k < 1:
         raise ValueError(f"gridfit.fit_level: plan returned {k!r} for held episode {i} at "
@@ -131,8 +138,8 @@ def _held_cut(i: int, h: Held, pos: float, run: tuple[int, ...], run_end: bool,
         # beats bound to 10 (design §2.2).
         cands = inside(lines, pos + k * period / 2, pos + 2 * k * period) or cands
     if not cands:
-        return min(max(target, lo), hi)
-    return min(cands, key=lambda c: (abs(c - target), c))     # the earlier on a tie
+        return min(max(target, lo), hi), target
+    return min(cands, key=lambda c: (abs(c - target), c)), target     # the earlier on a tie
 
 
 def fit_level(durs: Sequence[float], lines: Sequence[float],
@@ -213,14 +220,14 @@ def fit_level(durs: Sequence[float], lines: Sequence[float],
     if not ln:
         raise ValueError("gridfit.fit_level got no lines — see lines_at")
     period = 2.0 * float(allow)      # the allowance is half a beat by definition (allowance)
-    pos, shifts, devs, needs = 0.0, [], [], []
+    pos, shifts, devs, needs, drift = 0.0, [], [], [], 0.0
     run: tuple[int, ...] = ()
     for i, dur in enumerate(d):
         tail = i == len(d) - 1
         h = hd[i]
         if h is not None:
             run_end = not tail and hd[i + 1] is None
-            out = _held_cut(i, h, pos, run, run_end, ln, bt, period, plan)
+            out, target = _held_cut(i, h, pos, run, run_end, ln, bt, period, plan)
             shifts.append(out - pos - dur)
             run += (round((out - pos) / period),)
             pos = out
@@ -229,6 +236,7 @@ def fit_level(durs: Sequence[float], lines: Sequence[float],
                 dev = abs(out - min(ref, key=lambda L: abs(L - out)))
                 devs.append(dev)
                 needs.append(dev)
+                drift += abs(out - target)
             continue
         run = ()          # a run of holds ends at footage
         if tail:
@@ -245,7 +253,8 @@ def fit_level(durs: Sequence[float], lines: Sequence[float],
         needs.append(abs(need))
     worst = max(devs) if devs else 0.0
     return Fit(level="", level_n=0, phase=0, shifts=tuple(shifts), devs=tuple(devs),
-               needs=tuple(needs), worst=worst, total=sum(devs), fits=worst <= FIT_EPS)
+               needs=tuple(needs), worst=worst, total=sum(devs), fits=worst <= FIT_EPS,
+               drift=drift)
 
 
 def best_fit(durs: Sequence[float], beats: Sequence[float],
@@ -303,12 +312,23 @@ def best_fit(durs: Sequence[float], beats: Sequence[float],
                               # nothing to fit against here; phase 0 always has a line.
             f = fit_level(durs, lines, bounds, allow, beats=beats, held=held, plan=plan)
             f = Fit(level=name, level_n=n, phase=phase, shifts=f.shifts, devs=f.devs,
-                    needs=f.needs, worst=f.worst, total=f.total, fits=f.fits)
-            if best is None or (f.worst, f.total) < (best.worst, best.total):
+                    needs=f.needs, worst=f.worst, total=f.total, fits=f.fits,
+                    drift=f.drift)
+            if best is None or _rank(f) < _rank(best):
                 best = f
         per_level.append(best)
     for i, f in enumerate(per_level):
         if f.fits:
             return f, tuple(per_level[:i])
-    least = min(per_level, key=lambda f: (f.worst, f.total))
+    least = min(per_level, key=_rank)
     return least, tuple(per_level)
+
+
+def _rank(f: Fit) -> tuple[float, float, float]:
+    """Lower is better: the worst cut, then the sum, then how far the held cuts drifted
+    from their counts. The third key is what decides when a run of holds opens the reel:
+    the run re-syncs every later cut to whichever line it ends on, so every phase that
+    fits ties at (0, 0) and the first phase tried — the hold's SHORTEST legal length —
+    would win by the order of a range() (design 2026-10-21 §2.2). drift is 0.0 without
+    a held episode, so a video-only choice is unchanged."""
+    return f.worst, f.total, f.drift
