@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# The venv lives OUTSIDE the repo so `/plugin install`'s cp -R does not copy 1.1 GB
-# into the plugin cache; <repo>/.venv becomes a symlink to it (below), which keeps
-# every `.venv/bin/python` path working. (design 2026-07-22 runtime-resolution §3)
-VENV="${XDG_DATA_HOME:-$HOME/.local/share}/video-grid/venv"
+# This script runs from wherever the code is: an installed plugin's version directory
+# (the setup skill runs it there) or a developer's clone. Neither may hold state — a
+# plugin update is a new directory — so everything it installs or records goes to the
+# user's XDG directories (design 2026-10-21 §1). These spellings are pinned against
+# bin/vg and scripts/lib/userdirs.py by tests/lib/test_userdirs.py.
+VG_DATA="${XDG_DATA_HOME:-$HOME/.local/share}/video-grid"
+VG_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/video-grid"
+VENV="$VG_DATA/venv"
+MODELS_DIR="$VG_DATA/models"
+mkdir -p "$VG_CONFIG" "$MODELS_DIR"
 PYTHON="${PYTHON:-python3.13}"
 export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"   # corporate mirrors time out off-VPN
 # freeze brew version drift: a bare `brew install X` normally runs `brew update` first and
@@ -27,7 +33,7 @@ export HOMEBREW_NO_AUTO_UPDATE=1
 # drawtext-capable ffmpeg + a .ttf/.ttc font by hand (need_brew below degrades to a
 # message). Cross-platform auto-install is a TODO — the runtime code is already
 # portable (scripts/lib/fonts.py FONT_CANDIDATES carries Linux font paths too, and
-# scripts/lib/ffbin.py falls through to PATH when config/ffmpeg.env is absent).
+# scripts/lib/ffbin.py falls through to PATH when no ffmpeg.env is recorded).
 need_brew() {
   command -v brew >/dev/null || {
     echo "ERROR: '$1' is missing and homebrew is not installed -> install brew (https://brew.sh) or install '$1' manually"; exit 1; }
@@ -105,9 +111,8 @@ else
   # path is the one thing the runtime cannot rediscover; scripts/lib/ffbin.py reads
   # this file. The FILTERS are deliberately NOT recorded — a stale path fails loud,
   # a stale capability record fails silently (design §4).
-  mkdir -p "$SKILL_DIR/config"
-  printf 'FFMPEG=%s\nFFPROBE=%s\n' "$FFMPEG_BIN" "$FFPROBE_BIN" > "$SKILL_DIR/config/ffmpeg.env"
-  echo "recorded config/ffmpeg.env -> $FFMPEG_BIN"
+  printf 'FFMPEG=%s\nFFPROBE=%s\n' "$FFMPEG_BIN" "$FFPROBE_BIN" > "$VG_CONFIG/ffmpeg.env"
+  echo "recorded $VG_CONFIG/ffmpeg.env -> $FFMPEG_BIN"
 
   # Pin so a later `brew upgrade` cannot drift the version out from under the goldens —
   # boxblur/drawtext behavior is version-sensitive (8.1.2 changed boxblur validation).
@@ -178,7 +183,8 @@ for cask in font-montserrat font-inter font-bebas-neue font-oswald font-noto-emo
 done
 fi
 
-# --- venv (external; <repo>/.venv is a symlink to it) + python deps ---
+# --- venv (external; a clone's .venv is a symlink to it, for the developer's own
+# `.venv/bin/python` — bin/vg reads $VENV directly) + python deps ---
 mkdir -p "$(dirname "$VENV")"
 if [ ! -d "$VENV" ]; then
   "$PYTHON" -m venv "$VENV"
@@ -200,7 +206,7 @@ ln -sfn "$VENV" "$SKILL_DIR/.venv"
 # BLOCKING check, so a run cannot start without it.
 #
 # This block still CONTINUES on failure rather than aborting, and that is deliberate:
-# `set -e` here would leave torchreid, the models dir and the recorded runtime root
+# `set -e` here would leave torchreid, the weights and the requirements stamp
 # unconfigured, turning one missing wheel into a half-built install that is harder to
 # diagnose. Installing is this script's job; GATING is verify_runtime's. Kept OUT of
 # requirements.txt for the same reason — a failed torch wheel must not abort the whole
@@ -244,30 +250,33 @@ ln -sfn "$VENV" "$SKILL_DIR/.venv"
 # ccMixter (no key); Jamendo's richer CC catalog needs a free client_id, surfaced as a
 # NON-BLOCKING notice (no interactive read, so a non-interactive/CI `bash setup.sh`
 # never stalls). Add the key yourself when you want it.
-SRC_ENV="$SKILL_DIR/config/sourcing.env"
+SRC_ENV="$VG_CONFIG/sourcing.env"
+# A clone set up before 0.27.0 kept the key in its own config/; move it to where the
+# runtime reads it now, once, so the user's key survives the move.
+if [ ! -e "$SRC_ENV" ] && [ -f "$SKILL_DIR/config/sourcing.env" ]; then
+  cp "$SKILL_DIR/config/sourcing.env" "$SRC_ENV"
+  echo "moved config/sourcing.env -> $SRC_ENV"
+fi
 if [ -z "${JAMENDO_CLIENT_ID:-}" ] && ! grep -qs '^JAMENDO_CLIENT_ID=' "$SRC_ENV" 2>/dev/null; then
   echo "note: the free music lane uses ccMixter (no key). For Jamendo's richer CC catalog,"
-  echo "  add 'JAMENDO_CLIENT_ID=...' to config/sourcing.env (get one at https://devportal.jamendo.com/)."
+  echo "  add 'JAMENDO_CLIENT_ID=...' to $SRC_ENV (get one at https://devportal.jamendo.com/)."
 fi
-mkdir -p "$SKILL_DIR/models"
-# YOLO segmentation weights. verify_runtime REQUIRES them at <clone>/yolo11n-seg.pt with
-# `bash setup.sh` as the remedy, and using-montage stops at step 0 on a failed check —
-# so they are fetched HERE, or a fresh clone's first run dead-ends on a remedy that
-# cannot fix it. Ultralytics downloads a bare model name into the CURRENT directory, so
-# the fetch runs from the clone root, and names the file the probe checks (MODELS[0]).
-# OSNet and demucs weights still download on first use: neither is a required check.
-(cd "$SKILL_DIR" && "$VENV/bin/python" -c 'from pathlib import Path
+# YOLO segmentation weights. verify_runtime REQUIRES them in $MODELS_DIR, and
+# using-montage stops at step 0 on a failed check — so they are fetched HERE, or a
+# fresh install's first run dead-ends on a remedy that cannot fix it. Ultralytics
+# downloads a bare model name into the CURRENT directory, so the fetch runs from
+# $MODELS_DIR — bin/vg's own working directory — with the code on PYTHONPATH, and
+# names the file the probe checks (MODELS[0]). OSNet and demucs weights still
+# download on first use: neither is a required check.
+(cd "$MODELS_DIR" && PYTHONPATH="$SKILL_DIR" "$VENV/bin/python" -c 'from pathlib import Path
 from scripts.lib.models import MODELS
 from scripts import track
 Path(MODELS[0]).exists() or (print("fetching YOLO weights " + MODELS[0] + "..."), track.ensure_model(MODELS[0]))') \
-  || echo "WARNING: could not fetch the YOLO weights (offline?) -> verify_runtime will report them missing until 'bash setup.sh' is re-run online."
+  || echo "WARNING: could not fetch the YOLO weights (offline?) -> verify_runtime will report them missing until setup is re-run online."
+# Stamp the venv with the requirements it was built from, so verify_runtime can tell
+# a plugin update that changed the dependencies from one that did not (design §3).
+# Computed by the venv's own Python — the same sha256 verify_runtime computes — so no
+# platform's shasum/sha256sum spelling can make the two disagree.
+"$VENV/bin/python" -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' \
+  "$SKILL_DIR/requirements.txt" > "$VENV/.video-grid-requirements"
 echo "venv ready: $VENV ($("$VENV/bin/python" -V))"
-
-# Record where the runtime lives. Claude Code installs the montage skills by COPYING
-# them into a runtime-less plugin cache, so a skill cannot find this checkout from its
-# own (copied) location — it reads this file and runs <clone>/bin/vg. Outside the tree
-# on purpose. (design 2026-07-22 runtime-resolution §2)
-VG_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/video-grid"
-mkdir -p "$VG_CONFIG"
-printf '%s\n' "$SKILL_DIR" > "$VG_CONFIG/root"
-echo "recorded runtime root -> $VG_CONFIG/root ($SKILL_DIR)"

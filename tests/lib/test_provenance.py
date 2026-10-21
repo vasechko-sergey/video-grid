@@ -63,6 +63,25 @@ def test_engine_stamp_on_a_non_repo_is_unknown_and_does_not_raise(tmp_path, monk
     assert provenance.engine_stamp() == {"sha": "", "dirty": None}
 
 
+def test_engine_stamp_without_git_digests_the_engine_files(tmp_path, monkeypatch):
+    """An installed plugin is a plain copy, not a checkout (design 2026-10-21 §4): the
+    stamp must still change when the engine does, or edl_to_reel's drift stop goes
+    quiet for every plugin user."""
+    monkeypatch.setattr(provenance, "_ROOT", tmp_path)
+    (tmp_path / "scripts" / "__pycache__").mkdir(parents=True)
+    (tmp_path / "scripts" / "a.py").write_text("x = 1\n")
+    first = provenance.engine_stamp()
+    assert first["sha"].startswith("tree:") and len(first["sha"]) == 17
+    assert first["dirty"] is False
+    (tmp_path / "scripts" / "__pycache__" / "a.cpython-313.pyc").write_bytes(b"\0")
+    assert provenance.engine_stamp() == first             # bytecode is not the engine
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "x.md").write_text("doc")
+    assert provenance.engine_stamp() == first             # nor is a doc
+    (tmp_path / "scripts" / "a.py").write_text("x = 2\n")
+    assert provenance.engine_stamp() != first             # the code is
+
+
 def test_engine_stamp_on_this_repo_reports_a_sha():
     st = provenance.engine_stamp()
     assert isinstance(st["sha"], str) and len(st["sha"]) >= 7

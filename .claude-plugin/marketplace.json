@@ -1,6 +1,6 @@
 {
   "name": "video-grid",
-  "description": "Self dev-marketplace for the video-grid montage plugin.",
+  "description": "video-grid — an AI-assisted reel-montage plugin for Claude Code: footage and photos in, a delivered reel out.",
   "owner": {
     "name": "Sergei Vasechko"
   },

@@ -18,20 +18,21 @@ Announce on entry: **"Using project-init to set this project's aspect + delivery
 1. Ask the **purpose** — "What's this video for?" — reel/shorts/tiktok (9:16), youtube/landscape (16:9), square/feed (1:1), cinema/wide (21:9), or **custom** (you give an explicit `W:H`).
 2. Ask the **quality/delivery** — "How should it be delivered?" — **native** (default, best — source resolution, no loss), **social** (1080 cap, smaller file), **4k**, or a custom delivery spec.
 
-**Launcher and references.** Run every pipeline step through the repo's launcher
+**Launcher and references.** Run every pipeline step through the plugin's launcher
 `bin/vg`, never a bare `python`, and resolve every `references/…` read the same
-way. `setup.sh` records the runtime's location at
-`${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root`, so resolve it once:
+way. Claude Code writes this plugin's own directory into the line below when it
+loads the skill, so resolve it once:
 
-    ROOT="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")"
+    ROOT="${CLAUDE_PLUGIN_ROOT}"
     VG="$ROOT/bin/vg"
 
-Then run every step as `"$VG" scripts.X`, read every reference as
-`"$ROOT/references/…"`, and pass **absolute** paths for every footage / run /
-output directory. Nothing here is relative to your working directory — a skill
-runs from the user's footage project, not from the clone. If that file is
-missing, the user has not run `bash setup.sh` — stop and say so rather than
-guessing a path.
+If `ROOT` comes out empty — a harness that does not fill the line in — it is the
+directory two levels above this skill's base directory. Then run every step as
+`"$VG" scripts.X`, read every reference as `"$ROOT/references/…"`, and pass
+**absolute** paths for every footage / run / output directory. Nothing here is
+relative to your working directory — a skill runs from the user's footage
+project. If `"$VG"` says there is no runtime, it has not been set up yet: run the
+`setup` skill (`/video-grid:setup`), which asks before installing anything.
 
 3. Run the deterministic writer (never hand-write project.json):
    ```bash

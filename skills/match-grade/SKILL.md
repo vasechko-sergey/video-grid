@@ -80,20 +80,21 @@ check to catch it.
 
 Announce on entry: **"Using match-grade to pull the episodes to one tone."**
 
-**Launcher and references.** Run every pipeline step through the repo's launcher
+**Launcher and references.** Run every pipeline step through the plugin's launcher
 `bin/vg`, never a bare `python`, and resolve every `references/…` read the same
-way. `setup.sh` records the runtime's location at
-`${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root`, so resolve it once:
+way. Claude Code writes this plugin's own directory into the line below when it
+loads the skill, so resolve it once:
 
-    ROOT="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")"
+    ROOT="${CLAUDE_PLUGIN_ROOT}"
     VG="$ROOT/bin/vg"
 
-Then run every step as `"$VG" scripts.X`, read every reference as
-`"$ROOT/references/…"`, and pass **absolute** paths for every footage / run /
-output directory. Nothing here is relative to your working directory — a skill
-runs from the user's footage project, not from the clone. If that file is
-missing, the user has not run `bash setup.sh` — stop and say so rather than
-guessing a path.
+If `ROOT` comes out empty — a harness that does not fill the line in — it is the
+directory two levels above this skill's base directory. Then run every step as
+`"$VG" scripts.X`, read every reference as `"$ROOT/references/…"`, and pass
+**absolute** paths for every footage / run / output directory. Nothing here is
+relative to your working directory — a skill runs from the user's footage
+project. If `"$VG"` says there is no runtime, it has not been set up yet: run the
+`setup` skill (`/video-grid:setup`), which asks before installing anything.
 
 1. **Recon.** `<run>/reels/<reel>/episodes/GEOMETRY.json` must already exist —
    this stage runs AFTER **episodes-geometry**, which itself needs a settled

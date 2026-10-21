@@ -19,7 +19,8 @@ REVIEWER_TEMPLATE = _SKILLS / "reel-review" / "reel-reviewer.md"
 # What each filler supplies — a template that asks for anything else, or stops asking
 # for one of these, is refused at fill time rather than shipping a raw `{TOKEN}`.
 JUDGE_TOKENS = ("INTENT", "CHECKS", "TRACK", "GEOMETRY", "NATURALNESS", "STRIP_PATH",
-                "STRIP_PX", "STORYBOARD_PATH", "STORYBOARD_PX", "CLIP", "FINDINGS_PATH")
+                "STRIP_PX", "STORYBOARD_PATH", "STORYBOARD_PX", "CLIP", "FINDINGS_PATH",
+                "VG")
 REVIEWER_TOKENS = ("SPEC", "EDL_MD", "REPORT_JSON", "MUSIC", "REEL_PATH", "STILL_PATHS",
                    "FINDINGS_PATH")
 

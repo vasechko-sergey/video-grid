@@ -1,5 +1,7 @@
+import hashlib
 import json
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -20,13 +22,58 @@ def test_probe_deps_reports_missing(monkeypatch):
     assert ok is False and "librosa" in detail
 
 
-def test_probe_weights_present_and_absent(monkeypatch, tmp_path):
-    monkeypatch.setattr(verify_runtime, "_ROOT", tmp_path)
+def test_probe_weights_looks_in_the_shared_models_dir_not_beside_the_code(monkeypatch,
+                                                                          tmp_path):
+    """bin/vg works in the shared models directory, so that is where ultralytics put
+    the weights (design 2026-10-21 §1); a copy beside the code proves nothing."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    monkeypatch.setattr(verify_runtime, "_ROOT", tmp_path / "code")
+    (tmp_path / "code").mkdir()
+    (tmp_path / "code" / verify_runtime.MODELS[0]).write_bytes(b"x")
     ok, _ = verify_runtime._probe_weights()
     assert ok is False
-    (tmp_path / verify_runtime.MODELS[0]).write_bytes(b"x")
+    models = tmp_path / "data" / "video-grid" / "models"
+    models.mkdir(parents=True)
+    (models / verify_runtime.MODELS[0]).write_bytes(b"x")
     ok, detail = verify_runtime._probe_weights()
-    assert ok is True and verify_runtime.MODELS[0] in detail
+    assert ok is True and detail == str(models / verify_runtime.MODELS[0])
+
+
+def _stamped(tmp_path, monkeypatch, requirements: bytes, stamp: str | None):
+    code, venv = tmp_path / "code", tmp_path / "venv"
+    code.mkdir()
+    venv.mkdir()
+    (code / "requirements.txt").write_bytes(requirements)
+    if stamp is not None:
+        (venv / verify_runtime.STAMP).write_text(stamp + "\n")
+    monkeypatch.setattr(verify_runtime, "_ROOT", code)
+    monkeypatch.setattr(verify_runtime.sys, "prefix", str(venv))
+    return verify_runtime._probe_deps_stamp()
+
+
+def test_the_deps_stamp_passes_when_setup_built_this_requirements_txt(tmp_path, monkeypatch):
+    ok, detail = _stamped(tmp_path, monkeypatch, b"numpy\n",
+                          hashlib.sha256(b"numpy\n").hexdigest())
+    assert ok is True
+
+
+def test_the_deps_stamp_fails_after_an_update_changed_the_requirements(tmp_path, monkeypatch):
+    ok, detail = _stamped(tmp_path, monkeypatch, b"numpy\npi-heif\n",
+                          hashlib.sha256(b"numpy\n").hexdigest())
+    assert ok is False and "dependencies changed" in detail
+
+
+def test_the_deps_stamp_fails_without_a_record(tmp_path, monkeypatch):
+    ok, detail = _stamped(tmp_path, monkeypatch, b"numpy\n", None)
+    assert ok is False and "before 0.27.0" in detail
+
+
+def test_setup_and_the_check_hash_the_same_way():
+    """setup.sh writes the stamp with the venv's own Python; the check computes
+    hashlib.sha256 of the same file. Pin the writer's spelling to the reader's."""
+    setup = (Path(verify_runtime.__file__).resolve().parents[1] / "setup.sh").read_text()
+    assert "hashlib.sha256(open(sys.argv[1], \"rb\").read()).hexdigest()" in setup
+    assert f'> "$VENV/{verify_runtime.STAMP}"' in setup
 
 
 def test_probe_reid_reports_installed_and_absent(monkeypatch):

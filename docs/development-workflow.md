@@ -7,16 +7,18 @@ _Last updated: 2026-07-20._
 
 ## Environment
 
-- **Python 3.13** in a skill-local `.venv`. One `requirements.txt`, one pypi
-  index. Bootstrap with `bash setup.sh` — **one install, no capability flags.**
+- **Python 3.13** in a venv outside the code. One `requirements.txt`, one pypi
+  index. Bootstrap with `bash setup.sh` (users run it through the `setup` skill)
+  — **one install, no capability flags.**
 - **Packaged as a Claude Code plugin** (`.claude-plugin/`) — skills run the
-  pipeline through `bin/vg`, the cwd-independent launcher; `bin/vg scripts.X`
-  (equivalently `.venv/bin/python -m scripts.X` from the repo root) is the
-  module entrypoint. The venv lives **outside** the repo
-  (`~/.local/share/video-grid/venv`) with `<repo>/.venv` a symlink to it (so
-  `/plugin install`'s copy stays lean), and `setup.sh` records this checkout at
-  `~/.config/video-grid/root` so the installed (copied-away) skills find and run
-  it.
+  pipeline through `bin/vg`, the cwd-independent launcher of whichever copy of the
+  code they belong to: the installed plugin's version directory, whose path Claude
+  Code fills into the skill as `${CLAUDE_PLUGIN_ROOT}` (design
+  2026-10-21-install-without-clone). `bin/vg scripts.X` (equivalently
+  `.venv/bin/python -m scripts.X` from a clone's root) is the module entrypoint.
+  State lives **outside** the code, in `lib/userdirs`: the venv and the YOLO
+  weights in `~/.local/share/video-grid/`, `ffmpeg.env` and `sourcing.env` in
+  `~/.config/video-grid/`; a clone's `.venv` is a symlink to the venv.
 - **One ffmpeg carrying every library the pipeline needs.** `setup.sh` installs
   homebrew-core's `ffmpeg-full`, which is the same version and revision as core
   `ffmpeg` but ships `libfreetype` (drawtext — §5.9 draft labels, §5.16 titles)
@@ -25,7 +27,7 @@ _Last updated: 2026-07-20._
   a machine's other ffmpeg dependents keep working.
 - **Consequence: the binaries are not on PATH, and the code does not look there
   first.** `scripts/lib/ffbin.py` resolves them — `$FFMPEG`/`$FFPROBE`, then the
-  `config/ffmpeg.env` that `setup.sh` writes, then `shutil.which` — always to an
+  `~/.config/video-grid/ffmpeg.env` that `setup.sh` writes, then `shutil.which` — always to an
   absolute path. Never hard-code `"ffmpeg"` in an argv: on a keg-only install
   that silently selects the *wrong* build, and a machine check in
   [`tests/lib/test_landmine_scan.py`](../tests/lib/test_landmine_scan.py)

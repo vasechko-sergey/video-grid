@@ -42,9 +42,14 @@ NO_RECORD_DETAIL = "no install record — running from the clone"
 
 
 CHECKS: tuple[Check, ...] = (
-    Check("plugin", "installed plugin matches the clone", True,
+    Check("plugin", "installed plugin matches the code running this check", True,
           "claude plugin update video-grid@video-grid"),
     Check("deps", "Python runtime deps import", True, "bash setup.sh"),
+    # A plugin update is a new code directory against the SAME venv: an update that
+    # changed requirements.txt would otherwise surface as the first import that moved
+    # (design 2026-10-21 §3).
+    Check("deps_stamp", "the venv was built from this code's requirements.txt", True,
+          "bash setup.sh"),
     Check("ffmpeg_bin", "ffmpeg + ffprobe resolve", True, "bash setup.sh"),
     Check("drawtext", "ffmpeg drawtext filter (titles, draft labels)", True, "bash setup.sh"),
     Check("vidstab", "ffmpeg vidstab filters (intake shake, stabilize)", True, "bash setup.sh"),

@@ -2,7 +2,10 @@
 
 **Status:** design · 2026-07-22 (follow-up to
 [plugin-packaging](2026-07-22-plugin-packaging-design.md), found by the first real
-`/plugin install`)
+`/plugin install`). **Superseded 2026-10-21** by
+[install-without-clone](2026-10-21-install-without-clone-design.md): the state this
+design kept in the clone moved to the XDG directories, the skills read the plugin's
+own root, and nothing records or reads `~/.config/video-grid/root` any more.
 **Scope:** make the installed plugin actually run the pipeline, and stop the
 install from copying a 1.1 GB venv into the plugin cache.
 

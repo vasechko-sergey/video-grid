@@ -9,19 +9,22 @@ record — so the report logic (scripts/lib/preflight.py) stays testable without
 install.
 
 Read-only: it PRINTS remedies, never runs setup.sh (§4). It runs INSIDE the venv
-(via bin/vg), so it cannot report a missing venv or recorded-root — those are the
-pre-venv layer (bin/vg + the skill preamble). See design §2/§5.
+(via bin/vg), so it cannot report a missing venv — that is the pre-venv layer, bin/vg's
+own refusal. See design §2/§5, and 2026-10-21 for the venv, the weights and the config
+living outside the code.
 
 Imports are kept LIGHT on purpose: a broken heavy dep must be REPORTED by
 _probe_deps, not crash this checker on import. models.MODELS pulls no numpy/cv2.
 """
 import argparse
+import hashlib
 import importlib
 import json
 import os
+import sys
 from pathlib import Path
 
-from scripts.lib import ffbin, fonts, preflight
+from scripts.lib import ffbin, fonts, preflight, userdirs
 from scripts.lib.models import MODELS
 
 # The runtime modules the pipeline imports = requirements.txt runtime set (pytest
@@ -30,7 +33,8 @@ from scripts.lib.models import MODELS
 _DEPS = ("numpy", "scipy", "PIL", "cv2", "pi_heif", "librosa", "ultralytics",
          "scenedetect", "imagehash", "yt_dlp", "requests", "certifi", "fontTools")
 
-_ROOT = Path(__file__).resolve().parent.parent   # repo root (bin/vg cd's here)
+_ROOT = Path(__file__).resolve().parent.parent   # the code's root: a plugin version dir or a clone
+STAMP = ".video-grid-requirements"               # setup.sh writes it into the venv
 
 
 def _probe_deps() -> tuple[bool, str]:
@@ -52,7 +56,7 @@ def _probe_ffmpeg_bin() -> tuple[bool, str]:
     try:
         fb, fp = ffbin.ffmpeg(), ffbin.ffprobe()
     except ValueError:
-        return False, "ffmpeg/ffprobe not on $FFMPEG, config/ffmpeg.env, or PATH"
+        return False, "ffmpeg/ffprobe not on $FFMPEG, the recorded ffmpeg.env, or PATH"
     if not (Path(fb).exists() and Path(fp).exists()):
         return False, f"resolved path does not exist: {fb}"
     return True, fb
@@ -97,10 +101,29 @@ def _probe_icon_font() -> tuple[bool, str]:
 
 
 def _probe_weights() -> tuple[bool, str]:
-    path = _ROOT / MODELS[0]
+    """In the shared models directory bin/vg works in (design 2026-10-21 §1), not
+    beside the code: ultralytics resolves the bare name against the working
+    directory, and a plugin version directory is gone on the next update."""
+    path = userdirs.models_dir() / MODELS[0]
     if path.exists():
         return True, str(path)
     return False, f"missing at {path} (the first intake downloads it if online)"
+
+
+def _probe_deps_stamp() -> tuple[bool, str]:
+    """The venv's record of the requirements.txt setup.sh installed, against this
+    code's own. `sys.prefix`, not userdirs.venv_dir(): the question is about the venv
+    RUNNING this check."""
+    want = hashlib.sha256((_ROOT / "requirements.txt").read_bytes()).hexdigest()
+    stamp = Path(sys.prefix) / STAMP
+    if not stamp.is_file():
+        return False, (f"no record of which requirements built {sys.prefix} — set up "
+                       f"before 0.27.0, or not by setup.sh")
+    got = stamp.read_text().strip()
+    if got != want:
+        return False, (f"built from requirements {got[:12]}…, this code needs "
+                       f"{want[:12]}… — the dependencies changed since setup ran")
+    return True, f"requirements {want[:12]}…"
 
 
 def _probe_demucs() -> tuple[bool, str]:
@@ -173,6 +196,7 @@ def _probe_plugin() -> tuple[bool, str]:
 _PROBES = {
     "plugin": _probe_plugin,
     "deps": _probe_deps,
+    "deps_stamp": _probe_deps_stamp,
     "ffmpeg_bin": _probe_ffmpeg_bin,
     "drawtext": _probe_drawtext,
     "vidstab": _probe_vidstab,
@@ -207,7 +231,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="verify the video-grid runtime is installed: the setup.sh "
                      "baseline (deps, ffmpeg, filters, font, weights, demucs) and "
-                     "whether the installed plugin matches this clone (design "
+                     "whether the installed plugin matches this code (design "
                      "2026-08-01, 2026-09-25)")
     ap.add_argument("--json", action="store_true",
                     help="machine-readable report instead of the text table")

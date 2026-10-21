@@ -23,7 +23,7 @@ SKILLS = REPO / "skills"
 # of the one music-and-mood stage, and the tag names that instead of leaving them
 # with no lead at all.
 ROLE_LEADS = ("Start here —", "Router —", "Conveyor stage", "Preflight —",
-              "Per-episode worker —", "Music lane —")
+              "Per-episode worker —", "Music lane —", "Install —")
 
 
 def skill_names() -> list[str]:
@@ -66,20 +66,21 @@ def test_no_skill_invokes_a_bare_venv_python():
 
 
 PREAMBLE = """\
-**Launcher and references.** Run every pipeline step through the repo's launcher
+**Launcher and references.** Run every pipeline step through the plugin's launcher
 `bin/vg`, never a bare `python`, and resolve every `references/…` read the same
-way. `setup.sh` records the runtime's location at
-`${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root`, so resolve it once:
+way. Claude Code writes this plugin's own directory into the line below when it
+loads the skill, so resolve it once:
 
-    ROOT="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/video-grid/root")"
+    ROOT="${CLAUDE_PLUGIN_ROOT}"
     VG="$ROOT/bin/vg"
 
-Then run every step as `"$VG" scripts.X`, read every reference as
-`"$ROOT/references/…"`, and pass **absolute** paths for every footage / run /
-output directory. Nothing here is relative to your working directory — a skill
-runs from the user's footage project, not from the clone. If that file is
-missing, the user has not run `bash setup.sh` — stop and say so rather than
-guessing a path."""
+If `ROOT` comes out empty — a harness that does not fill the line in — it is the
+directory two levels above this skill's base directory. Then run every step as
+`"$VG" scripts.X`, read every reference as `"$ROOT/references/…"`, and pass
+**absolute** paths for every footage / run / output directory. Nothing here is
+relative to your working directory — a skill runs from the user's footage
+project. If `"$VG"` says there is no runtime, it has not been set up yet: run the
+`setup` skill (`/video-grid:setup`), which asks before installing anything."""
 
 # Command spellings a skill must never contain. This is a SET OF SPELLINGS, not
 # a predicate for "a command anchored to a working directory nobody guarantees"
@@ -116,7 +117,7 @@ def test_no_skill_spells_a_command_it_cannot_resolve():
 
 
 def test_every_skill_carries_the_resolution_preamble():
-    """All fourteen, not the seven `RUNNERS` used to name.
+    """Every skill, not the seven `RUNNERS` used to name.
 
     Every skill names at least one path it cannot resolve without this block:
     all fourteen carry `Tool index: references/tools.md.` in their description,
@@ -126,37 +127,29 @@ def test_every_skill_carries_the_resolution_preamble():
     assert missing == [], f"skills without the resolution preamble: {missing}"
 
 
-def test_the_preamble_names_the_path_setup_writes():
-    """The preamble's only source of truth is this module. If `setup.sh` ever
-    records the root somewhere else, all fourteen skills point at nothing and
-    every other check here stays green — the one failure the slice's thesis
-    cannot survive.
+def test_the_preamble_resolves_the_root_the_harness_fills_in():
+    """Since 0.27.0 the code runs from the installed plugin itself (design 2026-10-21
+    §2): Claude Code fills `${CLAUDE_PLUGIN_ROOT}` into a plugin skill's text when it
+    loads it, so the instructions and the code are one version by construction. The
+    COMMAND is pinned, once — a prose mention would be filled in too and read as a
+    second, contradictory path — and so is the launcher under it."""
+    assert PREAMBLE.count("${CLAUDE_PLUGIN_ROOT}") == 1
+    assert '    ROOT="${CLAUDE_PLUGIN_ROOT}"\n    VG="$ROOT/bin/vg"' in PREAMBLE
+    assert (REPO / "bin" / "vg").is_file()
 
-    Joined, not substring-matched: the path is REBUILT from setup.sh's own two
-    lines — the `VG_CONFIG=` directory assignment and the `> "$VG_CONFIG/root"`
-    redirect that names the file inside it — and the result must be what the
-    preamble tells fourteen skills to read. Either half moving is red.
 
-    It is the COMMAND that is pinned, not merely the path's presence: the
-    preamble names the path twice, once in the prose sentence and once inside
-    `ROOT="$(cat …)"`, and only the second is executed. A first version of this
-    test asserted presence alone and went green against a mutation that changed
-    the prose — the wrong half — so both are asserted, the command by its exact
-    spelling and the pair by count, which is what stops the two drifting
-    apart."""
-    setup = (REPO / "setup.sh").read_text()
-    m = re.search(r'^VG_CONFIG=(?:"([^"]*)"|(\S+))$', setup, re.M)
-    assert m, "setup.sh no longer assigns VG_CONFIG — the recorded root moved"
-    config_dir = m.group(1) if m.group(1) is not None else m.group(2)
-    assert '> "$VG_CONFIG/root"' in setup, (
-        "setup.sh no longer writes the root to $VG_CONFIG/root")
-    path = f"{config_dir}/root"
-    assert f'ROOT="$(cat "{path}")"' in PREAMBLE, (
-        f"setup.sh records the root at {path}; the command the preamble gives "
-        f"all fourteen skills reads a different path")
-    assert PREAMBLE.count(path) == 2, (
-        f"the preamble must name {path} exactly twice — the prose sentence and "
-        f"the command — or its two halves have drifted apart")
+def test_nothing_reads_the_root_setup_no_longer_records():
+    """setup.sh stopped writing ~/.config/video-grid/root in 0.27.0. A skill, a
+    reference page or a template still reading it would point at a stale clone, or
+    at nothing, while every other check here stays green."""
+    readers = sorted(str(p.relative_to(REPO)) for p in all_skill_docs()
+                     if "video-grid/root" in p.read_text())
+    readers += sorted(str(p.relative_to(REPO)) for p in (REPO / "references").rglob("*.md")
+                      if "video-grid/root" in p.read_text())
+    readers += sorted(str(p.relative_to(REPO)) for p in (REPO / "skills").rglob("*.md")
+                      if "video-grid/root" in p.read_text() and p.name != "SKILL.md")
+    assert readers == [], f"still reading the retired root record: {readers}"
+    assert '/root"' not in (REPO / "setup.sh").read_text()
 
 
 def test_the_pacing_skill_documents_the_two_pass_flow():

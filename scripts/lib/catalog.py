@@ -19,11 +19,13 @@ from pathlib import Path
 
 import certifi
 
+from scripts.lib import userdirs
+
 SOURCES = ("jamendo", "ccmixter", "youtube", "itunes", "deezer")
 
 _UA = "video-grid/1.0 (music sourcing)"       # some catalog APIs 403 an empty User-Agent
 _TIMEOUT = 20
-_SOURCING_ENV = Path(__file__).resolve().parents[2] / "config" / "sourcing.env"  # repo-root/config
+SOURCING_ENV = "sourcing.env"     # in userdirs.config_dir() (or a pre-0.27.0 clone's config/)
 
 
 @dataclass(frozen=True)
@@ -105,16 +107,11 @@ def ytdlp_cmd() -> list[str]:
 
 
 def _jamendo_client_id() -> str | None:
-    """The Jamendo client_id from $JAMENDO_CLIENT_ID, else the gitignored config/sourcing.env
-    that setup.sh writes. A public read-only app id, not a secret — but per-user."""
-    cid = os.environ.get("JAMENDO_CLIENT_ID")
-    if cid:
-        return cid
-    if _SOURCING_ENV.exists():
-        for line in _SOURCING_ENV.read_text().splitlines():
-            if line.startswith("JAMENDO_CLIENT_ID="):
-                return line.split("=", 1)[1].strip() or None
-    return None
+    """The Jamendo client_id from $JAMENDO_CLIENT_ID, else sourcing.env in the user's
+    config directory (lib/userdirs). A public read-only app id, not a secret — but
+    per-user."""
+    return os.environ.get("JAMENDO_CLIENT_ID") or userdirs.read_key(SOURCING_ENV,
+                                                                    "JAMENDO_CLIENT_ID")
 
 
 def _free_source() -> str:
