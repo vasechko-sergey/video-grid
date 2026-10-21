@@ -284,8 +284,8 @@ def mix(music: MusicSpec, out_dir: str, dur: float,
 
     `shutters` are the master's real cut times of the episodes that carry the shutter
     accent (design 2026-10-21 §4): a click on each, in the same un-ducked bed as the
-    whooshes, so it reaches everything the sfx input reaches. It needs `segments`, as
-    the whooshes do — the bed's length comes from them.
+    whooshes, so it reaches everything the sfx input reaches. It needs `segments` — the
+    bed's length comes from them — and is refused without them rather than dropped.
 
     `without_music`, when given, is a second path: the same reel with the track muted
     (design 2026-10-20 §2, see _nomusic_graph), rendered here from the same beds and the
@@ -293,6 +293,12 @@ def mix(music: MusicSpec, out_dir: str, dur: float,
     it is silence of the reel's length — still the deliverable a picture needs."""
     if dur <= 0:
         raise ValueError(f"mix: dur must be positive, got {dur}")
+    if shutters and not segments:
+        raise ValueError(f"mix: shutters {list(shutters)} were given without segments — a "
+                         f"click rides the SFX bed, which is cut to the segments' lengths, "
+                         f"so without them it would be dropped in silence. Pass segments "
+                         f"([(raw_segment, episode_dur), …] in reel order), as build_reel "
+                         f"does")
     if dur > music.duration + 0.1:
         raise ValueError(f"mix: reel dur {dur}s exceeds the analyzed music window {music.duration}s "
                          f"(track={music.track}, start_offset={music.start_offset}) — analyze a longer "

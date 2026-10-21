@@ -223,10 +223,18 @@ def test_mix_builds_the_bed_for_shutters_alone_and_hands_it_the_whoosh_switch(tm
     assert "[sfx]" in joined and "amix=inputs=2:duration=first" in joined   # rides the sfx input
 
 
-def test_mix_without_segments_has_no_bed_to_click_in(tmp_path, monkeypatch):
+def test_mix_refuses_shutters_without_segments_before_any_ffmpeg(tmp_path, monkeypatch):
+    """Review M5: with no segments there is no bed to click in, and a stem with no click
+    and no error is a caller's bug passed off as a delivery."""
+    calls = []
+    monkeypatch.setattr(mix.proc, "run", lambda cmd, **k: calls.append(cmd))
+    with pytest.raises(ValueError, match=r"shutters \[3\.0\] were given without "
+                                         r"segments.*Pass segments"):
+        mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0, shutters=[3.0])
+    assert calls == []
+    # an empty list is no shutter: no segments is then the music-only stem it always was
     monkeypatch.setattr(mix.proc, "run", lambda cmd, **k: _R(stderr=_loudnorm_stderr()))
-    monkeypatch.setattr(mix, "_build_sfx", lambda *a, **k: pytest.fail("no segments, no bed"))
-    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0, shutters=[3.0])
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0, shutters=[])
 
 
 def test_mix_sfx_only_makes_no_sidechain(tmp_path, monkeypatch):
