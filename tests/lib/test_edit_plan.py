@@ -2152,6 +2152,22 @@ def test_no_repeat_does_not_read_a_freeze_as_a_repeat_of_its_own_shot():
                                    rules=_no_repeat_rules()).constraints.ok
 
 
+@pytest.mark.parametrize("rule, message", [
+    ({"kind": "no_repeat", "stated": "no repeats"},
+     "episodes 0, 3 are all from A.mp4 [0.00s–10.00s]"),
+    ({"kind": "exclude", "stated": "not that take", "source": "A.mp4", "window": 0},
+     "episode(s) 0, 3 use A.mp4 [0.00s–10.00s]"),
+])
+def test_a_constraint_refusal_names_edl_indices_past_a_freeze(rule, message):
+    # the freeze at 1 is not projected, so the repeat at EDL index 3 is the projection's
+    # third entry — and the agent edits the selection entry the message names
+    sel = {"episodes": [_turn(), {"freeze": True}, {**_turn(), "window": 2},
+                        {**_turn(), "window": 0}]}
+    edl = edit_plan.build_edl(_freeze_footage(), sel,
+                              rules=Constraints.from_dict({"rules": [rule]}))
+    assert edl.constraints.violations[0].message.startswith(message)
+
+
 def test_resolve_freezes_reads_the_predecessor_as_it_is_now():
     footage = _freeze_footage()
     prev = _edl_ep(source="A.mp4", start=5.0, dur=3.0)

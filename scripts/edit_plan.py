@@ -479,15 +479,17 @@ def _candidates(footage: Footage, aspect: tuple[int, int], want: str,
     return sorted(rows, key=lambda r: r[2], reverse=True)[:limit]
 
 
-def _placed(clip: FootageClip, ep: EDLEpisode) -> Placed:
-    """Project one episode onto what an editorial rule can judge (design §4).
+def _placed(clip: FootageClip, ep: EDLEpisode, index: int) -> Placed:
+    """Project one episode onto what an editorial rule can judge (design §4). `index` is
+    its EDL index, which a refusal names: a freeze is not projected, so the projection's
+    own positions run low after one.
 
     A hero reaches the projection only when it is a cast NAME: a str that is not one
     of models.HERO_RULES. A bbox tuple, a track id, and "largest" all name a tracking
     target rather than a person, so they project to None — which a bookend rule reads
     as unsatisfied, never as satisfied."""
     hero = ep.hero if isinstance(ep.hero, str) and ep.hero not in HERO_RULES else None
-    return Placed(source=ep.source, shot=clip.shot_at(ep.start), hero=hero)
+    return Placed(source=ep.source, shot=clip.shot_at(ep.start), hero=hero, index=index)
 
 
 FREEZE_KEYS = ("freeze", "shutter", "hold")   # all a selection's freeze entry may carry
@@ -679,7 +681,7 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
         if aspect is not None:
             used[_delivered(clip, fw, aspect, ep.layout, ep.rect)] += 1
         episodes.append(ep)
-        placed.append(_placed(clip, ep))
+        placed.append(_placed(clip, ep, len(episodes) - 1))
     # the reel's bookend fade, resolved exactly as EDL.look is (selection.json wins over
     # the preset), because it is the number mix uses and therefore the number the outro
     # fit must add to the bar line. No look at all -> mix's own default.
