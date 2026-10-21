@@ -415,6 +415,19 @@ class EDL:
         for k, e in enumerate(eps):
             if not isinstance(e, EDLEpisode):
                 raise ValueError(f"EDL.episodes[{k}] must be an EDLEpisode")
+        for k, e in enumerate(eps):
+            # edit_plan refuses these too; this is the hand-authored front door, where a
+            # freeze first would cut from nothing and one after a photo, a freeze or a pan
+            # has no played segment or no route to hold (design 2026-10-21 §3)
+            prev = eps[k - 1] if k else None
+            if e.freeze and (prev is None or prev.held() or prev.pan is not None):
+                why = ("it opens the cut" if prev is None else
+                       f"episode {k - 1} is a "
+                       f"{'freeze' if prev.freeze else 'photo' if prev.held() else 'pan'}")
+                raise ValueError(
+                    f"EDL.episodes[{k}] is a freeze, which holds the previous episode's last "
+                    f"frame and subject — it must follow a played video window that is not "
+                    f"a pan, and {why}. Move the freeze after such a window, or drop it")
         self.episodes = eps
         if isinstance(self.cap, bool) or not isinstance(self.cap, int) or self.cap < 1:
             raise ValueError(f"EDL.cap must be an int >= 1, got {self.cap!r}")

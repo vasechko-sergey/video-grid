@@ -1558,6 +1558,29 @@ def test_a_freeze_refuses_what_addresses_time(kw, name):
         _freeze_ep(**kw)
 
 
+@pytest.mark.parametrize("before, why", [
+    ((), "it opens the cut"),
+    ((_photo_ep(),), "episode 0 is a photo"),
+    ((_ep(), _freeze_ep()), "episode 1 is a freeze"),
+    ((_ep(composition="center", pan={"from": 0.2, "to": 0.7}),), "episode 0 is a pan"),
+])
+def test_an_edl_refuses_a_freeze_with_no_played_window_to_hold(before, why):
+    # the hand-authored front door: edit_plan refuses all four, and EDL.json need not come
+    # from edit_plan
+    with pytest.raises(ValueError, match=f"EDL.episodes\\[{len(before)}\\] is a freeze, which "
+                                         f"holds the previous episode's last frame and subject "
+                                         f"— it must follow a played video window that is not "
+                                         f"a pan, and {why}"):
+        EDL(episodes=(*before, _freeze_ep()))
+    with pytest.raises(ValueError, match="is a freeze, which holds"):
+        EDL.from_dict({"episodes": [e.to_dict() for e in (*before, _freeze_ep())]})
+
+
+def test_an_edl_takes_a_freeze_after_a_played_window():
+    edl = EDL(episodes=(_ep(), _freeze_ep(), _ep(start=6.0), _freeze_ep()))
+    assert [e.freeze for e in edl.episodes] == [False, True, False, True]
+
+
 def test_a_freeze_keeps_its_framing_and_hero():
     e = _freeze_ep(layout="fit", crop_aspect="source", hero="Lena", saturation=0.9)
     assert (e.layout, e.hero, e.saturation) == ("fit", "Lena", 0.9)
