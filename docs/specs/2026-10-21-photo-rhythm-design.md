@@ -128,9 +128,11 @@ label (the cut identity, EDL.md). The PIXELS come from the previous episode's ow
 segment: `extract` takes its **last decoded frame** by count
 (`trim=start_frame=n−1,setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop=N−1` plus the
 segment's range pair, no audio — the research: the sound stopping on a freeze deepens
-it). A formula over source time cannot promise that: output-side `-t` measures from the
-first KEPT frame, so with both ends off the frame grid the last frame shown and the
-formula's frame part by one (the Task 1 review's worked case, 0.51 s / 1.51 s at 30 fps).
+it). A formula over source time cannot promise that: off the frame grid, which frame
+output-side `-ss`/`-t` keeps last depends on ffmpeg's trim internals. Measured over 28
+random off-grid cuts at 30 fps, the formula's frame was a neighbour of the segment's real
+last frame in 5, in both directions (0.152 s / 1.209 s one early, 0.482 s / 1.592 s one
+late); counting the segment's frames was right in 28 of 28.
 A ramped predecessor's segment is already retimed by then, so its last frame is the one
 that plays.
 
