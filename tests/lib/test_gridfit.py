@@ -455,6 +455,14 @@ def test_an_authored_count_keeps_its_own_beat_against_the_trackers_jitter(beats,
     assert f.devs == (0.0,)
 
 
+def test_an_authored_count_outside_the_range_is_clamped_not_carried_further_out():
+    # 20 beats at 120 BPM is 10.0 s, past HOLD_ROOM: the driver refuses it, and gridfit on
+    # its own keeps the range rather than taking the beat at 10.0
+    f = gridfit.fit_level([2.0, 2.0], _BEATS_120, [(-0.25, 0.25)] * 2, 0.25,
+                          beats=_BEATS_120, held=[_h(beats=20), None], plan=_never)
+    assert f.shifts[0] == pytest.approx(6.0, abs=1e-12)          # out at 8.0
+
+
 def test_an_authored_count_with_no_beat_near_its_target_falls_back_to_the_range():
     # beats every 1.0 s against a 0.5 s period: the 3-beat target 1.5 has no beat within
     # half a period of it, so the range's nearest wins (1.0, the earlier of a tie)

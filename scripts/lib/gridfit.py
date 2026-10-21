@@ -134,11 +134,12 @@ def _held_cut(i: int, h: Held, pos: float, run: tuple[int, ...], run_end: bool,
         # is used, and its distance to the nearest line or beat (fit_level) is a dev the
         # fit can see, as a footage cut past the last line has
         return min(max(target, lo), hi), target
-    if h.beats is not None:
-        # An authored count was checked against [HOLD_MIN, HOLD_ROOM] at this tempo before
-        # the fit (scripts/pacing.py), so its own beat — the detected one nearest the
-        # target — is taken even a hair outside the range: the tracker's jitter must not
-        # cost or add a beat to a count the author wrote
+    if h.beats is not None and lo - _SLACK <= target <= hi + _SLACK:
+        # An authored count inside the range (scripts/pacing.py refuses one outside it at
+        # each window's tempo) takes its own beat — the detected one nearest the target —
+        # even a hair outside the range: the tracker's jitter must not cost or add a beat
+        # to a count the author wrote. A count outside it is clamped by the range rule
+        # below, never carried further out by this one
         near = [x for x in beats if abs(x - target) <= period / 2 + _SLACK]
         if near:
             return min(near, key=lambda c: (abs(c - target), c)), target
