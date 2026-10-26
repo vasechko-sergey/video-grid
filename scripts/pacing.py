@@ -8,27 +8,20 @@ output. edit_plan then re-runs with --pacing to apply the fit."""
 import argparse
 import dataclasses
 import json
-import math
 import sys
 from pathlib import Path
 
 from scripts.lib import anchors, gridfit, hold, pacing, ramp as ramp_mod
 from scripts.lib.edl import EDL
 from scripts.lib.footage import Footage
-from scripts.lib.models import MusicSpec, RampSpec
-from scripts.lib.pacing import music_identity
+from scripts.lib.models import MUSIC_OVERRUN_TOL, MusicSpec, RampSpec
+from scripts.lib.pacing import music_identity, reanalysis_duration
 
 
 def _log(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
-COVER_TOL = 0.1      # s a fitted reel may run past its music window and still "cover" it —
-                     # build_reel's own pre-mix refusal (`target_dur > duration + 0.1`), so a
-                     # window that covers is one that refusal cannot fire on
-HEADROOM_BARS = 2    # bars past the fitted reel a re-analysis should ask for. A convention:
-                     # re-analysing at a new length can move --auto-start's in-point, and with
-                     # it every held length, and the outro fit searches a bar past the end
 
 
 def _bounds(edl: EDL, footage: Footage, allow: float) -> list[tuple[float, float]]:
@@ -163,12 +156,11 @@ def _overrun(spine, durs: list[float], held, music: MusicSpec, path: str) -> str
         grown = (f", and the lengths the grid authored for the {len(idx)} held "
                  f"episode{'' if len(idx) == 1 else 's'} grew the reel {g:+.2f}s from their "
                  f"placeholders")
-    headroom = HEADROOM_BARS * 4 * 2.0 * gridfit.allowance(music.tempo)
     return (f"pacing: the fitted reel ({spine.target_dur:.2f}s) overruns its music window "
             f"({music.duration:.2f}s, {Path(path).name}) by {over:.2f}s — the scenario's "
             f"cuts sum to {sum(durs):.2f}s{grown}. build_reel refuses a reel longer than "
             f"its window: re-analyse with headroom (beats --auto-start --duration "
-            f"{math.ceil(spine.target_dur) + math.ceil(headroom)}) and re-run pacing")
+            f"{reanalysis_duration(spine.target_dur, music.tempo)}) and re-run pacing")
 
 
 def build_pacing(edl_json: str, footage_json: str, music_jsons: list[str], out_dir: str,
@@ -226,13 +218,14 @@ def build_pacing(edl_json: str, footage_json: str, music_jsons: list[str], out_d
         bounds = _bounds(edl, footage, gridfit.allowance(m.tempo))
         spine, fit, rejected = pacing.fit_spine(durs, m.beats, m.energy, m.energy_hz,
                                                 m.tempo, bounds, held=held)
-        # A window the fitted reel overruns ranks below every window that covers it,
+        # A window the fitted reel overruns (past MUSIC_OVERRUN_TOL, the tolerance
+        # build_reel's own refusal uses) ranks below every window that covers it,
         # whatever its level: build_reel refuses a reel longer than its window, and held
         # lengths the grid authored can grow the reel past the length the window was
         # analysed for (design 2026-10-21 §2.3). Then the coarsest FITTING level wins — a
         # window whose best level misses ranks below every window that fits — and ties
         # break on the smaller worst deviation.
-        covers = spine.target_dur <= m.duration + COVER_TOL
+        covers = spine.target_dur <= m.duration + MUSIC_OVERRUN_TOL
         rank = (covers, fit.level_n if fit.fits else 0, -fit.worst)
         if best is None or rank > best[0]:
             best = (rank, spine, fit, rejected, path, m)
@@ -249,7 +242,7 @@ def build_pacing(edl_json: str, footage_json: str, music_jsons: list[str], out_d
              f"music_digest — edit_plan will fall back to comparing tempo, which cannot "
              f"see a start_offset change. That is a not-checked, not a 'same track'")
     spine = dataclasses.replace(spine, music_digest=digest)
-    if spine.target_dur > music.duration + COVER_TOL:
+    if spine.target_dur > music.duration + MUSIC_OVERRUN_TOL:
         _log(_overrun(spine, durs, held, music, music_path))
     if not fit.fits:
         _log(f"pacing: no level fits — best is {fit.level} with a worst cut of "

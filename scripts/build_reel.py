@@ -20,7 +20,7 @@ from pathlib import Path
 from scripts import check_reel, color_measure, deliver, mix, probe, process_episode
 from scripts.lib import (assembly, color, color_fidelity, episode_qc as qc_lib, fetch, ffbin,
                          gates as gates_lib, proc, provenance, reel_orchestration, soundnote)
-from scripts.lib.models import ReelManifest, MusicSpec, REEL_H264
+from scripts.lib.models import MUSIC_OVERRUN_TOL, ReelManifest, MusicSpec, REEL_H264
 from scripts.lib.outro import OutroFit
 
 
@@ -137,7 +137,7 @@ def build_reel(rm: ReelManifest, out_dir: str, work_dir: str, titles: str | None
     # The length re-time only ever SHRINKS the target, so a target that starts outside the music
     # window can never be rescued downstream — mix refuses a stem longer than its fragment. Refuse
     # it here, before any ffmpeg, rather than let the absorb carry it into mix's raise (design §6).
-    if music is not None and rm.target_dur > music.duration + 0.1:
+    if music is not None and rm.target_dur > music.duration + MUSIC_OVERRUN_TOL:
         raise ValueError(f"build_reel: target_dur {rm.target_dur}s exceeds the analyzed music "
                          f"window {music.duration}s — this reel can never be mixed (mix refuses a "
                          f"stem longer than its fragment); re-pick the fragment "

@@ -1269,6 +1269,13 @@ class ReelCheckSpec:
                              f"number of CIEDE2000 chroma units, got {self.chroma_spread_max!r}")
 
 
+MUSIC_OVERRUN_TOL = 0.1   # s a reel may run past its analysed music window. mix refuses a
+                          # stem longer than that (a shorter one would desync from the
+                          # picture), build_reel refuses the target before any ffmpeg, and
+                          # pacing and edit_plan judge an overrun by it: one number, so the
+                          # four cannot disagree about which reel the music covers.
+
+
 @dataclass
 class MusicSpec:
     """MUSIC.json — the lean music analysis a reel is cut to (design §2, Phase B).

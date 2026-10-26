@@ -12,6 +12,7 @@ capped a slot at 4.6s at 104 BPM and silently truncated any shot that WAS the co
 a surf ride, a trick. Length ownership moved to the footage; what is left here is the
 fit."""
 import json
+import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -346,6 +347,20 @@ def energy_agreement(slots: Sequence[Slot]) -> tuple[float | None, int, int, str
             "every measured slot has the same duration or the same energy, so there "
             "is no ordering to correlate")
     return correlation(durs, ens, method="ranked"), len(usable), total, ""
+
+
+HEADROOM_BARS = 2    # bars past the fitted reel a re-analysis should ask for. A convention:
+                     # re-analysing at a new length can move --auto-start's in-point, and with
+                     # it every held length, and the outro fit searches a bar past the end
+
+
+def reanalysis_duration(target_dur: float, tempo: float) -> int:
+    """The `beats --auto-start --duration` to re-analyse a music window at, for a reel of
+    `target_dur` that overran its window: the reel, plus HEADROOM_BARS of the window's
+    own tempo, each rounded up to a whole second. One function, because the pacing fit
+    and edit_plan both name it in their overrun lines and must name the same number."""
+    beat = 2.0 * gridfit.allowance(tempo)
+    return math.ceil(target_dur) + math.ceil(HEADROOM_BARS * 4 * beat)
 
 
 def hold_planner(beats: Sequence[float], energy: Sequence[float], energy_hz: float,

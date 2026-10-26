@@ -23,9 +23,9 @@ from scripts.lib.edl import EDL, EDLEpisode, preflight, write_edl
 from scripts.lib.footage import (Footage, FootageClip, FootageWindow, SHOT_TYPES, delivered_shot,
                                  shot_type)
 from scripts.lib.look import LookSpec
-from scripts.lib.models import HERO_RULES, MusicSpec, RampSpec
+from scripts.lib.models import HERO_RULES, MUSIC_OVERRUN_TOL, MusicSpec, RampSpec
 from scripts.lib.moodpreset import MoodPreset
-from scripts.lib.pacing import Spine, music_identity
+from scripts.lib.pacing import Spine, music_identity, reanalysis_duration
 from scripts.lib.project import ProjectConfig
 from scripts.lib.spec import Spec, share_line
 
@@ -805,6 +805,20 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
                      f"the fitter bounded against the music, so the target stays clamped at "
                      f"{target:.2f}s and the over-flow escalates at the reel gate. Re-run "
                      f"pacing against the current EDL.json, or drop episodes")
+    if (music is not None and pacing is not None
+            and target > music.duration + MUSIC_OVERRUN_TOL):
+        # build_reel refuses this reel too, but only after phase 1 has rendered and judged
+        # every episode, and as a bare error. Here both numbers are in hand before any
+        # ffmpeg; held lengths make it likelier, since the grid sets them (final review M5)
+        raise ValueError(
+            f"edit_plan: the reel's target {target:.2f}s overruns its music window "
+            f"({music.duration:.2f}s, {Path(music.track).name}) by "
+            f"{target - music.duration:.2f}s — build_reel refuses a reel longer than its "
+            f"window, and only after every episode is rendered and judged. Held lengths "
+            f"(photos, freezes) are the grid's and can grow a reel past the length its "
+            f"music was analysed for: re-analyse with headroom (beats --auto-start "
+            f"--duration {reanalysis_duration(target, music.tempo)}), re-run pacing, then "
+            f"this build")
     authored = [i for i, e in enumerate(episodes) if e.hold is not None]
     if authored and pacing is None:
         _log(f"hold: episode{'s' if len(authored) > 1 else ''} "

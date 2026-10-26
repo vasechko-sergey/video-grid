@@ -2411,3 +2411,32 @@ def test_a_footage_episode_keeps_the_half_beat_guard_beside_held_ones():
            _edl_ep(source="A.mp4", start=5.0, dur=3.0, base_dur=3.0)]
     with pytest.raises(ValueError, match="fitted to a different edit"):
         edit_plan._bind_pacing(eps, _held_spine((0.5, True), (4.0, False)))
+
+
+# --- a paced reel its music window cannot cover is refused here (final review M5) ---
+
+def _short_music(duration):
+    return MusicSpec(track="t.wav", start_offset=0.0, duration=duration, tempo=120.0,
+                     beats=tuple(i * 0.5 for i in range(int(duration / 0.5))),
+                     energy=(0.1,), energy_hz=2.0)
+
+
+def test_a_paced_reel_its_music_cannot_cover_is_refused_before_any_render():
+    """_spine2 binds the cut to a 5.15 s target. Against a 4.0 s window build_reel
+    refused it — after every episode had been rendered and judged, as a bare
+    ValueError. edit_plan holds both numbers and says so first."""
+    with pytest.raises(ValueError) as e:
+        edit_plan.build_edl(_footage(), _sel3(), pacing=_spine2(), music=_short_music(4.0))
+    assert str(e.value) == (
+        "edit_plan: the reel's target 5.15s overruns its music window (4.00s, t.wav) by "
+        "1.15s — build_reel refuses a reel longer than its window, and only after every "
+        "episode is rendered and judged. Held lengths (photos, freezes) are the grid's "
+        "and can grow a reel past the length its music was analysed for: re-analyse with "
+        "headroom (beats --auto-start --duration 10), re-run pacing, then this build")
+
+
+def test_a_paced_reel_inside_build_reels_tolerance_builds():
+    # 0.05 s past a 5.1 s window is inside build_reel's own MUSIC_OVERRUN_TOL
+    edl = edit_plan.build_edl(_footage(), _sel3(), pacing=_spine2(),
+                              music=_short_music(5.1))
+    assert edl.target_dur == pytest.approx(5.15)

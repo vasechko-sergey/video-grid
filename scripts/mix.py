@@ -15,7 +15,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from scripts.lib import assembly, ffbin, proc
-from scripts.lib.models import MusicSpec
+from scripts.lib.models import MUSIC_OVERRUN_TOL, MusicSpec
 
 _TARGET_LUFS = -14.0                                  # EBU R128 (montage §5.12). The gate's copy is
                                                       # ReelCheckSpec.loudness_target and the two must
@@ -299,7 +299,7 @@ def mix(music: MusicSpec, out_dir: str, dur: float,
                          f"so without them it would be dropped in silence. Pass segments "
                          f"([(raw_segment, episode_dur), …] in reel order), as build_reel "
                          f"does")
-    if dur > music.duration + 0.1:
+    if dur > music.duration + MUSIC_OVERRUN_TOL:
         raise ValueError(f"mix: reel dur {dur}s exceeds the analyzed music window {music.duration}s "
                          f"(track={music.track}, start_offset={music.start_offset}) — analyze a longer "
                          "window or shorten the reel; a shorter stem would silently desync from the video")
