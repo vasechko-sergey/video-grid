@@ -22,11 +22,12 @@ run's last hold, ends on the bar line at 4.0 — three beats. Neither is HOLD_DE
 2.0 s, which is what every photo held before this slice.
 
 The clip runs at 24 fps — not extract's 30/1 default — so "every episode on the video's
-clock" cannot pass by accident; at 120 BPM one beat is exactly 12 of its frames. It is
-full range with a BT.709 description, as camera footage arrives (test_freeze's clip): the
-photo's segment carries that description too (still.render stamps it), and the master
-splices the episodes by `-c copy`. Beside UNDESCRIBED video the same reel does not
-deliver — measured while writing this, see design §7."""
+clock" cannot pass by accident; at 120 BPM one beat is exactly 12 of its frames. Every
+test runs twice, on two clips (`_CLIPS`): full range with a BT.709 description, as camera
+footage arrives (test_freeze's clip), and one that describes no colour at all. The master
+splices the episodes by `-c copy`, so the photo's segment takes the video's description
+the way it takes the video's clock (design §7): the first version stamped every photo
+BT.709, and beside the undescribed clip this same reel was refused."""
 import json
 from pathlib import Path
 
@@ -55,6 +56,15 @@ _PHOTO = (600, 800)
 # beats 5-8 (the photo's) 0.45.
 _ENERGY = (0.5,) * 4 + (1.0, 0.6, 0.6, 0.6, 0.0) + (0.5,) * 7
 _MUSIC_S = 8.0
+# The clip's colour, as its encoder writes it. "undescribed" is the reel the first version
+# refused: its master changed description at the photo, ffmpeg re-initialized its filter
+# graph there, and grade_faithful read the wrong frames (residuals 0/34/76/16 against 4.0).
+_CLIPS = {
+    "described": ["-pix_fmt", "yuvj420p", "-color_range", "pc", "-color_primaries", "bt709",
+                  "-color_trc", "bt709", "-colorspace", "bt709"],
+    "undescribed": ["-pix_fmt", "yuv420p"],
+}
+_TAGS = ("color_space", "color_primaries", "color_transfer", "color_range")
 
 
 class _Box:
@@ -131,19 +141,18 @@ def _reel(base: Path, root: Path, music: Path, shutter: bool) -> dict:
             "master": str(Path(work) / "reel" / "master.mp4")}
 
 
-@pytest.fixture(scope="module")
-def reels(tmp_path_factory):
+@pytest.fixture(scope="module", params=sorted(_CLIPS))
+def reels(request, tmp_path_factory):
     try:
         binary = ffbin.ffmpeg()
     except ValueError as e:
         pytest.skip(str(e))
-    tmp = tmp_path_factory.mktemp("photo_rhythm")
+    tmp = tmp_path_factory.mktemp(f"photo_rhythm_{request.param}")
     root = tmp / "footage"
     root.mkdir()
     proc.run([binary, "-y", "-v", "error", "-f", "lavfi",
               "-i", f"testsrc2=s={_W}x{_H}:r={_FPS}:d=8", "-c:v", "libx264",
-              "-pix_fmt", "yuvj420p", "-color_range", "pc", "-color_primaries", "bt709",
-              "-color_trc", "bt709", "-colorspace", "bt709", str(root / "clip.mp4")])
+              *_CLIPS[request.param], str(root / "clip.mp4")])
     im = Image.new("RGB", _PHOTO, (230, 120, 40))
     im.paste(Image.new("RGB", (_PHOTO[0] // 8, _PHOTO[1] // 3), (20, 20, 30)),
              (int(_PHOTO[0] * 0.6), _PHOTO[1] // 3))
@@ -175,6 +184,23 @@ def _probe_rate(path: str) -> str:
     return json.loads(proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
                                 "-show_entries", "stream=r_frame_rate", "-of", "json",
                                 path]).stdout)["streams"][0]["r_frame_rate"]
+
+
+def _description(path: str) -> tuple:
+    """The stream's four colour tags as ffprobe reads them, None where it carries none."""
+    s = json.loads(proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
+                             "-show_entries", "stream=" + ",".join(_TAGS), "-of", "json",
+                             path]).stdout)["streams"][0]
+    return tuple(s.get(k) for k in _TAGS)
+
+
+def _frame_descriptions(path: str) -> set[tuple]:
+    """Every decoded frame's colour description — what the decoder hands each filter
+    graph, carried-over descriptions included."""
+    frames = json.loads(proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
+                                  "-show_entries", "frame=" + ",".join(_TAGS), "-of", "json",
+                                  path]).stdout)["frames"]
+    return {tuple(f.get(k) for k in _TAGS) for f in frames}
 
 
 def _cuts(rm: ReelManifest) -> list[float]:
@@ -222,6 +248,16 @@ def test_the_reel_is_delivered_with_every_episode_on_the_videos_clock(reels):
         assert _probe_rate(r["res"]["output"]) == f"{_FPS}/1"
     assert reels["accent"]["rm"].shutters == (1, 2)
     assert reels["control"]["rm"].shutters == ()
+
+
+def test_every_episode_and_every_master_frame_carry_the_videos_colour_description(reels):
+    """The photo takes the video's description (design §7), so the `-c copy` master never
+    changes description mid-stream — not at the photo, and not after it, where a decoder
+    carries a description over to frames whose own parameter sets name none."""
+    for r in (reels["accent"], reels["control"]):
+        video = _description(r["rm"].episodes[0].clip)
+        assert {_description(ep.clip) for ep in r["rm"].episodes} == {video}
+        assert _frame_descriptions(r["master"]) == {video}
 
 
 def test_the_held_lengths_are_whole_beats_the_grid_chose(reels):

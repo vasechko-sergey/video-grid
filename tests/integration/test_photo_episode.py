@@ -85,9 +85,14 @@ def test_a_portrait_photo_fills_the_canvas_on_the_videos_clock(run, tmp_path):
     assert (p["width"], p["height"]) == (360, 640)            # the delivered canvas
     assert v["r_frame_rate"] == "25/1"
     assert p["r_frame_rate"] == v["r_frame_rate"] and p["time_base"] == v["time_base"]
-    assert p["color_space"] == "bt709" and p["color_range"] == "tv"
+    # ...and on its colour description (design 2026-10-21 §7): this clip names none, so
+    # neither does the photo, and both decode as ffmpeg decodes an undescribed frame
+    tags = ("color_space", "color_primaries", "color_transfer", "color_range")
+    assert [p.get(k) for k in tags] == [v.get(k) for k in tags] == [None] * 4
     assert assembly.probe_duration(segs[1]) == pytest.approx(1.5, abs=1 / 30 + 0.02)
     rec = json.loads((seg / "ep1_raw.still.json").read_text())
+    assert rec["colour"] == {"from": "ep0_raw.mp4", "space": None, "primaries": None,
+                             "transfer": None, "matrix": "bt601", "range": "tv"}
     assert rec["layout"] == "fill" and rec["frames"] == 38 and rec["people"] == 1   # 1.5s at 25
     assert rec["move"]["applied"] == {"from": 1.0, "to": 0.92} and rec["move"]["note"] == ""
     assert rec["first"][2] > rec["last"][2]                   # it pushed in
@@ -145,6 +150,11 @@ def test_a_reel_of_photos_alone_under_native_takes_the_first_photos_fill_canvas(
     a, b = _probe(segs[0]), _probe(segs[1])
     assert (a["width"], a["height"]) == (450, 800)   # a 9:16 crop of 600x800
     assert b["width"] == 450                         # the same canvas, not 800 wide
+    # no video to take a description from: BT.709, stamped on every frame
+    assert [a.get(k) for k in ("color_space", "color_primaries", "color_transfer",
+                               "color_range")] == ["bt709", "bt709", "bt709", "tv"]
+    rec = json.loads((tmp_path / "s" / "ep0_raw.still.json").read_text())
+    assert rec["colour"]["from"] is None and rec["colour"]["matrix"] == "bt709"
     plan = process_episode.plan_for(
         preflight(_edl(_pho("IMG_P.png", layout="fill"), _pho("IMG_L.png", layout="fit")),
                   cfg, str(tmp_path / "s"), str(tmp_path / "o"))[0][1], segs[1], None)
@@ -194,7 +204,8 @@ def test_a_failing_still_escalates_once_instead_of_retrying(tmp_path, monkeypatc
     from scripts.lib import kenburns, models, still
     st = still.Still(rgb=np.full((640, 360, 3), 128, np.uint8), record={})
     seg = tmp_path / "seg.mp4"
-    still.render(st, [kenburns.Rect(0.0, 0.0, 360.0, 640.0)] * 30, (360, 640), "30/1", str(seg))
+    still.render(st, [kenburns.Rect(0.0, 0.0, 360.0, 640.0)] * 30, (360, 640), "30/1", str(seg),
+                 colour=still.BT709)
     calls = []
     real = reframe.reframe
     monkeypatch.setattr(reframe, "reframe", lambda *a, **k: calls.append(1) or real(*a, **k))

@@ -234,3 +234,53 @@ def test_extract_edl_gates_a_short_freeze_like_any_segment(monkeypatch, tmp_path
     with pytest.raises(ValueError, match="EDL episode 1 segment is 0.500s — shorter than its "
                                          "2.0s hold of episode 0's last frame"):
         extract.extract_edl(_freeze_edl(), str(tmp_path), str(tmp_path / "seg"))
+
+
+def _photo_run(monkeypatch, tmp_path, *eps):
+    """extract_edl over `eps` with every cut, probe and render faked; returns what each
+    photo's render was handed and which segment the colour was read off."""
+    for n in ("a.mp4", "p.png"):
+        (tmp_path / n).write_bytes(b"x")
+    seen = {"renders": [], "colour_of": []}
+    monkeypatch.setattr(extract, "extract",
+                        lambda src, start, dur, out, **kw: (Path(out).write_bytes(b"cut"), out)[1])
+    monkeypatch.setattr(extract, "_probe_dur", lambda p: 2.0)
+    monkeypatch.setattr(extract.assembly, "probe_stream",
+                        lambda p: type("S", (), {"fps": 25.0, "w": 1920, "h": 1080})())
+    monkeypatch.setattr(extract.assembly, "probe_rate", lambda p: ("25/1", 12800))
+
+    def colour_of(path):
+        seen["colour_of"].append(Path(path).name)
+        return extract.still.Colour(space="smpte170m")
+
+    def render_photo(ep, src, out, project, rate, delivery=None, *, colour, colour_from):
+        seen["renders"].append((Path(out).name, rate, colour, colour_from))
+        return {}
+
+    monkeypatch.setattr(extract.still, "colour_of", colour_of)
+    monkeypatch.setattr(extract, "render_photo", render_photo)
+    monkeypatch.setattr(extract, "_photo_delivery", lambda *a: None)
+    monkeypatch.setattr(extract.track, "ensure_model", lambda m: None)
+    extract.extract_edl(EDL(episodes=list(eps)), str(tmp_path), str(tmp_path / "seg"),
+                        project=object())
+    return seen
+
+
+def _ep(source):
+    return EDLEpisode(source=source, start=0.0, dur=2.0, shot_type="medium",
+                      composition="center", grid="thirds")
+
+
+def test_a_photo_takes_the_first_video_segments_colour_as_it_takes_its_clock(
+        monkeypatch, tmp_path):
+    # the photo opens the reel here, so "the first video segment" is episode 1, not 0
+    seen = _photo_run(monkeypatch, tmp_path, _ep("p.png"), _ep("a.mp4"), _ep("p.png"))
+    assert seen["colour_of"] == ["ep1_raw.mp4"]                 # read once, for every photo
+    want = (("25/1", 12800), extract.still.Colour(space="smpte170m"), "ep1_raw.mp4")
+    assert seen["renders"] == [("ep0_raw.mp4", *want), ("ep2_raw.mp4", *want)]
+
+
+def test_a_reel_of_photos_alone_takes_the_default_clock_and_bt709(monkeypatch, tmp_path):
+    seen = _photo_run(monkeypatch, tmp_path, _ep("p.png"))
+    assert seen["colour_of"] == []
+    assert seen["renders"] == [("ep0_raw.mp4", extract.PHOTO_RATE, extract.still.BT709, None)]

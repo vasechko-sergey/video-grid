@@ -17,6 +17,8 @@ from scripts.lib.project import ProjectConfig, resolve_manifest
 PHOTO_RATE = ("30/1", 15360)   # a reel of photos alone: 30 fps, ffmpeg's own mp4 timescale
                                # for it. With any video in the EDL its first segment's clock
                                # is used instead (design 2026-10-20 §4).
+PHOTO_COLOUR = still.BT709     # ...and BT.709; with video, that segment's colour
+                               # description (design 2026-10-21 §7)
 
 _LEN_EPS = 0.05    # seconds of slack beyond one frame — a re-encoded window lands ±1 frame
 
@@ -126,7 +128,8 @@ def _photo_delivery(edl: EDL, photos: list[int], segments: dict[int, str],
 
 
 def render_photo(ep: EDLEpisode, src: str, out: str, project: ProjectConfig,
-                 rate: tuple[str, int], delivery: Delivery | None = None) -> dict:
+                 rate: tuple[str, int], delivery: Delivery | None = None, *,
+                 colour: still.Colour, colour_from: str | None) -> dict:
     """One photo episode into `out` (design 2026-10-20 §2-§4), and the record of it.
 
     The layout comes through the SAME bridge every episode's manifest does
@@ -134,7 +137,9 @@ def render_photo(ep: EDLEpisode, src: str, out: str, project: ProjectConfig,
     will find: the segment is sized to what reframe would scale it to — the delivered
     canvas for fill, the content rect for fit/insert — and shaped to the layout's crop
     aspect, so reframe's crop is the whole segment. `delivery` overrides the project's
-    for the sizing only (_photo_delivery)."""
+    for the sizing only (_photo_delivery). `colour` is the description the segment is
+    written in, and `colour_from` the segment it was read off (None: a reel of photos
+    alone), both kept in the record."""
     m = _manifest(ep, out, project)
     st = still.load(src)
     rl = layout_lib.resolve(_layout_of(m), m.canvas, st.dims,
@@ -146,12 +151,14 @@ def render_photo(ep: EDLEpisode, src: str, out: str, project: ProjectConfig,
     num, den = (float(v) for v in rate[0].split("/"))
     pl = kenburns.plan(st.dims, rl.crop_aspect, m.crop_scale, subject, m.composition,
                        m.grid, move, max(1, round(ep.dur * num / den)))
-    facts = still.render(st, pl.frames, tuple(out_dims), rate[0], out, timescale=rate[1])
+    facts = still.render(st, pl.frames, tuple(out_dims), rate[0], out, colour=colour,
+                         timescale=rate[1])
     return {"source": ep.source, "decode": st.record, "people": len(boxes),
             "canvas_px": [rl.out_w, rl.out_h],
             "subject": None if subject is None else subject.to_list(),
             "layout": rl.mode, "aspect": list(rl.crop_aspect), "out_dims": list(out_dims),
-            "rate": rate[0], "frames": len(pl.frames), "base": pl.base.to_list(),
+            "rate": rate[0], "colour": {"from": colour_from, **colour.to_dict()},
+            "frames": len(pl.frames), "base": pl.base.to_list(),
             "anchor": [round(v, 3) for v in pl.anchor],
             "first": pl.frames[0].to_list(), "last": pl.frames[-1].to_list(),
             "move": {"planned": pl.planned.to_dict(), "applied": pl.applied.to_dict(),
@@ -167,8 +174,8 @@ def extract_edl(edl: EDL, footage_root: str, seg_dir: str,
 
     A photo episode is RENDERED into the same name (render_photo), with its record
     beside it as ep{i}_raw.still.json. It needs `project` for the canvas and the
-    delivery, and takes the clock of the EDL's first video segment, so the videos are
-    cut first.
+    delivery, and takes the clock and the colour description of the EDL's first video
+    segment, so the videos are cut first.
 
     A freeze (design 2026-10-21 §3) is cut in the video loop by extract_freeze from the
     previous episode's segment, under the same length gate. EDL never lets one open the
@@ -232,14 +239,17 @@ def extract_edl(edl: EDL, footage_root: str, seg_dir: str,
             Path(ramped).replace(out)
         segments[i] = out
     if photos:
-        rate = assembly.probe_rate(segments[min(segments)]) if segments else PHOTO_RATE
+        first = segments[min(segments)] if segments else None
+        rate = assembly.probe_rate(first) if first else PHOTO_RATE
+        colour = still.colour_of(first) if first else PHOTO_COLOUR
         delivery = _photo_delivery(edl, photos, segments, footage_root, project)
         track.ensure_model(track.MODEL)     # the subject pass needs the weights on disk
         for i in photos:
             ep = edl.episodes[i]
             out = str(Path(seg_dir) / f"ep{i}_raw.mp4")
             record = render_photo(ep, str(Path(footage_root) / ep.source), out, project, rate,
-                                  delivery)
+                                  delivery, colour=colour,
+                                  colour_from=Path(first).name if first else None)
             Path(out).with_suffix(runlayout.STILL_SIDECAR).write_text(json.dumps(record, indent=2))
             probed = _probe_dur(out)
             num, den = (float(v) for v in rate[0].split("/"))
