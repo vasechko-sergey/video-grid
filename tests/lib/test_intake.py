@@ -1722,3 +1722,75 @@ def test_intake_groups_a_burst_and_keeps_its_sharpest(monkeypatch, tmp_path):
     assert f.scoring["photos"]["windows"] == 4
     on_disk = json.loads((tmp_path / "out" / "FOOTAGE.json").read_text())
     assert [c.get("group") for c in on_disk["clips"]] == ["g1", "g1", "g1", None]
+
+
+# two bursts by capture time — {p1, p3} and {p2, p4} — every pHash far from every other
+_BURSTS = {"p1.jpg": (0.0, _FAR[0], 10.0), "p2.jpg": (100.0, _FAR[1], 20.0),
+           "p3.jpg": (1.0, _FAR[2], 30.0), "p4.jpg": (101.0, _FAR[3], 40.0)}
+
+
+def _burst_root(tmp_path):
+    root = tmp_path / "footage"; root.mkdir()
+    for n in _BURSTS:
+        (root / n).write_bytes(n.encode())
+    return root
+
+
+def _burst_photo(path, sf=intake.SAMPLE_FPS, embed_cast=True, band=carve.DEFAULT_BAND):
+    name = intake.Path(path).name
+    taken, phash, sharpness = _BURSTS[name]
+    return _photo_res(name, taken=taken, phash=phash, sharpness=sharpness)
+
+
+def _groups(footage_json):
+    return [c.get("group") for c in json.loads(footage_json)["clips"]]
+
+
+def test_group_numbering_is_the_same_across_a_cache_mix(monkeypatch, tmp_path):
+    """Groups are numbered by the PATH order of their first member. Under a cache mix
+    `results` holds the hits first, so numbering in its order would swap g1 and g2
+    here: p2 and p4 stay cached while the first group's p1 and p3 re-scan (the
+    2026-10-21 review's M4)."""
+    root, out = _burst_root(tmp_path), tmp_path / "out"
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    monkeypatch.setattr(intake.reid, "available", lambda: False)
+    monkeypatch.setattr(intake, "_process_clip", _burst_photo)
+    intake.intake(str(root), str(out), jobs=1)
+    cold = (out / "FOOTAGE.json").read_text()
+    assert _groups(cold) == ["g1", "g2", "g1", "g2"]
+    for n in ("p1.jpg", "p3.jpg"):
+        shutil.rmtree(out / ".intake_cache" / n)
+    intake.intake(str(root), str(out), jobs=1)
+    assert json.loads((out / "intake_report.json").read_text())["cached"] == 2
+    assert (out / "FOOTAGE.json").read_text() == cold
+
+
+def test_group_numbering_is_the_same_across_jobs(monkeypatch, tmp_path):
+    """At jobs=3 the first group's members are held until p4 is stored, so the pool
+    completes out of path order every time — at jobs=1, completion order IS path order
+    and could not tell numbering by `paths` from numbering by completion."""
+    root = _burst_root(tmp_path)
+    _stub_cache(monkeypatch)
+    monkeypatch.setattr(intake.reid, "available", lambda: False)
+    monkeypatch.setattr(intake, "_process_clip", _burst_photo)
+    intake.intake(str(root), str(tmp_path / "o1"), jobs=1)
+    stored, p4_stored = [], threading.Event()
+
+    def store(o, path, s, r, *a, **k):              # runs on the driver, in completion order
+        stored.append(intake.Path(path).name)
+        if stored[-1] == "p4.jpg":
+            p4_stored.set()
+        return r
+
+    def held(path, *a, **k):
+        if intake.Path(path).name in ("p1.jpg", "p3.jpg"):
+            assert p4_stored.wait(timeout=10)
+        return _burst_photo(path)
+
+    monkeypatch.setattr(intake.intake_cache, "store", store)
+    monkeypatch.setattr(intake, "_process_clip", held)
+    intake.intake(str(root), str(tmp_path / "o3"), jobs=3)
+    assert set(stored[:2]) == {"p2.jpg", "p4.jpg"}  # load-bearing: the 2nd group first
+    one = (tmp_path / "o1" / "FOOTAGE.json").read_text()
+    assert _groups(one) == ["g1", "g2", "g1", "g2"]
+    assert (tmp_path / "o3" / "FOOTAGE.json").read_text() == one
