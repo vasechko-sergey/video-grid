@@ -557,3 +557,64 @@ def test_a_still_is_not_tracked_and_stops_at_geometry_with_no_route(tmp_path, mo
     res = process_episode.process_episode(_episode_manifest(tmp_path, still=True), tmp_path,
                                           stop_after="geometry")
     assert res["status"] == "geometry" and res["route"] is None
+
+
+# --- freeze (design 2026-10-21 §3) --------------------------------------------------
+
+def _held_route(tmp_path, n=10):
+    """A freeze's held route: one sample repeated, as edl_to_reel._hold_route writes it."""
+    p = tmp_path / "held.json"
+    p.write_text(json.dumps([dict(t=i / 30, x=960, y=540, w=140, h=320) for i in range(n)]))
+    return str(p)
+
+
+def test_a_freeze_is_never_tracked_so_it_needs_its_held_route(tmp_path, monkeypatch):
+    # re-tracking one cloned frame loses whom the previous episode followed — the reason
+    # the design hands a freeze a held route instead (design §3)
+    monkeypatch.setattr(process_episode.track, "build_route",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("tracked a freeze")))
+    res = process_episode.process_episode(_episode_manifest(tmp_path, freeze=True), tmp_path)
+    assert res == {"status": "needs_input", "attempt": 0, "problems": [
+        "a freeze episode needs --route, its held route: a freeze is never tracked — "
+        "re-tracking one cloned frame loses whom the previous episode followed. "
+        "edl_to_reel builds it from the previous episode's last route sample; pass that, "
+        "or drop `freeze`"]}
+
+
+def test_a_failing_freeze_escalates_once_instead_of_retrying(tmp_path, monkeypatch):
+    """A held route is constant, so its path is: every retry renders the same pixels, and
+    nothing on the ladder moves a crop the held route clamps (final review I2)."""
+    calls = _stub_mechanical_pass(monkeypatch, [None] * 10)
+    renders, seen = [], {}
+    real = process_episode.reframe.reframe
+    monkeypatch.setattr(process_episode.reframe, "reframe",
+                        lambda *a, **k: renders.append(1) or real(*a, **k))
+
+    def failing(clip, route_path, path_path, spec, out, **kw):
+        seen.update(kw)
+        r = models.Report(checks={"jitter": models.CheckResult("jitter", False, {})},
+                          attempt=spec.attempt)
+        r.write(out)
+        return r
+    monkeypatch.setattr(process_episode.check_episode, "run", failing)
+    monkeypatch.setattr(process_episode.reframe, "plan_render", lambda *a, **k: None)
+    res = process_episode.process_episode(_episode_manifest(tmp_path, freeze=True),
+                                          tmp_path / "ep1", route_path=_held_route(tmp_path))
+    assert (res["status"], res["reason"]) == ("escalate", "freeze-not-retryable")
+    assert len(renders) == 1
+    assert seen["freeze"] is True          # the check is told, and judges the framing so
+    del calls
+
+
+def test_a_played_window_never_hands_the_check_a_freeze_flag(tmp_path, monkeypatch):
+    # the call shape every fake of check_episode.run was written against is unchanged
+    calls = _stub_mechanical_pass(monkeypatch, [None] * 10)
+    seen = {}
+    real = process_episode.check_episode.run
+    monkeypatch.setattr(process_episode.check_episode, "run",
+                        lambda *a, **k: seen.update(k) or real(*a, **k))
+    monkeypatch.setattr(process_episode.reframe, "plan_render", lambda *a, **k: None)
+    process_episode.process_episode(_episode_manifest(tmp_path), tmp_path / "ep0",
+                                    route_path=_held_route(tmp_path))
+    assert "freeze" not in seen
+    del calls

@@ -382,6 +382,15 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
         return {"status": "needs_input", "attempt": 0, "problems": [
             "a still episode takes no --route or --keyframes: its move was rendered into "
             "the segment, so there is nothing to track or to mark. Drop them"]}
+    if m.freeze and route_path is None:
+        # A freeze is never tracked (design 2026-10-21 §3): re-tracking one cloned frame
+        # loses whom the previous episode followed — an unpinned pick falls back to size,
+        # an empty frame stops on no-track, and flow reads a route out of encode noise.
+        return {"status": "needs_input", "attempt": 0, "problems": [
+            "a freeze episode needs --route, its held route: a freeze is never tracked — "
+            "re-tracking one cloned frame loses whom the previous episode followed. "
+            "edl_to_reel builds it from the previous episode's last route sample; pass "
+            "that, or drop `freeze`"]}
     if keyframes_path is not None:
         if m.hero is not None:
             # A hero pin and hand-authored keyframes both answer "which subject": the
@@ -602,7 +611,9 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
                           attempt=attempt, **authored.for_spec(CheckSpec))
         report = _timed("check", lambda: check_episode.run(
             m.out_path, rp, path_out, cspec, str(Path(project_dir) / "report.json"),
-            source=src, plans=plans, **reasons_kw))
+            source=src, plans=plans, **reasons_kw,
+            # only when set, as reasons_kw: a played window keeps the call it always made
+            **({"freeze": True} if m.freeze else {})))
         if report.overall:
             sheet = str(Path(project_dir) / "storyboard.jpg")
             # hero marker (§6.1a layer 4): draw the followed subject on every
@@ -649,6 +660,13 @@ def process_episode(manifest_dict: dict, project_dir: str | Path, route_path: st
             # The same reason a pan's is, more strongly: a still's path is a constant,
             # so every retry renders the same pixels.
             esc = {"escalate_to": "edit-plan", "reason": "still-not-retryable",
+                   "fail_reasons": report.fail_reasons}
+        if esc is None and m.freeze:
+            # A still's reason again: the held route is one sample repeated, so the path
+            # over it is a constant, and neither max_speed nor smooth_window_s can move a
+            # crop that route clamps — every retry renders the same pixels (final review
+            # I2). Its framing is editorial-only for the same reason (check_episode).
+            esc = {"escalate_to": "edit-plan", "reason": "freeze-not-retryable",
                    "fail_reasons": report.fail_reasons}
         if esc:
             result = {"status": "escalate", **esc, "report": report.to_dict(),

@@ -293,7 +293,7 @@ def _route_window(route: list[dict]) -> int:
 def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out: str,
         source: str | None = None,
         plans: "tuple[reframe.RenderPlan, reframe.RenderPlan] | None" = None,
-        gate_reasons: dict[str, str] | None = None) -> Report:
+        gate_reasons: dict[str, str] | None = None, freeze: bool = False) -> Report:
     """The sidecar is read FIRST — it carries the provenance (`meta.pan`) that the
     rest of this function branches on, before anything asks for a route at all.
 
@@ -314,6 +314,12 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
     judged by: a moved bar that lets an episode through is a waiver, and the report that says
     PASS must say so (design 2026-09-30 §2.4 item 1). It may hold the whole authored set —
     only the episode-scope bars are named here — and None or empty adds nothing.
+
+    `freeze` says the episode holds the previous one's last frame over a held route
+    (design 2026-10-21 §3, Manifest.freeze). Its framing is reported editorial-only:
+    its crop holds the framing already judged on the episode it freezes, and where that
+    route ends near an edge the clamp binds on every sample, which nothing on the retry
+    ladder can move (final review I2). Everything else is checked as for any episode.
     """
     path = CropPath.from_json(path_path).xs
     path_obj = CropPath.from_json(path_path)   # extent_at_times needs the object, not just .xs
@@ -370,6 +376,16 @@ def run(clip: str, route_path: str | None, path_path: str, spec: CheckSpec, out:
         # the planner's own box.
         checks["framing"] = CheckResult("framing", None,
                                         {"status": "editorial-only", "reason": why})
+    elif freeze:
+        # A held route is the previous episode's LAST sample, repeated, so a subject that
+        # was leaving the frame there is at the edge on every sample of the freeze and the
+        # clamped crop cannot centre them on any — while the episode it holds faced that
+        # clamp only on its last frames, and passed. Judged there, reported here.
+        checks["framing"] = CheckResult(
+            "framing", None,
+            {"status": "editorial-only",
+             "reason": "freeze — its crop holds the framing already judged on the episode "
+                       "it freezes"})
     elif meta.freedom == 0 and not meta.zoomed:
         # the crop is as wide as the source: nobody controls composition, so it
         # can neither be failed nor silently passed (design 2026-07-10 §6). A ZOOM
@@ -457,6 +473,10 @@ def build_parser() -> argparse.ArgumentParser:
                          "moved (design 2026-09-30). A flag here and not a convention "
                          "because the standalone judge has no project.json to look "
                          "beside; a run through edl_to_reel finds the file itself")
+    ap.add_argument("--freeze", action="store_true",
+                    help="the episode is a freeze, one frame of the previous episode "
+                         "held (design 2026-10-21 §3): its framing is reported "
+                         "editorial-only, judged on the episode it freezes")
     return ap
 
 
@@ -468,7 +488,8 @@ def main() -> None:
     g = gates_lib.Gates.from_json(a.gates) if a.gates is not None else gates_lib.Gates()
     spec = CheckSpec(composition=a.composition, grid=a.grid, target_dur=a.target_dur,
                      attempt=a.attempt, **g.for_spec(CheckSpec))
-    run(a.clip, a.route, a.path, spec, a.out, gate_reasons=g.reasons())
+    run(a.clip, a.route, a.path, spec, a.out, gate_reasons=g.reasons(),
+        **({"freeze": True} if a.freeze else {}))
 
 
 if __name__ == "__main__":

@@ -27,7 +27,7 @@ from scripts import check_episode, process_episode, reframe
 from scripts.lib import color, color_fidelity, geometry, regions
 from scripts.lib import manifest as manifest_lib
 from scripts.lib import orchestration as orch
-from scripts.lib.models import CheckSpec, CropPath, Delivery, PathMeta, RoutePoint
+from scripts.lib.models import CheckResult, CheckSpec, CropPath, Delivery, PathMeta, RoutePoint
 
 N, H, W = 3, 40, 60
 
@@ -672,3 +672,30 @@ def test_the_standalone_judge_hands_the_reasons_to_the_run(tmp_path, monkeypatch
     assert _judge_call(monkeypatch, "--gates", str(gates))["kw"] == {
         "gate_reasons": {"black_floor": _BLACK_ROW["why"]}}
     assert _judge_call(monkeypatch)["kw"] == {"gate_reasons": {}}
+
+
+# --- a freeze's framing is editorial-only (design 2026-10-21 §3; final review I2) ------
+
+def test_a_freezes_framing_is_editorial_only_and_named(tmp_path, monkeypatch,
+                                                       golden_ride_segment):
+    """Its crop is the framing already judged on the episode it holds, laid over a held
+    route: where that route ends near an edge the clamp binds on EVERY sample, and no rung
+    of the retry ladder can move it — so it is reported, not failed."""
+    rep = _run_check_episode(tmp_path, monkeypatch, golden_ride_segment, plans=None,
+                             freeze=True)
+    assert rep.checks["framing"] == CheckResult("framing", None, {
+        "status": "editorial-only",
+        "reason": "freeze — its crop holds the framing already judged on the episode "
+                  "it freezes"})
+    assert "centered" not in rep.checks
+
+
+def test_a_played_window_is_still_judged_on_its_composition(tmp_path, monkeypatch,
+                                                            golden_ride_segment):
+    rep = _run_check_episode(tmp_path, monkeypatch, golden_ride_segment, plans=None)
+    assert "centered" in rep.checks and "framing" not in rep.checks
+
+
+def test_the_freeze_flag_reaches_the_standalone_judge(monkeypatch):
+    assert _judge_call(monkeypatch, "--freeze")["kw"] == {"gate_reasons": {},
+                                                           "freeze": True}

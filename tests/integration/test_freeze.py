@@ -26,7 +26,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from scripts import edit_plan, edl_to_reel, extract, track
+from scripts import edit_plan, edl_to_reel, extract, process_episode, track
 from scripts.lib import assembly, ffbin, models, proc
 from scripts.lib.edl import EDL, EDLEpisode
 from scripts.lib.footage import Footage, FootageClip
@@ -184,3 +184,33 @@ def test_a_freeze_crosses_the_geometry_split_over_a_held_route_untracked(tmp_pat
     assert tracked == [seg0]                       # phase 1b tracks nothing at all
     assert rm.episodes[1].route == geo.episodes[1].route
     assert Path(rm.episodes[1].clip).exists()
+
+
+def test_a_freeze_whose_subject_ends_near_the_edge_passes_instead_of_escalating(tmp_path):
+    """Final review I2, its own case on real ffmpeg: a 640x360 source, a 9:16 crop 202 px
+    wide, and a held route whose one sample sits at x = 80 — a subject 12.5 % from the
+    edge, leaving the frame at the end of its shot. compute_path clamps the centred crop
+    into the frame on every sample, `centered` scored 0.0 against its 0.9 bar, the ladder
+    rescaled knobs that cannot move a clamped crop, and after three attempts the freeze
+    escalated `max-retries` to an edit-plan that has nothing to change on it. The control
+    is the same render, judged as a played window."""
+    seg = tmp_path / "seg.mp4"
+    proc.run([ffbin.ffmpeg(), "-y", "-v", "error", "-f", "lavfi",
+              "-i", "testsrc2=s=640x360:r=24:d=0.5", "-c:v", "libx264", "-pix_fmt",
+              "yuv420p", str(seg)])
+    n = assembly.count_frames(str(seg))
+    route = tmp_path / "held.json"
+    models.route_to_json([models.RoutePoint(t=k / 24, x=80.0, y=180.0, w=40.0, h=120.0)
+                          for k in range(n)], route)
+    md = {"segment": str(seg), "composition": "center", "grid": "thirds",
+          "canvas": [9, 16], "target_dur": n / 24, "delivery": "short_edge:360"}
+    res = process_episode.process_episode({**md, "out_path": str(tmp_path / "f.mp4"),
+                                           "freeze": True}, str(tmp_path / "f"),
+                                          route_path=str(route))
+    assert res["status"] == "mechanical_pass", res
+    assert res["attempt"] == 1
+    assert res["report"]["checks"]["framing"]["status"] == "editorial-only"
+    played = process_episode.process_episode({**md, "out_path": str(tmp_path / "p.mp4")},
+                                             str(tmp_path / "p"), route_path=str(route))
+    assert (played["status"], played["reason"]) == ("escalate", "max-retries"), played
+    assert played["fail_reasons"] == ["centered"] and played["attempt"] == 3
