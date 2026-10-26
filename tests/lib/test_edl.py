@@ -1619,9 +1619,18 @@ def test_edl_md_rows_without_held_fields_are_unchanged():
         "photo · 1.0→0.9 | – |  |")
 
 
-def test_a_freeze_is_a_video_episode_to_the_manifest_bridge():
+def test_a_freeze_is_a_video_episode_to_the_manifest_bridge_that_says_it_is_a_freeze():
     # framed and graded like any window — never the photo path's `still`; that it is not
-    # tracked is edl_to_reel's (it hands the freeze a held route), not the manifest's
+    # tracked is edl_to_reel's (it hands the freeze a held route). What crosses is the one
+    # bit every consumer below needs: the conductor, check_episode and the QC judge would
+    # each read a held frame as a played window without it (final review I1–I3)
     md = to_manifest_dict(_freeze_ep(hero="Lena"), "seg.mp4", "out.mp4")
     assert "still" not in md and md["hero"] == "Lena"
-    assert md == to_manifest_dict(_ep(hero="Lena", start=3.9), "seg.mp4", "out.mp4")
+    assert md == {**to_manifest_dict(_ep(hero="Lena", start=3.9), "seg.mp4", "out.mp4"),
+                  "freeze": True}
+
+
+def test_a_played_window_crosses_no_freeze_key():
+    # emitted only when true: every manifest without a freeze is byte-identical
+    assert "freeze" not in to_manifest_dict(_ep(), "seg.mp4", "out.mp4")
+    assert "freeze" not in to_manifest_dict(_photo_ep(), "seg.mp4", "out.mp4")

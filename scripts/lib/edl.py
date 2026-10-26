@@ -705,18 +705,22 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
     Some fields cross CONDITIONALLY, each on its own predicate. Not-None:
     `tone_src`+`tone_dst` (one branch, two keys), `crop_aspect`, `rect`, `motion`,
     `pan`, `zoom`, `smooth_window_s`, `hero` — an absent value leaves the key out
-    rather than carrying an explicit null. True-only: `stabilize`, so a false (its
-    default) leaves the key out too. Nonzero-only: `highlight_red`, so its identity
-    0.0 leaves the key out the same way. Either way Manifest.from_dict falls to its
+    rather than carrying an explicit null. True-only: `stabilize` and `freeze`, so a
+    false (the default) leaves the key out too. Nonzero-only: `highlight_red`, so its
+    identity 0.0 leaves the key out the same way. Either way Manifest.from_dict falls to its
     own None/False/0.0 default rather than the two sides disagreeing about what
     unset means.
     (This sentence used to open with a count. It said "Four", then "Five", and both
     were wrong — a number goes stale the moment someone adds a branch and does not
     re-count. Read the branches below instead; that is why they are named here.)
     EDL-only fields (source/start/dur/shot_type/processing_notes/
-    beat_slot/freeze/shutter/hold) do NOT cross — this map is the documented EDL↔manifest
-    boundary. A freeze needs nothing here: downstream it is a video episode whose segment
-    happens to be one frame held (design 2026-10-21 §3), never the photo path's `still`.
+    beat_slot/shutter/hold) do NOT cross — this map is the documented EDL↔manifest
+    boundary. `freeze` crosses, true-only: a freeze is a video episode whose segment is
+    one frame held (design 2026-10-21 §3), never the photo path's `still`, and it used to
+    stay here on the claim that downstream it needed nothing. It did: below the EDL a held
+    frame was indistinguishable from a played window, so match-grade measured it as its
+    own episode, check_episode judged a crop the held route clamps, and the QC judge saw a
+    stalled render (final review I1–I3).
     `cast` is EDL.cast, the reel-level registry path — forwarded so a cast-name
     hero resolves per episode while the manifest itself stays a self-contained
     brief (§14.4); omitted when None so Manifest.from_dict falls to its own ""
@@ -753,6 +757,8 @@ def to_manifest_dict(ep: EDLEpisode, segment: str, out_path: str,
         md["smooth_window_s"] = ep.smooth_window_s
     if ep.stabilize:
         md["stabilize"] = True
+    if ep.freeze:
+        md["freeze"] = True
     if runlayout.is_photo(ep.source):
         # the move was rendered into the segment at extract (design 2026-10-20 §5), so
         # reframe crops the whole segment and nobody tracks it — like `ramp`, the move

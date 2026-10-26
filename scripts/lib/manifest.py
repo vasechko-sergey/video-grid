@@ -25,7 +25,7 @@ REQUIRED = ("segment", "out_path", "composition", "grid", "canvas", "target_dur"
 OPTIONAL = ("layout", "motion", "pan", "zoom", "hero", "cast", "color_means", "white_balance",
             "black_point", "highlight", "highlight_red", "tone_src", "tone_dst", "saturation",
             "shadow_red", "mid_blue", "dip", "smooth_window_s",
-            "stabilize", "still", "model",
+            "stabilize", "still", "freeze", "model",
             "delivery", "crop_aspect", "crop_scale", "rect", "background", "background_color",
             "border_px", "border_color")
 LAYOUTS_SUPPORTED = ("fill", "fit", "insert")   # split → its own plan; pan is not a layout
@@ -73,6 +73,13 @@ class Manifest:
                                      # its move is already in the pixels, so nobody tracks it
                                      # and reframe crops the whole segment. Set by
                                      # edl.to_manifest_dict from the source's extension.
+    freeze: bool = False             # the segment is ONE frame of the previous episode, held
+                                     # (design 2026-10-21 §3), over a held route edl_to_reel
+                                     # built. Video in every other respect; set by
+                                     # edl.to_manifest_dict from EDLEpisode.freeze, because
+                                     # below the EDL nothing else can tell a held frame from a
+                                     # played window, and the conductor, check_episode and the
+                                     # QC judge each treat it differently (final review I1–I3).
     model: str = DEFAULT_MODEL
     delivery: str = "native"
     crop_aspect: str | tuple[int, int] = "canvas"
@@ -149,6 +156,7 @@ class Manifest:
             # raw, like smooth_window_s: validate() checks the type, and bool() would read
             # the string "false" as True
             still=d.get("still", False) if d.get("still") is not None else False,
+            freeze=d.get("freeze", False) if d.get("freeze") is not None else False,
             model=model if model is not None else DEFAULT_MODEL,
             delivery=delivery if delivery is not None else "native",
             crop_aspect=crop_aspect if crop_aspect is not None else (
@@ -315,6 +323,22 @@ def validate(m: Manifest, cast: Cast | None = None) -> list[str]:
                 f"a still episode cannot carry {', '.join(carried)}: its move is rendered "
                 f"into the segment and nothing is tracked on it — drop them, or drop "
                 f"`still` if the segment is video")
+    if not isinstance(m.freeze, bool):
+        problems.append(f"freeze must be true or false, got {m.freeze!r}")
+    elif m.freeze:
+        # The EDL's own refusals (EDLEpisode._refuse_what_a_freeze_cannot_carry), again here
+        # for the still's reason: a hand-written manifest reaches process_episode without an
+        # EDL. The hero stays — the held route follows whom the previous episode followed.
+        carried = [k for k, v in (("pan", m.pan), ("zoom", m.zoom), ("motion", m.motion),
+                                  ("smooth_window_s", m.smooth_window_s),
+                                  ("stabilize", m.stabilize or None),
+                                  ("still", m.still if m.still is True else None))
+                   if v is not None]
+        if carried:
+            problems.append(
+                f"a freeze episode cannot carry {', '.join(carried)}: it holds one frame of "
+                f"the previous episode, so there is no time to move, smooth or stabilize, "
+                f"and it is video, not a photo — drop them, or drop `freeze`")
     if m.model not in MODELS:
         problems.append(f"model {m.model!r} unknown — expected one of {MODELS}")
     try:
