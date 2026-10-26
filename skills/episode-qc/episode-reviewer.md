@@ -16,7 +16,8 @@ read by a human; your deliverable is the file you write.
 
 ## This episode's declared intent
 composition (center / lead / break), grid, hero (the pin, if any), target_dur,
-layout, pan, stabilize, still, canvas:
+layout, pan, stabilize, still, freeze, canvas, and shutter (whether this cut is
+accented):
 
 {INTENT}
 
@@ -156,6 +157,17 @@ judge reads it.
   case, still emit a finding: `severity: "minor"`, `route: "none"`, evidence
   naming which of the two is set and that no marker exists. Not-judgeable is
   REPORTED, never silently passed.
+
+**A freeze (`intent.freeze` true) is one frame held on purpose** — the previous
+episode's last frame, held "like a photograph", so every frame of the strip is
+the same frame and nothing in it moves. That is the intent, not a stalled render:
+judge composition, colour and hero on that frame, and never read the stillness as
+a failed `impression`. Its `path` and motion are NOT JUDGEABLE — the crop holds
+still over a held route, and its framing was judged on the episode it freezes —
+so, as under a pan or on a photo, emit a finding: `severity: "minor"`,
+`route: "none"`, evidence naming `intent.freeze`. When `intent.shutter` is true
+(a freeze or a photo), the white flash on its cut and the shutter click are added
+at delivery and are not in this clip: their absence here is not a finding.
 
 ## Rules
 - `severity` ∈ (blocking, important, minor). `blocking` means this episode is

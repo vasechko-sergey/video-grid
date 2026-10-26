@@ -84,6 +84,24 @@ def test_pack_gives_the_judge_pixels_and_numbers(tmp_path, sample_clip):
 
 
 @pytest.mark.integration
+def test_pack_tells_the_judge_which_episode_is_a_freeze_and_which_cut_is_accented(
+        tmp_path, sample_clip):
+    """The freeze rides the manifest and the shutter the reel manifest's own list — the
+    one place it is recorded below the EDL (final review I3)."""
+    eps = [_episode(sample_clip, tmp_path, 645, "ep0"),
+           _episode(sample_clip, tmp_path, 1045, "ep1")]
+    eps[1].manifest["freeze"] = True
+    p = tmp_path / "out" / "EPISODES.json"
+    p.parent.mkdir()
+    ReelManifest(episodes=eps, target_dur=6.0, changelog="qc proof", shutters=(1,)).write(p)
+    episode_qc.pack(str(p), str(tmp_path / "qc"))
+    intents = [json.loads((tmp_path / "qc" / f"ep{i}" / "evidence.json").read_text())["intent"]
+               for i in (0, 1)]
+    assert [(t["freeze"], t["shutter"]) for t in intents] == [(None, False), (True, True)]
+    assert '"freeze": true' in (tmp_path / "qc" / "ep1" / "judge_prompt.md").read_text()
+
+
+@pytest.mark.integration
 def test_the_evidence_packet_carries_the_pre_grade_reading(tmp_path, sample_clip):
     """R2.5: the judge must be able to see what the GRADE did, not only what the
     footage is. The segment has always been in the manifest and was never read.
