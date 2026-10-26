@@ -294,7 +294,11 @@ project. If `"$VG"` says there is no runtime, it has not been set up yet: run th
   previous episode's last frame, held "like a photograph" (design 2026-10-21
   §3): every frame of its strip is the same frame, which is the intent and not a
   stalled render. Its `path` and motion are not judgeable — report `path` as
-  not-judgeable (a minor finding, `route: "none"`), as for a pan or a photo. With
+  not-judgeable (a minor finding, `route: "none"`), as for a pan or a photo. Nothing
+  re-renders a freeze — its framing and grade are the previous episode's — so a
+  composition finding on it routes `edit-plan` (drop the freeze, or move the
+  previous window's end), a colour finding routes as on the previous episode, and
+  neither routes `reprocess`. With
   `intent.shutter` set, the white flash and the shutter click are added at
   delivery and are NOT in the clip the judge sees, so their absence is not a
   finding either.

@@ -165,9 +165,14 @@ judge composition, colour and hero on that frame, and never read the stillness a
 a failed `impression`. Its `path` and motion are NOT JUDGEABLE — the crop holds
 still over a held route, and its framing was judged on the episode it freezes —
 so, as under a pan or on a photo, emit a finding: `severity: "minor"`,
-`route: "none"`, evidence naming `intent.freeze`. When `intent.shutter` is true
-(a freeze or a photo), the white flash on its cut and the shutter click are added
-at delivery and are not in this clip: their absence here is not a finding.
+`route: "none"`, evidence naming `intent.freeze`. A freeze has nothing to
+re-render — its framing and its grade are the previous episode's — so a
+composition finding on it (say, a subject held off-centre at the frame's edge)
+routes `edit-plan` (drop the freeze, or move the previous window's end), a colour
+finding routes as it would on the previous episode, and neither ever routes
+`reprocess`. When `intent.shutter` is true (a freeze or a photo), the white flash
+on its cut and the shutter click are added at delivery and are not in this clip:
+their absence here is not a finding.
 
 ## Rules
 - `severity` ∈ (blocking, important, minor). `blocking` means this episode is

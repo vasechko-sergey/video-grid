@@ -146,3 +146,8 @@ def test_the_judge_and_the_skill_say_what_a_freeze_is():
     for text in (judge, skill):
         assert "intent.freeze" in text and "intent.shutter" in text
         assert "not judgeable" in text.lower()
+        # nothing re-renders a freeze, so its composition finding must not route to the
+        # stage that re-renders (final re-review m2)
+        flat = " ".join(text.split())
+        assert "composition finding on it" in flat and "routes `edit-plan`" in flat
+        assert "neither ever routes `reprocess`" in flat or "neither routes `reprocess`" in flat
