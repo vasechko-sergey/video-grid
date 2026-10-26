@@ -11,6 +11,7 @@ import datetime as dt
 import io
 import math
 import re
+import struct
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,6 +37,11 @@ DATE_ORIGINAL = 0x9003               # DateTimeOriginal, "YYYY:MM:DD HH:MM:SS"
 SUBSEC_ORIGINAL = 0x9291             # SubSecTimeOriginal, the fraction's digits
 OFFSET_ORIGINAL = 0x9011             # OffsetTimeOriginal, "+HH:MM"
 _OFFSET = re.compile(r"([+-])(\d{2}):(\d{2})")
+# what Pillow 12.3 raises reading an EXIF block it cannot parse, measured over 20 000 fuzzed
+# blocks: a header that is not TIFF (SyntaxError) or is cut short (struct.error). Reading
+# the EXIF sub-IFD adds a third, a pointer of a signed type that seeks before the block
+# (ValueError) — caught in _taken, around that read alone.
+_EXIF_UNREADABLE = (SyntaxError, struct.error)
 
 
 @dataclass(frozen=True)
@@ -71,7 +77,15 @@ def load(path: str | Path) -> Still:
         heif = im.format == "HEIF"
         rec: dict = {"decoder": im.format, "source_dims": list(im.size)}
         icc = im.info.get("icc_profile")
-        exif = im.getexif()                # pi_heif hands a HEIF's EXIF to Pillow the same way
+        try:
+            exif = im.getexif()            # pi_heif hands a HEIF's EXIF to Pillow the same way
+        except _EXIF_UNREADABLE:
+            # reading the capture time never stops a decode (2026-10-21 review I1): a
+            # block nobody can parse carries no date and no orientation tag, so the photo
+            # decodes as stored — as Pillow has it when it reads the block first, at open
+            # (a JPEG without a JFIF density): it caches the block empty, and
+            # exif_transpose below reads that cached block too
+            exif = Image.Exif()
         taken = _taken(exif)
         if taken is not None:
             rec["taken"] = taken
@@ -137,7 +151,11 @@ def _taken(exif: Image.Exif) -> float | None:
     inside one camera those are right whatever its zone; across two cameras with
     different clocks they are not (§7). An unparseable sub-second or offset is dropped
     rather than taking the date with it."""
-    ifd = exif.get_ifd(EXIF_IFD) or {}    # a corrupt IFD pointer comes back as None
+    try:
+        # `or {}`: Pillow 10 returns None for a corrupt IFD pointer; 12.3 returns {}
+        ifd = exif.get_ifd(EXIF_IFD) or {}
+    except ValueError:                    # a signed pointer to before the block: seek(-1)
+        return None
     date = ifd.get(DATE_ORIGINAL)
     if not isinstance(date, str):
         return None

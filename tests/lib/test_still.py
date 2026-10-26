@@ -1,6 +1,7 @@
 """lib/still: the one photo decoder and the subject rule (design 2026-10-20 §1, §2)."""
 import io
 import shutil
+import struct
 import subprocess
 import sys
 import types
@@ -268,11 +269,49 @@ def test_garbage_subseconds_and_offset_leave_the_date_standing(tmp_path):
     assert st.record["taken"] == _epoch(2026, 10, 21, 12, 34, 56)
 
 
-def test_garbage_exif_bytes_do_not_stop_the_decode(tmp_path):
+# an EXIF IFD pointer of a SIGNED type holding -1: Pillow seeks the sub-IFD at offset -1
+_SIGNED_IFD_POINTER = (b"Exif\x00\x00II*\x00" + struct.pack("<L", 8) + struct.pack("<H", 1)
+                       + struct.pack("<HHLl", still.EXIF_IFD, 9, 1, -1) + struct.pack("<L", 0))
+
+
+@pytest.mark.parametrize("dpi", [None, (72, 72)], ids=["no-density", "jfif-density"])
+@pytest.mark.parametrize("exif", [b"Exif\x00\x00garbagegarbage",     # SyntaxError
+                                  b"Exif\x00\x00II*\x00",             # struct.error
+                                  _SIGNED_IFD_POINTER],                # ValueError
+                         ids=["not-a-tiff-header", "header-cut-short", "signed-ifd-pointer"])
+def test_an_exif_block_pillow_cannot_parse_never_stops_the_decode(tmp_path, exif, dpi):
+    """Without a JFIF density Pillow reads the EXIF at open, for a DPI, and swallows a
+    broken block itself; with one, the block's error reaches still.load — which is why
+    the first version of this test, written without a density, proved nothing (the
+    2026-10-21 review's I1). Each payload is one of the three errors measured."""
     p = tmp_path / "g.jpg"
-    _marked(64, 48).save(p, exif=b"Exif\x00\x00garbagegarbage")
+    _marked(64, 48).save(p, exif=exif, **({"dpi": dpi} if dpi else {}))
     st = still.load(p)
     assert "taken" not in st.record and st.dims == (64, 48)
+    assert st.record["orientation"] == 1                # an unreadable tag turns nothing
+
+
+def test_a_heif_whose_exif_pillow_cannot_parse_still_decodes(tmp_path, monkeypatch):
+    """pi_heif hands Pillow an EXIF block with a wrong 4-byte offset prefix shifted
+    ("bad EXIF data, skip first 4 bytes"), so no TIFF header survives. Stubbed: nothing
+    here can write a HEIF with that quirk."""
+    ex = Image.Exif()
+    ex.get_ifd(still.EXIF_IFD)[still.DATE_ORIGINAL] = "2026:10:21 12:34:56"
+    shifted = b"\x00\x00" + ex.tobytes().removeprefix(b"Exif\x00\x00")
+    p = tmp_path / "h.png"
+    _marked(64, 48).save(p)
+    real_open = Image.open
+
+    def heif_open(path, *a, **k):
+        im = real_open(path, *a, **k)
+        im.format = "HEIF"
+        im.info["exif"] = shifted
+        return im
+
+    monkeypatch.setattr(still.Image, "open", heif_open)
+    st = still.load(p)
+    assert st.record["decoder"] == "HEIF" and "taken" not in st.record
+    assert st.dims == (64, 48)
 
 
 @needs_sips
