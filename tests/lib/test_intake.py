@@ -1366,16 +1366,44 @@ def test_a_blurred_copy_is_less_sharp():
     assert intake._sharpness(img) > intake._sharpness(soft) > intake._sharpness(softer)
 
 
+def _laplacian_var(gray):
+    return round(float(cv2.Laplacian(gray, cv2.CV_64F).var()), 3)
+
+
 def test_sharpness_is_measured_at_the_analysis_proxys_long_side():
     # the Laplacian's variance depends on scale, so two photos of one burst exported at
-    # different sizes must be compared on one: the analysis proxy's long side
+    # different sizes must be compared on one: the analysis proxy's long side, reached
+    # down with INTER_AREA and UP with INTER_CUBIC
     big = _texture(2, (2000, 1500))
-    gray = cv2.cvtColor(big, cv2.COLOR_RGB2GRAY)
-    at_proxy = cv2.resize(gray, (intake.PROXY_LONG_SIDE, 720), interpolation=cv2.INTER_AREA)
-    assert intake._sharpness(big) == round(float(cv2.Laplacian(at_proxy, cv2.CV_64F).var()), 3)
-    small = _texture(2, (400, 300))                       # under the proxy: measured as it is
-    assert intake._sharpness(small) == round(float(cv2.Laplacian(
-        cv2.cvtColor(small, cv2.COLOR_RGB2GRAY), cv2.CV_64F).var()), 3)
+    down = cv2.resize(cv2.cvtColor(big, cv2.COLOR_RGB2GRAY), (intake.PROXY_LONG_SIDE, 720),
+                      interpolation=cv2.INTER_AREA)
+    assert intake._sharpness(big) == _laplacian_var(down)
+    small = _texture(2, (400, 300))
+    up = cv2.resize(cv2.cvtColor(small, cv2.COLOR_RGB2GRAY), (intake.PROXY_LONG_SIDE, 720),
+                    interpolation=cv2.INTER_CUBIC)
+    assert intake._sharpness(small) == _laplacian_var(up)
+    exact = _texture(2, (intake.PROXY_LONG_SIDE, 720))    # already at the scale: as it is
+    assert intake._sharpness(exact) == _laplacian_var(cv2.cvtColor(exact, cv2.COLOR_RGB2GRAY))
+
+
+def _pink(w, h, seed):
+    """A 1/f grey scene — detail at every scale, as a photographed one has."""
+    rng = np.random.default_rng(seed)
+    f = np.hypot(np.fft.fftfreq(h)[:, None], np.fft.rfftfreq(w)[None, :])
+    f[0, 0] = 1.0
+    img = np.fft.irfft2((rng.standard_normal(f.shape) + 1j * rng.standard_normal(f.shape)) / f,
+                        s=(h, w))
+    img = (img - img.min()) / (img.max() - img.min()) * 255
+    return np.repeat(img.astype(np.uint8)[:, :, None], 3, axis=2)
+
+
+def test_a_small_copy_reads_softer_than_its_large_original():
+    """A thumbnail or a messenger copy pHash-groups with its original, and only one of
+    the two may take the group's ★. Read at its own scale the 480 copy scored ABOVE
+    the 4032 original (the 2026-10-21 review's M1); read at the proxy's, it is below."""
+    original = _pink(4032, 3024, 5)
+    copy = cv2.resize(original, (480, 360), interpolation=cv2.INTER_AREA)
+    assert intake._sharpness(original) > intake._sharpness(copy)
 
 
 def _dated_photo(path, rgb, taken_s=None, subsec=None):

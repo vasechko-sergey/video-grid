@@ -625,15 +625,18 @@ def _process_photo(path: str) -> ClipResult:
 
 def _sharpness(rgb: np.ndarray) -> float:
     """Variance of the Laplacian of the luma: focus and motion blur, what tells a burst's
-    frames apart (design 2026-10-21 §5). Measured at the analysis proxy's long side,
-    downscaled with INTER_AREA when larger, because the variance grows with resolution —
-    a 4032-wide and a 1200-wide photo of one scene must be read at one scale."""
+    frames apart (design 2026-10-21 §5). Read at ONE scale, the analysis proxy's long
+    side: the luma is resized to exactly PROXY_LONG_SIDE, down with INTER_AREA and up
+    with INTER_CUBIC, because the variance depends on scale — in either direction, by
+    content — so a 4032-wide photo and a 480-wide copy of it must be read at one. The
+    small copy then reads softer than its original, which it is: an upscale invents no
+    detail (the 2026-10-21 review's M1)."""
     gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
     h, w = gray.shape
-    if max(w, h) > PROXY_LONG_SIDE:
-        k = PROXY_LONG_SIDE / max(w, h)
+    k = PROXY_LONG_SIDE / max(w, h)
+    if k != 1:
         gray = cv2.resize(gray, (max(1, round(w * k)), max(1, round(h * k))),
-                          interpolation=cv2.INTER_AREA)
+                          interpolation=cv2.INTER_AREA if k < 1 else cv2.INTER_CUBIC)
     return round(float(cv2.Laplacian(gray, cv2.CV_64F).var()), 3)
 
 
