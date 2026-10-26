@@ -69,22 +69,26 @@ def _bounds(edl: EDL, footage: Footage, allow: float) -> list[tuple[float, float
     return out
 
 
-def _refuse_unplayable_holds(edl: EDL, music: MusicSpec, path: str) -> None:
-    """An authored `hold` is a count of beats, so its length is the window's tempo's to
+def _unplayable_hold(edl: EDL, music: MusicSpec, path: str) -> str | None:
+    """Why this window cannot play the cut's authored holds, or None when it can.
+
+    An authored `hold` is a count of beats, so its length is the window's tempo's to
     decide — and one outside [HOLD_MIN, HOLD_ROOM] would be silently clamped by the walk
-    into a count the author did not write (design 2026-10-21 §2.3). Refused, per window."""
+    into a count the author did not write (design 2026-10-21 §2.3). Judged per window:
+    the caller drops such a window from the candidates and refuses only when none is
+    left, since another window at another tempo may play the same count (final review
+    M2)."""
     beat = 2.0 * gridfit.allowance(music.tempo)
     for i, ep in enumerate(edl.episodes):
         if ep.hold is None:
             continue
         secs = ep.hold * beat
         if not hold.HOLD_MIN - 1e-9 <= secs <= hold.HOLD_ROOM + 1e-9:
-            raise ValueError(
-                f"pacing: episode {i} authors a hold of {ep.hold} "
-                f"beat{'' if ep.hold == 1 else 's'} — {secs:.2f}s at {music.tempo:.1f} BPM "
-                f"({Path(path).name}), outside the [{hold.HOLD_MIN:.2f}, "
-                f"{hold.HOLD_ROOM:.1f}]s a held episode may last. Author a count that fits "
-                f"this tempo, or drop `hold` and let the grid choose")
+            return (f"episode {i} authors a hold of {ep.hold} "
+                    f"beat{'' if ep.hold == 1 else 's'} — {secs:.2f}s at "
+                    f"{music.tempo:.1f} BPM ({Path(path).name}), outside the "
+                    f"[{hold.HOLD_MIN:.2f}, {hold.HOLD_ROOM:.1f}]s a held episode may last")
+    return None
 
 
 def _report(spine, fit, rejected, music_path: str, anchor_map: dict) -> str:
@@ -211,10 +215,14 @@ def build_pacing(edl_json: str, footage_json: str, music_jsons: list[str], out_d
     # before held episodes did, by structure rather than by an all-None list staying
     # equivalent to it forever (and builds no planner)
     held = held if any(h is not None for h in held) else None
-    best = None
+    best, unplayable = None, []
     for path in music_jsons:
         m = MusicSpec.from_json(path)
-        _refuse_unplayable_holds(edl, m, path)
+        why = _unplayable_hold(edl, m, path)
+        if why is not None:
+            unplayable.append(why)
+            _log(f"pacing: {Path(path).name} dropped from the candidates — {why}")
+            continue
         bounds = _bounds(edl, footage, gridfit.allowance(m.tempo))
         spine, fit, rejected = pacing.fit_spine(durs, m.beats, m.energy, m.energy_hz,
                                                 m.tempo, bounds, held=held)
@@ -228,6 +236,11 @@ def build_pacing(edl_json: str, footage_json: str, music_jsons: list[str], out_d
         rank = (covers, fit.level_n if fit.fits else 0, -fit.worst)
         if best is None or rank > best[0]:
             best = (rank, spine, fit, rejected, path, m)
+    if best is None:
+        raise ValueError(
+            f"pacing: no music window can play every authored hold — "
+            f"{'; '.join(unplayable)}. Author a count that fits one of these tempos, or "
+            f"drop `hold` and let the grid choose")
     _rank, spine, fit, rejected, music_path, music = best
     # Bind the spine to the WINDOW it was fitted to, not merely to a BPM (design §4).
     digest = music_identity(music.track, music.start_offset, music.duration)

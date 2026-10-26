@@ -626,16 +626,35 @@ def test_every_candidate_window_is_fitted_with_the_held_records(monkeypatch, tmp
     assert seen == [want, want]
 
 
-def test_an_authored_hold_the_second_windows_tempo_cannot_play_is_refused(tmp_path):
-    # one beat is 0.50 s at 120 BPM and 0.30 s at 200 — under HOLD_MIN only in the second
+def test_a_window_whose_tempo_cannot_play_an_authored_hold_is_dropped_and_said(tmp_path,
+                                                                             capsys):
+    # one beat is 0.50 s at 120 BPM and 0.30 s at 200 — under HOLD_MIN only in the second.
+    # The count is checked "per window": it used to refuse the whole run there, though
+    # the first window plays it (final review M2)
     eps = _held_cut()
     eps[1] = _freeze(hold=1)
-    with pytest.raises(ValueError, match=r"episode 1 authors a hold of 1 beat — 0\.30s at "
-                                         r"200\.0 BPM \(MUSIC_b\.json\)"):
+    res = driver.build_pacing(_write_edl(tmp_path, eps), _held_footage(tmp_path),
+                              [_window(tmp_path, "MUSIC_a.json", 20.0),
+                               _window(tmp_path, "MUSIC_b.json", 20.0, tempo=200.0)],
+                              str(tmp_path / "out"))
+    assert Path(res["music"]).name == "MUSIC_a.json"
+    err = capsys.readouterr().err
+    assert ("pacing: MUSIC_b.json dropped from the candidates — episode 1 authors a hold "
+            "of 1 beat — 0.30s at 200.0 BPM (MUSIC_b.json)") in err
+
+
+def test_an_authored_hold_no_window_can_play_is_refused_naming_each(tmp_path):
+    eps = _held_cut()
+    eps[1] = _freeze(hold=1)
+    with pytest.raises(ValueError) as e:
         driver.build_pacing(_write_edl(tmp_path, eps), _held_footage(tmp_path),
-                            [_window(tmp_path, "MUSIC_a.json", 20.0),
-                             _window(tmp_path, "MUSIC_b.json", 20.0, tempo=200.0)],
+                            [_window(tmp_path, "MUSIC_a.json", 20.0, tempo=200.0),
+                             _window(tmp_path, "MUSIC_b.json", 20.0, tempo=190.0)],
                             str(tmp_path / "out"))
+    msg = str(e.value)
+    assert msg.startswith("pacing: no music window can play every authored hold — ")
+    assert "0.30s at 200.0 BPM (MUSIC_a.json)" in msg
+    assert "0.32s at 190.0 BPM (MUSIC_b.json)" in msg
 
 
 def test_a_photo_only_reel_says_every_cut_is_a_held_cut_on_a_beat(tmp_path):
