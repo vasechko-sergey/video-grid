@@ -252,14 +252,15 @@ order, because a freeze cannot follow a photo (§3) — with music, and a contro
 built the same way with `shutter: false` everywhere. The EDL comes from
 `edit_plan.build_edl` over a selection, bound to a PACING.json fitted to a synthetic
 120 BPM MUSIC.json, and goes down the router's road: `build_geometry`,
-`render_from_geometry`, the episode-QC gate, `assemble_reel`. Only the person detector
-and the weights are stubbed. Both reels deliver; every episode clip probes the clip's
+`render_from_geometry`, the episode-QC gate, `assemble_reel`. Only the person detectors
+(the tracker's and the photo's) and the weights are stubbed, and the episode-QC judges'
+approving verdicts are written as the gate reads them. Both reels deliver; every episode clip probes the clip's
 own 24/1, not extract's 30/1 default; the freeze holds 1 beat (its bar reads peak) and
 the photo 3 (planned 2 at build, then ended on the bar line as the run's last hold) —
 whole beats, not 2.0 s; the delivered frame at each accented cut is within 1.6 codes of
 `a·255 + (1−a)·master` for each opacity, the frame past the flash is the master's again,
 and the master is the control's master frame for frame; the delivered audio's 2.5–9 kHz
-band at each accented cut is about 4500× the control's, and equal to it at the cut back
+band at each accented cut is 4500–5100× the control's, and equal to it at the cut back
 to footage; the freeze's first frame is its predecessor's last clip frame (0.32 mean
 codes from it, 5.49 from the frame before). Five mutations each turn a test red: no
 flashes to deliver, no shutters to mix, the freeze one frame early, every band held
