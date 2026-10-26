@@ -1,10 +1,13 @@
+import datetime as dt
 import os
 import json
 import shutil
 import threading
 import types
+import cv2
 import numpy as np
 import pytest
+from PIL import Image as _PImg
 from scripts import intake
 from scripts.lib import carve, footage, reid
 from scripts.lib.footage import DESCRIPTOR_LEN, Cast
@@ -1346,9 +1349,6 @@ def test_intake_names_what_it_skipped_and_the_live_photo_pairs(monkeypatch, tmp_
 
 # --- photo groups, and photos ranked among photos (design 2026-10-21 §5) -------------
 
-import cv2
-from PIL import Image as _PImg
-
 
 def _texture(seed, size=(480, 360)):
     """Random grey-level noise, upscaled so a blur has structure to remove: distinct
@@ -1425,7 +1425,6 @@ def test_the_photo_road_records_capture_time_and_sharpness(monkeypatch, tmp_path
     sharp = intake._process_photo(str(_dated_photo(tmp_path / "a.jpg", img, 5, "3")))
     soft = intake._process_photo(str(_dated_photo(tmp_path / "b.jpg",
                                                   cv2.GaussianBlur(img, (0, 0), 4.0))))
-    import datetime as dt
     noon = dt.datetime(2026, 10, 21, 12, 0, 0, tzinfo=dt.timezone.utc).timestamp()
     assert sharp.taken == noon + 5 + 0.3                   # no offset in the EXIF: read as UTC
     assert soft.taken is None                              # no EXIF date → no time

@@ -1,4 +1,5 @@
 """lib/still: the one photo decoder and the subject rule (design 2026-10-20 §1, §2)."""
+import datetime as dt
 import io
 import shutil
 import struct
@@ -221,7 +222,6 @@ def _dated_jpeg(path: Path, date=None, subsec=None, offset=None, im=None) -> Pat
 
 
 def _epoch(*ymdhms, tz=0.0) -> float:
-    import datetime as dt
     return dt.datetime(*ymdhms, tzinfo=dt.timezone(dt.timedelta(hours=tz))).timestamp()
 
 
