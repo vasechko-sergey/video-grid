@@ -256,6 +256,18 @@ def test_a_video_result_writes_no_photo_fields_and_reads_back_none(tmp_path):
     assert (loaded.taken, loaded.sharpness) == (None, None)
 
 
+def test_a_zero_capture_time_and_sharpness_round_trip_as_zero_not_none(tmp_path):
+    # 0.0 is "1970:01:01 00:00:00", a reset camera clock's date: a truthiness test in
+    # store would keep it on a scan and drop it on a cache hit (the review's M6)
+    out, src = tmp_path / "out", _src(tmp_path, "IMG_1.jpg")
+    intake_cache.store(str(out), str(src), 3.0, _photo_result(taken=0.0, sharpness=0.0),
+                       _M, _PROXY, band=carve.DEFAULT_BAND)
+    payload = json.loads((out / ".intake_cache" / "IMG_1.jpg" / "clip.json").read_text())
+    assert (payload["taken"], payload["sharpness"]) == (0.0, 0.0)
+    loaded = intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
+    assert (loaded.taken, loaded.sharpness) == (0.0, 0.0)
+
+
 def test_a_photo_without_a_capture_time_round_trips_none(tmp_path):
     out, src = tmp_path / "out", _src(tmp_path, "IMG_2.png")
     intake_cache.store(str(out), str(src), 3.0, _photo_result("IMG_2.png", taken=None),
