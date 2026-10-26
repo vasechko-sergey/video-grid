@@ -377,24 +377,33 @@ class Footage:
         n_best = sum(1 for w in wins if w.best)
         photos = [c for c in self.clips if c.kind == "photo"]
         size = Counter(c.group for c in photos if c.group is not None)
-        counted = ""                   # nothing for a video-only set: its header is unchanged
+        # every wording below changes only when photos exist, so a video-only FOOTAGE.md
+        # stays byte-identical
+        split = bool(photos) or (self.scoring is not None and "photos" in self.scoring)
+        counted = ""
         if photos:
             counted = f" · {_n(len(photos), 'photo')}"
             if size:
-                counted += f" in {_n(len(size), 'group')}"
+                counted += f", {sum(size.values())} in {_n(len(size), 'group')}"
+        within = ("its kind in THIS footage set — a video window's among the video windows, "
+                  "a photo's among the photos (design 2026-10-21 §5) — never an absolute "
+                  "quality bar, and never comparable to another shoot's numbers, nor a "
+                  "photo's to a video's." if split else
+                  "THIS footage set (design 2026-08-06-intake-motion-scoring §4.2) — never an "
+                  "absolute quality bar, and never comparable to another shoot's numbers.")
         lines = [f"# Footage — {len(self.clips)} clips, {len(wins)} windows ({n_best} best)"
                  f"{counted}", "",
-                 "`score` is a percentile within THIS footage set (design "
-                 "2026-08-06-intake-motion-scoring §4.2) — never an absolute quality bar, and "
-                 "never comparable to another shoot's numbers. `motion` is mean per-sample "
+                 f"`score` is a percentile within {within} `motion` is mean per-sample "
                  "subject displacement as a fraction of frame width.", ""]
         if self.scoring is not None:
             n, sep = self.scoring["windows"], self.scoring["separated"]
-            lines += ["Each blend term's `separated` count is how many of those windows it "
-                      "told apart. A term near zero contributed nothing to THIS pool's "
-                      "ordering — it is not a quality signal here, whatever its weight "
-                      "(design 2026-09-10 §4): "
-                      + ", ".join(f"**{t}** {sep[t]}/{n}" for t in SCORE_TERMS) + ".", ""]
+            if not (split and n == 0):          # a photo-only pool has no video line
+                lines += [f"Each blend term's `separated` count is how many of "
+                          f"{'the video windows' if split else 'those windows'} it "
+                          "told apart. A term near zero contributed nothing to THIS pool's "
+                          "ordering — it is not a quality signal here, whatever its weight "
+                          "(design 2026-09-10 §4): "
+                          + ", ".join(f"**{t}** {sep[t]}/{n}" for t in SCORE_TERMS) + ".", ""]
             if "photos" in self.scoring:
                 pn, psep = self.scoring["photos"]["windows"], self.scoring["photos"]["separated"]
                 lines += ["A photo's `score` is its percentile among the PHOTOS only — a still "

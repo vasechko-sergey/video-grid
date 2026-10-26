@@ -1717,7 +1717,7 @@ def test_intake_groups_a_burst_and_keeps_its_sharpest(monkeypatch, tmp_path):
         False, False, True]
     assert by["IMG_2.jpg"].windows[0].score >= intake.BEST_FLOOR    # one-per-group decided it
     md = (tmp_path / "out" / "FOOTAGE.md").read_text()
-    assert md.splitlines()[0].endswith(" · 4 photos in 1 group")
+    assert md.splitlines()[0].endswith(" · 4 photos, 3 in 1 group")
     assert "## IMG_1.jpg  (photo · 480×360 · may hold up to 8.0s) · group g1 (3 photos)" in md
     assert f.scoring["photos"]["windows"] == 4
     on_disk = json.loads((tmp_path / "out" / "FOOTAGE.json").read_text())
