@@ -274,6 +274,18 @@ def fit_level(durs: Sequence[float], lines: Sequence[float],
                drift=drift)
 
 
+def every_cut_held(is_held: Sequence[bool]) -> bool:
+    """True when every cut of the reel is a held cut inside one run of holds — so none is
+    ever measured against a level's lines. A footage cut snaps to a line and the cut
+    back to footage after a run chooses among them; a cut between two holds chooses
+    among the detected beats (_held_cut). With no cut matched against lines every level
+    fits at (0, 0) and "the coarsest that fits" names a grid no cut sits on: a
+    photo-only reel reported phrase (final review M1). A single episode has no cut and
+    keeps the rule it always had."""
+    held = list(is_held)
+    return len(held) > 1 and all(held)
+
+
 def best_fit(durs: Sequence[float], beats: Sequence[float],
              bounds: Sequence[tuple[float, float]], allow: float,
              levels: Sequence[tuple[str, int]] = GRID_LEVELS, *,
@@ -292,7 +304,9 @@ def best_fit(durs: Sequence[float], beats: Sequence[float],
     `rejected`; the caller decides whether to accept an off-grid reel.
 
     `held`/`plan` ride through to every fit_level, with `beats` as the detected grid a
-    held cut is chosen from (design 2026-10-21 §2.2)."""
+    held cut is chosen from (design 2026-10-21 §2.2). When every cut is held
+    (every_cut_held) no level's lines are ever read, so every level fits identically and
+    the FINEST is returned, with nothing rejected: every cut is on a detected beat."""
     lvl = list(levels)
     if not lvl:
         raise ValueError("gridfit.best_fit: levels must be a non-empty table of "
@@ -334,6 +348,8 @@ def best_fit(durs: Sequence[float], beats: Sequence[float],
             if best is None or _rank(f) < _rank(best):
                 best = f
         per_level.append(best)
+    if held is not None and every_cut_held([h is not None for h in held]):
+        return per_level[-1], ()
     for i, f in enumerate(per_level):
         if f.fits:
             return f, tuple(per_level[:i])

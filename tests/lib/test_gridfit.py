@@ -622,3 +622,27 @@ def test_held_refuses_a_bad_record(kw, match):
     args.update(kw)
     with pytest.raises(ValueError, match=match):
         gridfit.Held(**args)
+
+
+def test_a_cut_that_is_all_holds_names_the_beat_not_a_coarse_level():
+    # Every cut of an all-held reel is chosen among the detected beats and none is ever
+    # measured against a level's lines, so every level "fits" at (0, 0) and the coarsest
+    # won: a photo-only reel reported phrase (final review M1). The beat is what it is on.
+    chosen, rejected = gridfit.best_fit([2.0] * 4, _BEATS_120, [(0.0, 0.0)] * 4, 0.25,
+                                        held=[_h()] * 4, plan=lambda pos, run: 2)
+    assert (chosen.level, chosen.level_n, chosen.fits, rejected) == ("beat", 1, True, ())
+    assert gridfit.every_cut_held([True] * 4) is True
+
+
+@pytest.mark.parametrize("is_held", [[True, False], [False, True], [True, True, False],
+                                     [True], [False], []])
+def test_a_cut_with_a_line_to_reach_is_not_all_holds(is_held):
+    # a footage cut, or the cut back to footage after a run, reaches for a line; a single
+    # episode has no cut at all and keeps the rule it always had
+    assert gridfit.every_cut_held(is_held) is False
+
+
+def test_the_cut_back_to_footage_still_takes_a_coarse_level():
+    chosen, _ = gridfit.best_fit([2.0, 2.0, 2.0, 2.0], _BEATS_120, [(-0.25, 0.25)] * 4,
+                                 0.25, held=[None, _h(), _h(), None], plan=lambda pos, run: 2)
+    assert chosen.level != "beat"

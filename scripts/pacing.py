@@ -101,9 +101,14 @@ def _report(spine, fit, rejected, music_path: str, anchor_map: dict) -> str:
     held_line = ([f"- **Held:** {len(held)} of {len(spine.slots)} episodes (photos or "
                   f"freezes) — the grid authored their lengths in whole beats: {counts}"]
                  if held else [])
+    # An all-held reel has no cut matched against a level's lines (gridfit.every_cut_held):
+    # naming a level and phase there would describe a grid no cut sits on.
+    level = (f"{fit.level} — every cut is a held cut on a detected beat"
+             if gridfit.every_cut_held([s.held for s in spine.slots]) else
+             f"{fit.level} (every {fit.level_n} beat(s), phase {fit.phase})")
     lines = ["# Pacing — fit report", "",
              f"- **Music:** `{Path(music_path).name}`",
-             f"- **Level:** {fit.level} (every {fit.level_n} beat(s), phase {fit.phase})",
+             f"- **Level:** {level}",
              f"- **Verdict:** {'fits' if fit.fits else 'OFF-GRID — see below'}",
              # `dev` and `fits` were the whole summary, and they cannot tell a
              # wrong-but-aligned cut from a right one: the run's shipped spine and the

@@ -1,6 +1,7 @@
 # tests/lib/test_pacing_driver.py
 """The pacing driver: EDL + FOOTAGE + MUSIC(s) -> the fit report."""
 import json
+from pathlib import Path
 
 import pytest
 
@@ -635,3 +636,21 @@ def test_an_authored_hold_the_second_windows_tempo_cannot_play_is_refused(tmp_pa
                             [_window(tmp_path, "MUSIC_a.json", 20.0),
                              _window(tmp_path, "MUSIC_b.json", 20.0, tempo=200.0)],
                             str(tmp_path / "out"))
+
+
+def test_a_photo_only_reel_says_every_cut_is_a_held_cut_on_a_beat(tmp_path):
+    """Final review M1: no cut of an all-held reel is matched against a level's lines,
+    so PACING.md named a phrase level that no cut sits on."""
+    res = driver.build_pacing(_write_edl(tmp_path, [_photo()] * 4), _held_footage(tmp_path),
+                              [_music(tmp_path)], str(tmp_path / "out"))
+    md = Path(res["md"]).read_text()
+    assert "- **Level:** beat — every cut is a held cut on a detected beat" in md
+    assert "phrase" not in md
+
+
+def test_a_reel_with_footage_still_reports_its_level_and_phase(tmp_path):
+    res = driver.build_pacing(_write_edl(tmp_path, _held_cut()), _held_footage(tmp_path),
+                              [_music(tmp_path)], str(tmp_path / "out"))
+    fit = res["fit"]
+    assert (f"- **Level:** {fit.level} (every {fit.level_n} beat(s), phase {fit.phase})"
+            in Path(res["md"]).read_text())
