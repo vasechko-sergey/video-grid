@@ -305,3 +305,19 @@ def test_only_a_photos_key_carries_the_photo_term(tmp_path):
     assert vk == _v9_key(video)
     assert pk == {**_v9_key(photo), "photo_version": intake_cache.PHOTO_CACHE_VERSION}
     assert intake_cache.PHOTO_CACHE_VERSION == 1
+
+
+@pytest.mark.parametrize("field", ["taken", "sharpness"])
+@pytest.mark.parametrize("bad", ["x", True, [1.0], 5, float("nan"), float("inf")])
+def test_a_corrupt_photo_field_reads_as_a_miss_not_a_crash(tmp_path, field, bad):
+    # "x" would crash Phase 2 (group_photos' sort, score_pool's float()); a NaN would
+    # sort nowhere. The writer only ever writes a finite float (the review's M12).
+    out, src = tmp_path / "out", _src(tmp_path, "IMG_1.jpg")
+    intake_cache.store(str(out), str(src), 3.0, _photo_result(), _M, _PROXY,
+                       band=carve.DEFAULT_BAND)
+    f = out / ".intake_cache" / "IMG_1.jpg" / "clip.json"
+    payload = json.loads(f.read_text())
+    payload[field] = bad
+    f.write_text(json.dumps(payload))
+    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY,
+                             band=carve.DEFAULT_BAND) is None

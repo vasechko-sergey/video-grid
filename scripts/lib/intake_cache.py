@@ -13,6 +13,7 @@ imported: a lib module must not depend on a driver (scripts.track), and the
 a third (cap-3 design §5's registered drift landmine).
 """
 import json
+import math
 import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -157,7 +158,10 @@ def load(out_dir: str, path: str, sample_fps: float, model: str,
         cast = [CastEntry(source=c["source"], tid=c["tid"], conf=c["conf"],
                           descriptor=c["descriptor"], presence=c.get("presence", 0.0),
                           crop=c["crop"]) for c in payload["cast"]]
+        photo = (payload.get("taken"), payload.get("sharpness"))
+        if not all(v is None or (isinstance(v, float) and math.isfinite(v)) for v in photo):
+            return None      # the writer only writes a finite float; Phase 2 sorts on them
         return ClipResult(clip=clip, phashes=payload["phashes"], cast=cast,
-                          taken=payload.get("taken"), sharpness=payload.get("sharpness"))
+                          taken=photo[0], sharpness=photo[1])
     except (FileNotFoundError, OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         return None
