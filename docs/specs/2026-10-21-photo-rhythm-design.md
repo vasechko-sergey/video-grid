@@ -224,7 +224,9 @@ look` is deliver's own gate run by hand, and takes them as `--flash`.
 - `still.load` records the capture time (EXIF `DateTimeOriginal` + `SubSecTimeOriginal`,
   with `OffsetTimeOriginal` when present; absent → no time). Intake stores it and a
   **sharpness** (variance of the Laplacian of the luma at the analysis proxy's long side,
-  960) in the cached photo result. `CACHE_VERSION` 9 → 10.
+  960) in the cached photo result. A photo's cache key gains `PHOTO_CACHE_VERSION = 1`,
+  so a photo cached before these fields misses; `CACHE_VERSION` stays 9, because no
+  video payload changed and a bump would re-scan every video of an existing run.
 - Phase 2 **groups** photos: two photos are one group when their capture times are
   within `BURST_GAP = 2.0` s of each other (chained through time order), or their pHash
   distance is under `DEDUP_DIST`. A group of two or more gets an id (`g1`, … in path

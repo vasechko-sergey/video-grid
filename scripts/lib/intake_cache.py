@@ -19,6 +19,7 @@ from pathlib import Path
 
 from PIL import Image
 
+from scripts.lib import runlayout
 from scripts.lib.footage import FootageClip
 
 # Bump when Phase-1 logic changes shape (carve/score/descriptor/phash-point): it
@@ -36,16 +37,19 @@ from scripts.lib.footage import FootageClip
 # embeddings (was a 24-d colour histogram) and CastEntry carries presence, so a v5
 # result must miss. An all-or-nothing version beats a per-field logic hash nobody
 # can audit.
-CACHE_VERSION = 10  # 8→9 (2026-09-03): the carve band joins the key. carve_windows runs
+CACHE_VERSION = 9   # 8→9 (2026-09-03): the carve band joins the key. carve_windows runs
                     # inside the cached Phase 1, so before this a changed WIN_MIN/WIN_MAX
                     # returned boundaries carved under the OLD band, silently — the band
                     # was the only carve input absent from the key (design
                     # 2026-09-03 §0.5). The bump exists so the reason is recorded rather
                     # than inferred from a key that merely happens to differ.
-                    # 9→10 (2026-10-21): a photo's capture time and sharpness join the
-                    # payload — Phase 2 groups photos on the first and ranks them on the
-                    # second, and a v9 photo carries neither (design 2026-10-21 §5). A
-                    # miss only re-scans; nothing a v9 entry holds is lost.
+PHOTO_CACHE_VERSION = 1   # joins a PHOTO's key only. 1 (2026-10-21): a photo's capture
+                          # time and sharpness join the payload — Phase 2 groups photos on
+                          # the first and ranks them on the second — and an entry written
+                          # before them carries neither, so it must miss (design 2026-10-21
+                          # §5). Its own term, not a CACHE_VERSION bump: no video payload
+                          # changed, and a bump would re-scan every video of an existing run,
+                          # the costliest Phase 1 there is, for nothing (the review's M9).
 
 
 @dataclass
@@ -81,13 +85,17 @@ def clip_key(path: str, sample_fps: float, model: str, proxy_long_side: int,
     without torchreid caches an empty cast, and a later resume WITH torchreid must
     not silently serve that stale empty cast (design 2026-08-04).
     `band` is the carve band (win_min, win_max): window BOUNDARIES are decided
-    inside the cached phase, so a changed band must miss (design 2026-09-03 §3)."""
+    inside the cached phase, so a changed band must miss (design 2026-09-03 §3).
+    A photo's key adds PHOTO_CACHE_VERSION; a video's stays as it was."""
     st = os.stat(path)
-    return {"size": st.st_size, "mtime_ns": st.st_mtime_ns,
-            "sample_fps": float(sample_fps), "model": model,
-            "proxy_long_side": int(proxy_long_side),
-            "reid_model": str(reid_model), "band": [float(band[0]), float(band[1])],
-            "version": CACHE_VERSION}
+    key = {"size": st.st_size, "mtime_ns": st.st_mtime_ns,
+           "sample_fps": float(sample_fps), "model": model,
+           "proxy_long_side": int(proxy_long_side),
+           "reid_model": str(reid_model), "band": [float(band[0]), float(band[1])],
+           "version": CACHE_VERSION}
+    if runlayout.is_photo(path):
+        key["photo_version"] = PHOTO_CACHE_VERSION
+    return key
 
 
 def _dir(out_dir: str, path: str) -> Path:

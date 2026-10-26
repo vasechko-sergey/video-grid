@@ -135,12 +135,12 @@ def test_a_version_1_entry_is_a_miss(tmp_path):
     assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND) is None
 
 
-def test_clip_key_includes_proxy_long_side_and_v10(tmp_path):
+def test_clip_key_includes_proxy_long_side_and_v9(tmp_path):
     from scripts.lib import intake_cache
     f = tmp_path / "c.mp4"; f.write_bytes(b"x")
     k = intake_cache.clip_key(str(f), sample_fps=3.0, model="m", proxy_long_side=960,
                               band=carve.DEFAULT_BAND)
-    assert k["version"] == 10
+    assert k["version"] == 9
     assert k["proxy_long_side"] == 960
     k2 = intake_cache.clip_key(str(f), sample_fps=3.0, model="m", proxy_long_side=1280,
                                band=carve.DEFAULT_BAND)
@@ -196,12 +196,13 @@ def test_load_is_none_on_changed_band(tmp_path):
                    reid_model="", band=(1.2, 6.0)) is None
 
 
-def test_cache_version_is_ten_for_the_photo_fields():
-    # a photo's capture time and sharpness join the cached payload (design 2026-10-21
-    # §5): a v9 photo result carries neither, and Phase 2 would group and rank it as a
-    # photo with no time and zero sharpness — so it must miss and re-scan instead
+def test_cache_version_is_nine_for_the_carve_band_key():
+    # the carve band joins clip_key (design 2026-09-03 §0.5/§3): carve_windows runs
+    # inside the cached Phase 1, so a cached v8 ClipResult was carved under whatever
+    # band scanned it, with no key term recording which — a changed WIN_MIN/WIN_MAX
+    # must miss instead of silently returning boundaries carved under the old band
     from scripts.lib import intake_cache as ic
-    assert ic.CACHE_VERSION == 10
+    assert ic.CACHE_VERSION == 9
 
 
 def test_clip_key_carries_the_band(tmp_path):
@@ -261,3 +262,46 @@ def test_a_photo_without_a_capture_time_round_trips_none(tmp_path):
                        _M, _PROXY, band=carve.DEFAULT_BAND)
     loaded = intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
     assert (loaded.taken, loaded.sharpness) == (None, 812.375)
+
+
+# --- the photo-only key term (design 2026-10-21 §5; the 2026-10-21 review's M9) -------
+
+def _v9_key(src):
+    """The key exactly as the pre-photo-rhythm code wrote it: no photo term."""
+    st = src.stat()
+    return {"size": st.st_size, "mtime_ns": st.st_mtime_ns, "sample_fps": 3.0, "model": _M,
+            "proxy_long_side": _PROXY, "reid_model": "",
+            "band": [float(v) for v in carve.DEFAULT_BAND], "version": 9}
+
+
+def _write_entry(out, src, key, result):
+    d = out / ".intake_cache" / src.name
+    d.mkdir(parents=True)
+    (d / "clip.json").write_text(json.dumps(
+        {"key": key, "clip": result.clip.to_dict(), "phashes": result.phashes, "cast": []}))
+
+
+def test_a_video_entry_written_before_the_photo_fields_still_loads(tmp_path):
+    # a photo-only payload change must not re-scan every video of an existing run
+    out, src = tmp_path / "out", _src(tmp_path)
+    _write_entry(out, src, _v9_key(src), _result())
+    hit = intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
+    assert hit is not None and hit.clip.to_dict() == _clip().to_dict()
+
+
+def test_a_photo_entry_written_before_the_photo_fields_misses(tmp_path):
+    # it carries no capture time and no sharpness: Phase 2 would group it with no time
+    # and rank it the least sharp, so it re-scans instead
+    out, src = tmp_path / "out", _src(tmp_path, "IMG_1.jpg")
+    _write_entry(out, src, _v9_key(src), _photo_result(taken=None, sharpness=None))
+    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY,
+                             band=carve.DEFAULT_BAND) is None
+
+
+def test_only_a_photos_key_carries_the_photo_term(tmp_path):
+    video, photo = _src(tmp_path), _src(tmp_path, "IMG_1.HEIC")
+    vk = intake_cache.clip_key(str(video), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
+    pk = intake_cache.clip_key(str(photo), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
+    assert vk == _v9_key(video)
+    assert pk == {**_v9_key(photo), "photo_version": intake_cache.PHOTO_CACHE_VERSION}
+    assert intake_cache.PHOTO_CACHE_VERSION == 1
