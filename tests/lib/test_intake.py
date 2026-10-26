@@ -1672,6 +1672,24 @@ def test_two_groups_each_keep_their_own_best():
     assert [p.windows[0].best for p in ps] == [True, True, False, False]
 
 
+def _gvideo(name, score):
+    return footage.FootageClip(source=name, dur=8.0, res=(400, 300), fps=30.0,
+                               windows=[_gwin(score)])
+
+
+def test_a_group_whose_top_photo_repeats_a_kept_image_takes_no_star():
+    """The group's top-scored member speaks for it. When that member is a pHash
+    duplicate of an image already kept — a video window of the same moment — the moment
+    is starred already, so the group gets NO star rather than handing it to a lower
+    member (the 2026-10-21 review's M3): p2 is a different frame of the same burst."""
+    clips = [_gvideo("v.mp4", 0.95), _gphoto("p1.jpg", 0.9, "g1"), _gphoto("p2.jpg", 0.8, "g1"),
+             _gphoto("q.jpg", 0.7)]
+    hashes = {"v": _FAR[0], "p1": _FAR[0], "p2": _FAR[1], "q": _FAR[2]}
+    intake.cull(clips, phash_of=lambda c, w: intake.imagehash.hex_to_hash(
+        hashes[c.source.split(".")[0]]))
+    assert [c.windows[0].best for c in clips] == [True, False, False, True]
+
+
 def test_intake_groups_a_burst_and_keeps_its_sharpest(monkeypatch, tmp_path):
     """Three JPEGs taken 0.3 s apart and one ten minutes later, all different pictures
     (so only the capture time can group them) — real decode, real EXIF, real sharpness.

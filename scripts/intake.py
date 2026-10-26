@@ -327,25 +327,28 @@ def _people_timeline(src: str, fps: float, res: tuple[int, int],
 def cull(clips: list, phash_of: object) -> None:
     """Rank all windows by score; a window whose phash Hamming distance to an
     already-kept higher-scored window is < DEDUP_DIST is a duplicate (compare by
-    IMAGE, never by filename — several windows of one clip are legitimate). So is a
-    photo whose group (group_photos) already has a kept member: a burst shows one
-    best, its highest scored — with equal presence, its sharpest (design 2026-10-21
-    §5). Mark best on dedup survivors with score >= BEST_FLOOR. Mutates
-    FootageWindow.best. phash_of(clip, window) -> imagehash.ImageHash (injected; the
-    driver closes it over footage_root)."""
+    IMAGE, never by filename — several windows of one clip are legitimate). A photo
+    group (group_photos) is represented by its top-scored member — with equal
+    presence, its sharpest (design 2026-10-21 §5) — and every other member is a
+    duplicate, so a burst shows at most one best. When that top member is itself a
+    duplicate of an image already kept (a video window of the same moment), the group
+    gets NO best: the moment is starred already, and passing the star to a lower
+    member would star it twice. Mark best on dedup survivors with score >= BEST_FLOOR.
+    Mutates FootageWindow.best. phash_of(clip, window) -> imagehash.ImageHash
+    (injected; the driver closes it over footage_root)."""
     ranked = sorted(((c, w) for c in clips for w in c.windows),
                     key=lambda cw: cw[1].score, reverse=True)
     kept: list = []
-    kept_groups: set[str] = set()
+    spoken: set[str] = set()          # groups whose top-scored member has been ranked
     for c, w in ranked:
         h = phash_of(c, w)
-        dup = ((c.group is not None and c.group in kept_groups)
+        dup = ((c.group is not None and c.group in spoken)
                or any(check_reel._hamming(h, kh) < DEDUP_DIST for kh in kept))
         w.best = (not dup) and w.score >= BEST_FLOOR
+        if c.group is not None:
+            spoken.add(c.group)
         if not dup:
             kept.append(h)
-            if c.group is not None:
-                kept_groups.add(c.group)
 
 
 def group_photos(results: list[ClipResult]) -> None:
