@@ -40,12 +40,10 @@ Rows S1–S17 come from the second real run — evidence and measurements in
 
 ## Photos — asked 2026-10-20
 
-From the photo-reel research of 2026-10-20: photos are a main material of memory and travel reels, and in 2025–2026 they move. Order: U4+U5+U6 — the first slice — shipped in 0.26.0 (closed rows in [backlog-closed.md](backlog-closed.md)); U7+U8 are the second, U9 the third; U10 waits for a real run with photos.
+From the photo-reel research of 2026-10-20: photos are a main material of memory and travel reels, and in 2025–2026 they move. U4+U5+U6 — the first slice — shipped in 0.26.0 and U7+U8 — the second — in 0.28.0 (closed rows in [backlog-closed.md](backlog-closed.md)); U9 is next; U10 waits for a real run with photos.
 
 | | Item | Size | Source |
 |---|------|------|--------|
-| ○ | **U7 · A photo's length comes from the music grid** — holds in whole beats, deliberately varied, accelerating into a drop. The inverse of video, where the footage owns the length. | M | user, 2026-10-20 |
-| ○ | **U8 · Photos among video, and choosing which** — one segment contract, a freeze-frame with a shutter accent, burst and near-duplicate grouping (pHash exists) before ranking. | M | user, 2026-10-20 |
 | ○ | **U9 · Live Photos and Motion Photos** — pair an iPhone still with its MOV by `ContentIdentifier` (today the MOV enters as an unrelated 3-second clip), slice an Android Motion Photo's embedded MP4 by `Item:Length`; ~1.5 s of real motion around the still. | M | user, 2026-10-20 |
 | ○ | **U10 · Polaroid, cards, collage** — an asymmetric frame, a shadow, a rotation and grids; lower value, and the look reads as a template. After a real run with photos. | M | user, 2026-10-20 |
 

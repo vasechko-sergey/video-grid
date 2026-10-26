@@ -10,6 +10,42 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.28.0 — 2026-10-26
+
+- **Photos hold on the beat.** With music, the grid chooses a photo's length in whole
+  beats from the music's energy over the bar it opens — at 120 BPM 4, 2 or 1 beats as
+  that bar is quiet, mid or loud — and never gives one run of photos the same count
+  three times in a row. Where the run cuts back to video it ends on the reel's grid
+  line, but only within half to twice its plan: across the whole range a phrase line
+  is almost always reachable, and a photo planned at 2 beats was bound to 10. Author
+  `hold` (beats) in `selection.json` to ask for a count. Without music a photo still
+  plays 2.0 s.
+- **The freeze.** `{"freeze": true}` in `selection.json` holds the previous shot's
+  last frame, "like a photograph", for a length the grid chooses the same way. The
+  frame is the previous segment's last decoded frame, taken by count: the obvious
+  source-time formula named a neighbouring frame in 5 of 28 off-grid cuts, the count
+  was right in 28 of 28. A freeze is not re-tracked — it is framed where the previous
+  shot left its subject, centred — and its sound stops.
+- **The shutter accent.** `shutter: true` on a photo, and by default on a freeze,
+  puts a three-frame white flash in the delivery and a shutter click on the cut. The
+  flash blends each plane once through `lutyuv`: `drawbox`'s fill missed saturated
+  colours by up to 67 codes of chroma, and only grey came out right. It is in the
+  delivered file and not in the master, so no colour check reads it as a grade; the
+  attestation lists the flash times, and `probe look --flash` runs deliver's own look
+  gate by hand.
+- **Bursts are grouped, and photos rank among photos.** Photos taken within 2 s of
+  each other (their EXIF capture time) or near-identical by pHash are one group, and a
+  group gets at most one ★. Photos are scored on presence and sharpness against the
+  other photos, instead of landing mid-pool on a motion and a shake they do not have;
+  a photo's score and a video window's are percentiles of two pools and do not
+  compare. `FOOTAGE.md` names each group and its size. The first scan after updating
+  re-scans the photos only — their cache entries gained the capture time and
+  sharpness — and every video clip stays cached.
+- **Known, not fixed:** beside video whose colour is not described (or described
+  differently from a photo's BT.709), the reel's master mixes colour descriptions and
+  its check reads the wrong frames: `grade_faithful` refuses a correct reel. Camera
+  footage described as BT.709 delivers. Design 2026-10-21 §7.
+
 ## 0.27.0 — 2026-10-21
 
 - **Install without a clone.** `/plugin marketplace add vasechko-sergey/video-grid`,

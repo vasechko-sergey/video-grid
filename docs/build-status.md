@@ -4,7 +4,7 @@ What is built, what is next, and the external assets the build depends on.
 **Update after every task** — add/adjust the relevant bullet here in the same
 commit.
 
-_Last updated: 2026-10-19._
+_Last updated: 2026-10-26._
 
 > Bird's-eye progress across the full 16-stage conveyor:
 > [pipeline-map.md](pipeline-map.md). This file is the detailed per-subsystem
@@ -12,6 +12,7 @@ _Last updated: 2026-10-19._
 
 ## Done
 
+- **Photos on the beat, among video (2026-10-26, 0.28.0)** — branch `feat/photo-rhythm`, [design](specs/2026-10-21-photo-rhythm-design.md). Backlog U7+U8. Held episodes: `lib/hold.py`, `EDLEpisode.freeze`/`shutter`/`hold` + `held()`, `edit_plan._freeze_entry`/`_resolve_freezes`, `gridfit.Held` + the held walk + `Fit.drift`, `pacing.hold_planner`, `Slot.held`/`hold` and kind-against-kind binding, the pacing driver's window-coverage rank and overrun line. The freeze: `extract.extract_freeze` (the last decoded frame by count), `edl_to_reel._run_episodes`' second wave over `_hold_route`. The shutter: `ReelManifest.shutters`, `build_reel._accent_times`, `mix._shutter` + `_build_sfx(shutters=)`, `look.flash_args`/`flash_windows`/`clear_of_flash`/`flash_free`, `deliver(flashes=)` with the look gate stepping around them, `Attestation.flashes`, `reel_review.still_times(shutters=)`, `probe look` running deliver's own gate (`--flash`, `--platform`). Groups: `still.load`'s EXIF capture time, `intake._sharpness`, `group_photos`, `score_pool`'s kind split (`_score_photos`), `cull`'s one ★ per group, `FootageClip.group`, `Footage.scoring.photos`, `intake_cache`'s `taken`/`sharpness` + `PHOTO_CACHE_VERSION`. Real-ffmpeg proofs: `test_freeze`, `test_shutter`, and the one-reel `test_photo_rhythm_reel` (design §6), whose building found that beside undescribed video the `-c copy` master mixes colour descriptions and `grade_faithful` reads the wrong frames (design §7, not fixed). **Do not bisect onto `ea79082`:** it fails 11 unit tests on its own — its new test helper `_groups` shadowed an existing one of that name in `tests/lib/test_intake.py` — and `53f0b75` fixes them.
 - **Install without a clone (2026-10-21, 0.27.0)** — branch `feat/install-without-clone`, [design](specs/2026-10-21-install-without-clone-design.md). `lib/userdirs.py`, `bin/vg` (venv from the data dir, cwd = shared models dir, code on `PYTHONPATH`), `setup.sh` (state to XDG, weights fetched where `bin/vg` works, the requirements stamp, the Jamendo key moved), the `${CLAUDE_PLUGIN_ROOT}` preamble in every skill + the new `setup` skill, `verify_runtime`'s `deps_stamp` and shared-dir weights probe, `ffbin`/`catalog` reading the user config dir (an old clone's in-tree file second), `provenance.engine_stamp`'s git-less tree digest, the judge template's `{VG}` token, README install/update/develop.
 - **Photos — ingest, fit, a sub-pixel move (2026-10-20, 0.26.0)** — branch `feat/photos-ingest-fit-move`, [design](specs/2026-10-20-photos-design.md). Backlog U4+U5+U6: `lib/still.py` (decode, people, subject, render), `lib/kenburns.py` (the move, pure), `proc.feed`, `assembly.probe_rate`, `FootageClip.kind`, `EDLEpisode.still` + `StillSpec`, `Manifest`/`ReframeSpec`/`PathMeta.still`, `extract.render_photo`, `edit_plan.photo_layout`; route-less arms in `process_episode`, `check_episode`, `check_reel`, `edl_to_reel`; real-ffmpeg proofs of the segment contract, the colour (with the untagged control), the stair-step (against `zoompan`), a photo through `process_episode`, and a photo-only reel delivered with music.
 - **Music in the app (2026-10-20, 0.25.0)** — branch `feat/music-in-app`, [design](specs/2026-10-20-music-in-app-design.md). Backlog U3: `SPEC/EDL/ReelManifest.music_in_app`, `reel_brief --music-in-app`, `mix(without_music=)` + `_nomusic_graph`/`_layout`, `build_reel._deliver_without_music`, `lib/soundnote.py`, `fetch.track_meta` (shared with `reel_review`); five real-ffmpeg proofs.
@@ -7104,6 +7105,8 @@ _Last updated: 2026-10-19._
     see an argv reordering — landmine-lint design §5).
 
 ## Next action
+
+> **2026-10-26: U7+U8 shipped in 0.28.0** (photos on the beat, the freeze, the shutter accent, photo groups). Next is U9 (Live Photos and Motion Photos) when the user asks. The slice's one-reel proof found an open defect, recorded in design 2026-10-21 §7 and not filed: a photo beside undescribed video is refused by `grade_faithful`. Every blockquote below this one is history.
 
 > **2026-10-20: the user's research asks are filed as U1–U10 (backlog).** U1 (remove trends) is done in 0.23.0, U2 (shot length as a suggestion) in 0.24.0, U3 (music in the app) in 0.25.0, the photo epic's first slice U4+U5+U6 in 0.26.0, install without a clone (U11) in 0.27.0; next is U7+U8 (a photo's length from the music grid; photos among video) when the user asks. Every blockquote below this one is history.
 
