@@ -100,9 +100,16 @@ def _report(spine, fit, rejected, music_path: str, anchor_map: dict) -> str:
                  if held else [])
     # An all-held reel has no cut matched against a level's lines (gridfit.every_cut_held):
     # naming a level and phase there would describe a grid no cut sits on.
-    level = (f"{fit.level} — every cut is a held cut on a detected beat"
-             if gridfit.every_cut_held([s.held for s in spine.slots]) else
-             f"{fit.level} (every {fit.level_n} beat(s), phase {fit.phase})")
+    # And only a fitting one may say "on a detected beat": a held cut past the music's
+    # last beat, or across a gap in the grid, is placed off the beats, and the verdict
+    # below says OFF-GRID (final re-review m1).
+    if gridfit.every_cut_held([s.held for s in spine.slots]):
+        off = sum(1 for d in fit.devs if d > gridfit.FIT_EPS)
+        level = (f"{fit.level} — every cut is a held cut on a detected beat" if fit.fits else
+                 f"{fit.level} — every cut is a held cut; {off} of {len(fit.devs)} are off "
+                 f"the detected beats (see below)")
+    else:
+        level = f"{fit.level} (every {fit.level_n} beat(s), phase {fit.phase})"
     lines = ["# Pacing — fit report", "",
              f"- **Music:** `{Path(music_path).name}`",
              f"- **Level:** {level}",

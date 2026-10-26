@@ -664,6 +664,22 @@ def test_a_photo_only_reel_says_every_cut_is_a_held_cut_on_a_beat(tmp_path):
                               [_music(tmp_path)], str(tmp_path / "out"))
     md = Path(res["md"]).read_text()
     assert "- **Level:** beat — every cut is a held cut on a detected beat" in md
+
+
+def test_an_off_grid_photo_only_reel_does_not_claim_its_cuts_sit_on_beats(tmp_path):
+    """Final re-review m1: a window whose beats end before the photos do places the last
+    hold past the grid, and the level line must not state as fact what the verdict
+    denies."""
+    res = driver.build_pacing(_write_edl(tmp_path, [_photo()] * 4), _held_footage(tmp_path),
+                              [_window(tmp_path, "MUSIC.json", 3.0)], str(tmp_path / "out"))
+    md = Path(res["md"]).read_text()
+    assert not res["fit"].fits
+    assert "- **Verdict:** OFF-GRID — see below" in md
+    assert "on a detected beat" not in md
+    off = sum(1 for d in res["fit"].devs if d > gridfit.FIT_EPS)
+    assert off >= 1
+    assert (f"- **Level:** beat — every cut is a held cut; {off} of {len(res['fit'].devs)} "
+            f"are off the detected beats (see below)") in md
     assert "phrase" not in md
 
 
