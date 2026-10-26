@@ -4,7 +4,8 @@ reel built the same way with the shutter off everywhere.
 
 The cut is the conveyor's own: edit_plan.build_edl projects a selection, pacing fits it
 onto a synthetic 120 BPM MUSIC.json, build_edl binds the fit, and the reel goes down the
-router's road — build_geometry, render_from_geometry, the episode-QC gate, assemble_reel.
+router's road — build_geometry, the required match-grade conductor, render_from_geometry,
+the episode-QC gate, assemble_reel.
 Stubbed is only what the other integration tests stub: the person detector (one person
 standing still at the frame's centre, so the crop a freeze is framed over is the one its
 window ended on) and the weights. The episode-QC judges are agents; their approving
@@ -36,7 +37,7 @@ import pytest
 from PIL import Image
 from scipy.io import wavfile
 
-from scripts import edit_plan, edl_to_reel, extract, pacing as pacing_driver, track
+from scripts import edit_plan, edl_to_reel, extract, match_grade, pacing as pacing_driver, track
 from scripts.lib import assembly, ffbin, hold, proc, provenance
 from scripts.lib.edl import EDL, write_edl
 from scripts.lib.episode_qc import EpisodeVerdict, ReelQC
@@ -127,6 +128,9 @@ def _reel(base: Path, root: Path, music: Path, shutter: bool) -> dict:
     work, out = str(reel / "build"), str(reel / "episodes")
     geo, stop = edl_to_reel.build_geometry(str(edl_path), str(project), str(root), work, out)
     assert stop is None, stop
+    # the router runs the REQUIRED conductor here, between the phases: it rewrites the
+    # EDL's tone pairs, which phase 1b renders
+    match = match_grade.write_match(str(Path(out) / "GEOMETRY.json"))
     rm, stop = edl_to_reel.render_from_geometry(str(Path(out) / "GEOMETRY.json"),
                                                 str(project), work, out, music=str(music))
     assert stop is None, stop
@@ -136,7 +140,7 @@ def _reel(base: Path, root: Path, music: Path, shutter: bool) -> dict:
                        summary="approved", reviewer="integration")
         for i, ep in enumerate(rm.episodes))).write(Path(out) / "EPISODE_QC.json")
     res = edl_to_reel.assemble_reel(episodes, work)
-    return {"res": res, "edl": EDL.from_json(edl_path), "spine": spine,
+    return {"res": res, "edl": EDL.from_json(edl_path), "spine": spine, "match": match,
             "rm": ReelManifest.from_json(episodes),
             "master": str(Path(work) / "reel" / "master.mp4")}
 
@@ -316,6 +320,17 @@ def test_the_click_is_on_each_accented_cut_against_the_control(reels, tmp_path):
     # the cut back to footage has none: the accented reel reads as the control there
     t = cuts[3]
     assert _band_rms(y, t, t + 0.1) < 2 * _band_rms(ctl, t, t + 0.1) + 1.0
+
+
+def test_the_conductor_grades_the_freeze_as_the_frame_it_holds(reels):
+    """match-grade measured every episode on its own, and a freeze's one frame against
+    its predecessor's pooled window landed the two on different sides of eps whenever
+    the window's light moved (final review I1). It now follows its predecessor."""
+    for r in (reels["accent"], reels["control"]):
+        eps = r["edl"].episodes
+        assert eps[0].tone_src is not None          # the predecessor was conducted...
+        assert (eps[1].tone_src, eps[1].tone_dst) == (eps[0].tone_src, eps[0].tone_dst)
+        assert r["match"]["authored"] >= 2           # ...and the freeze went with it
 
 
 def test_the_freeze_holds_the_last_frame_of_the_episode_before_it(reels):

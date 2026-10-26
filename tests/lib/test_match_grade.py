@@ -844,3 +844,98 @@ def test_a_pinned_episode_is_left_alone_and_not_named(tmp_path, monkeypatch, cro
     assert status["toe_lifts"] == [] and status["skipped"]["hand-authored"] == 1
     back = EDL.from_json(edl_path)
     assert back.episodes[0].tone_src == dark and back.episodes[0].tone_dst == dark
+
+
+# --- a freeze follows its predecessor (design 2026-10-21 §3; final review I1) ----------
+
+# The predecessor is far from the target and gets a pair; the freeze's OWN reading (its
+# one frame, three times) sits within eps of it, so measured on its own it would get
+# none — and the held frame would change brightness by the predecessor's whole
+# correction on the cut. Counted in the median it would also move the target: the median
+# of the three is (22, 108, 186), of the two played windows (25, 110, 190).
+_PRED, _OWN, _LAST = (5.0, 90.0, 150.0), (22.0, 108.0, 186.0), (45.0, 130.0, 230.0)
+_FREEZE_TARGET = (25.0, 110.0, 190.0)
+
+
+def _freeze_profiles(monkeypatch, crop_anchor_rows):
+    seen = []
+    profs = {"s0.mp4": _PRED, "s1.mp4": _OWN, "s2.mp4": _LAST}
+
+    def measure(md, src, route, **k):
+        seen.append(src)
+        return profs[src], crop_anchor_rows(profs[src])
+    monkeypatch.setattr(match_grade, "measure_crop", measure)
+    return seen
+
+
+def _freeze_edl(**pred):
+    return _edl(_ep("a.mp4", **pred), _ep("a.mp4", start=1.9, dur=0.5, freeze=True),
+                _ep("b.mp4"))
+
+
+def test_a_freeze_takes_its_predecessors_conducted_pair_and_is_not_measured(
+        monkeypatch, crop_anchor_rows):
+    seen = _freeze_profiles(monkeypatch, crop_anchor_rows)
+    geo = _geo(("s0.mp4", "r0.json"), ("s1.mp4", "r1.json"), ("s2.mp4", "r2.json"))
+    edl = _freeze_edl()
+    out, target, decisions, _ = match_grade.conduct(geo, edl)
+    assert seen == ["s0.mp4", "s2.mp4"]                 # the freeze is never measured
+    assert target == _FREEZE_TARGET                     # ...nor counted in the median
+    assert out.episodes[1] == replace(edl.episodes[1], tone_src=_PRED, tone_dst=target)
+    assert out.episodes[1].tone_src == out.episodes[0].tone_src
+    assert decisions[1] == matchgrade.ToneDecision(1, "author", "freeze", measured=_PRED,
+                                                   tone_src=_PRED, tone_dst=target)
+    assert [d.index for d in decisions] == [0, 1, 2]
+
+
+def test_a_freeze_carries_a_hand_authored_predecessor_pair(monkeypatch, crop_anchor_rows):
+    _freeze_profiles(monkeypatch, crop_anchor_rows)
+    geo = _geo(("s0.mp4", "r0.json"), ("s1.mp4", "r1.json"), ("s2.mp4", "r2.json"))
+    pair = dict(tone_src=(5.0, 80.0, 140.0), tone_dst=(20.0, 110.0, 210.0))
+    edl = _freeze_edl(**pair)
+    out, _, decisions, _ = match_grade.conduct(geo, edl)
+    assert out.episodes[0] == edl.episodes[0]           # the human's pair, untouched
+    assert (out.episodes[1].tone_src, out.episodes[1].tone_dst) == (
+        pair["tone_src"], pair["tone_dst"])
+    assert (decisions[1].action, decisions[1].reason) == ("skip", "freeze")
+
+
+def test_a_freeze_clears_its_pair_when_its_predecessor_gets_none(monkeypatch,
+                                                               crop_anchor_rows):
+    # both played windows on the target: the predecessor is left alone, and a stale pair
+    # on the freeze goes with it under --force
+    profs = {"s0.mp4": _FREEZE_TARGET, "s1.mp4": _PRED, "s2.mp4": _FREEZE_TARGET}
+    monkeypatch.setattr(match_grade, "measure_crop",
+                        lambda md, src, route, **k: (profs[src], crop_anchor_rows(profs[src])))
+    geo = _geo(("s0.mp4", "r0.json"), ("s1.mp4", "r1.json"), ("s2.mp4", "r2.json"))
+    stale = dict(tone_src=(5.0, 80.0, 140.0), tone_dst=(20.0, 110.0, 210.0))
+    edl = _edl(_ep("a.mp4", **stale), _ep("a.mp4", start=1.9, dur=0.5, freeze=True, **stale),
+               _ep("b.mp4"))
+    out, _, decisions, _ = match_grade.conduct(geo, edl, force=True)
+    assert [(e.tone_src, e.tone_dst) for e in out.episodes] == [(None, None)] * 3
+    assert (decisions[1].action, decisions[1].reason) == ("skip", "freeze")
+
+
+def test_match_names_a_freeze_and_its_drift_reader_agrees(tmp_path, monkeypatch,
+                                                          crop_anchor_rows):
+    _freeze_profiles(monkeypatch, crop_anchor_rows)
+    eps = _freeze_edl().episodes
+    geometry_path, edl_path = _write_geometry(tmp_path, *eps)
+    # _write_geometry names sources by the EDL's; give the three their own segments
+    geo = ReelGeometry.from_json(geometry_path)
+    _touch("s0.mp4", "s1.mp4", "s2.mp4")
+    ReelGeometry(episodes=tuple(replace(eg, source=f"s{i}.mp4")
+                                for i, eg in enumerate(geo.episodes)),
+                 edl=geo.edl, project=geo.project).write(geometry_path)
+    status = match_grade.write_match(geometry_path)
+    md = (tmp_path / "MATCH.md").read_text()
+    assert "| 1 | a.mp4 | – | – | author · freeze — follows episode 0 |" in md
+    assert "3/3 episodes authored a tone pair." in md
+    # the predecessor's lifted toe is named once — the freeze follows it, and its
+    # selection entry cannot carry a pair to pin
+    assert [t["index"] for t in status["toe_lifts"]] == [0]
+    report = matchgrade.MatchReport.from_json(tmp_path / "MATCH.json")
+    back = EDL.from_json(edl_path)
+    assert matchgrade.tone_drift(report.decisions,
+                                 [(e.tone_src, e.tone_dst) for e in back.episodes]) == []
+    assert back.episodes[1].tone_src == back.episodes[0].tone_src == _PRED
