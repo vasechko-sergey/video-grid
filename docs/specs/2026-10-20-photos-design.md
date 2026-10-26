@@ -139,7 +139,12 @@ window is cut into, on the video segment's contract:
   timescale (30/1 when there is no video), because `build_reel` takes the reel's rate from
   the first episode and `assemble` would otherwise conform;
 - **pixels**: `yuv420p`, tv range, SAR 1:1, RGB→YUV through **BT.709**, and all four
-  colour tags stamped on the frames by `setparams`. Two measurements on ffmpeg 8.1.2
+  colour tags stamped on the frames by `setparams`. *Superseded in 0.28.0
+  ([photo-rhythm design](2026-10-21-photo-rhythm-design.md) §7): the photo takes the
+  colour description of the EDL's first video segment — its matrix, and only the tags
+  it names — because a `-c copy` master that changes description at the photo is read
+  wrong; undescribed video gives an undescribed photo converted by BT.601. A reel of
+  photos alone keeps BT.709.* Two measurements on ffmpeg 8.1.2
   overturned the research's guess. The guessed trap — a `bt709` tag over swscale's
   BT.601 default — does not reproduce: ffmpeg negotiates the encoder's colourspace into
   `scale`. The real one is an **untagged** segment: ffmpeg decodes it as BT.601 and
@@ -203,3 +208,7 @@ only when true, so existing sidecars do not change):
   upside-down figure is held by the wrong half.
 - A photo segment is always tagged BT.709, whatever the video beside it carries; after
   reframe's re-encode the measured difference is about 4 codes.
+  *Closed in 0.28.0 ([photo-rhythm design](2026-10-21-photo-rhythm-design.md) §7): the
+  difference was not 4 codes once the master was spliced — beside undescribed video the
+  description changed at the photo, the decoder carried it onto the video after it, and
+  `grade_faithful` refused a correct reel. The photo now takes the video's description.*

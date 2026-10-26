@@ -41,10 +41,15 @@ file is the short "what changed for someone who installs it" list.
   compare. `FOOTAGE.md` names each group and its size. The first scan after updating
   re-scans the photos only — their cache entries gained the capture time and
   sharpness — and every video clip stays cached.
-- **Known, not fixed:** beside video whose colour is not described (or described
-  differently from a photo's BT.709), the reel's master mixes colour descriptions and
-  its check reads the wrong frames: `grade_faithful` refuses a correct reel. Camera
-  footage described as BT.709 delivers. Design 2026-10-21 §7.
+- **A photo takes the colour description of the video beside it**, as it takes its
+  clock. Every photo was written BT.709; beside video that describes no colour, the
+  reel's master changed description at the photo, ffmpeg carried it onto the video
+  after it (whose colours then decoded 21 codes off) and restarted its frame count
+  there, so `grade_faithful` read the wrong frames and refused a correct reel. Now an
+  undescribed video gives an undescribed photo, converted by the BT.601 matrix ffmpeg
+  reads it with, and a described one its own matrix and tags; a reel of photos alone
+  stays BT.709. Two video clips described differently (two cameras) still mix in the
+  master, as before. Design 2026-10-21 §7.
 
 ## 0.27.0 — 2026-10-21
 

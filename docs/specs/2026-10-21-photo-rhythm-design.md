@@ -24,9 +24,10 @@ slice:
   photo's score is meaningless beside video's (motion 0 ranks it lowest, shake 0 highest)
   is closed by ranking photos among photos.
 
-The segment contract itself (rate, timescale, SAR, range, BT.709 tags) shipped in
+The segment contract itself (rate, timescale, SAR, range, colour tags) shipped in
 0.26.0; what was missing is a reel that proves it with video, a photo and a freeze in
-one master, which §6 adds.
+one master, which §6 adds — and whose building found the colour half wrong beside
+undescribed video, so a photo now takes the video's own description (§7).
 
 ## §1 · Held episodes
 
@@ -266,8 +267,10 @@ codes from it, 5.49 from the frame before). Five mutations each turn a test red:
 flashes to deliver, no shutters to mix, the freeze one frame early, every band held
 2.0 s, the photo on the default clock.
 
-The clip is full range with a BT.709 description, as camera footage arrives. Beside
-undescribed video the same reel does not deliver — see §7.
+Every test runs on two clips: full range with a BT.709 description, as camera footage
+arrives, and one that describes no colour at all. Both deliver, and every episode clip
+and every decoded frame of the master carries the video's description — the photo's
+included (§7). Before the fix the undescribed reel was refused.
 
 ## §7 · Honest limits
 
@@ -306,18 +309,40 @@ undescribed video the same reel does not deliver — see §7.
   the same bound, so both land on the episode before it. A held closer can be that
   short: `HOLD_MIN` is 1/3 s.
 - **The master is spliced by `-c copy`, and nothing makes the episodes' colour
-  descriptions agree.** A photo segment is always described BT.709/tv (still.render
-  stamps it); a video segment carries whatever its source carried. Measured while
-  building §6's proof on an undescribed 24 fps test clip: the master read back with
-  every frame from two frames before the photo onward described BT.709/tv — ffmpeg's
-  decoder keeps a colour description for later frames whose own parameter sets carry
-  none — and that change of frame properties re-initializes the filter graph mid-decode,
-  restarting `select`'s `n`, so a by-number read returns the right count of the wrong
-  frames. `format=gray` also reads a described frame differently from an undescribed one
-  with the same Y plane (14.2 codes mean on testsrc2). `check_reel`'s `grade_faithful`
-  read residuals 0, 34, 76 and 16 against its 4.0 bar on a correctly rendered reel and
-  refused it. Two cameras described differently restart the filter graph the same way
-  without the carried-over description: BT.601-described clips either side of a BT.709
-  one decode right in full, and a by-number read past the change came back 8.4 and 5.7
-  codes off. Deliver's look gate reads the master by frame number too; the delivered
-  file is one encode, written with one description.
+  descriptions agree** — so a photo takes its neighbours'. The first version stamped
+  every photo segment BT.709/tv. Measured while building §6's proof on an undescribed
+  24 fps test clip: the master read back with every frame from two frames before the
+  photo onward described BT.709/tv — ffmpeg's decoder keeps a colour description for
+  later frames whose own parameter sets carry none — and that change of frame
+  properties re-initializes the filter graph mid-decode, restarting `select`'s `n`, so
+  a by-number read returns the right count of the wrong frames. `format=gray` also
+  reads a described frame differently from an undescribed one with the same Y plane
+  (14.2 codes mean on testsrc2), and through ffmpeg's own RGB decode the inherited
+  description moves the video's saturated colours 21 codes. `check_reel`'s
+  `grade_faithful` read residuals 0, 34, 76 and 16 against its 4.0 bar on a correctly
+  rendered reel and refused it.
+  **Shipped (fix round):** the photo segment takes the colour description of the EDL's
+  first video segment, exactly as it takes that segment's clock (`still.colour_of`, then
+  `still.Colour` in `render`). A described segment's matrix converts the photo and its
+  tags — only the ones it names — are stamped on the frames; an undescribed segment
+  gives an undescribed photo, converted by BT.601, the matrix ffmpeg decodes an
+  undescribed frame with (measured on 8.1.2 at 640x360, 1920x1080 and portrait alike).
+  A player that reads undescribed HD as BT.709 now misreads the photo exactly as it
+  reads the video, so the reel keeps one look. The range stays tv (extract's contract);
+  a reel of photos alone keeps BT.709; the `.still.json` record names the description
+  and the segment it came from; a matrix `scale` cannot convert into (`gbr`, `ycgco`, …)
+  is refused by name. The proof: `test_photo_segment.py` splices video, photo, video
+  for undescribed, BT.709 and SMPTE 170M video and decodes every frame within 4 codes,
+  with the old stamp as its control; and §6's reel delivers on both clips.
+  **Still open, and not caused by photos:** two video clips described differently —
+  BT.601 beside BT.709, two cameras — restart the filter graph the same way:
+  BT.601-described clips either side of a BT.709 one decode right in full, and a
+  by-number read past the change came back 8.4 and 5.7 codes off. Deliver's look gate
+  reads the master by frame number too; the delivered file is one encode, written with
+  one description. And the photo follows the FIRST video segment: a reel whose cameras
+  disagree gives the photo one of their descriptions.
+- **A photo's pixels are sRGB, and only the matrix is converted.** Stamped with
+  SMPTE 170M or BT.470BG primaries, or a BT.2020/HDR description, the photo is not
+  converted into that gamut or transfer: ffmpeg's decode (what every sensor here reads)
+  is exact, but a colour-managed player shows it under the video's primaries and curve.
+  Not measured; no such footage has been seen.
