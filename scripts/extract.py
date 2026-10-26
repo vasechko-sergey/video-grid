@@ -1,5 +1,6 @@
 """Cut an EDL window into a standalone fragment (spec §5.8, §12) — or, for a photo,
-render its move into one (design docs/specs/2026-10-20-photos-design.md §4)."""
+render its move into one (design docs/specs/2026-10-20-photos-design.md §4), or for a
+freeze, hold one frame (docs/specs/2026-10-21-photo-rhythm-design.md §3)."""
 import argparse
 import json
 from pathlib import Path
@@ -16,6 +17,8 @@ from scripts.lib.project import ProjectConfig, resolve_manifest
 PHOTO_RATE = ("30/1", 15360)   # a reel of photos alone: 30 fps, ffmpeg's own mp4 timescale
                                # for it. With any video in the EDL its first segment's clock
                                # is used instead (design 2026-10-20 §4).
+PHOTO_COLOUR = still.BT709     # ...and BT.709; with video, that segment's colour
+                               # description (design 2026-10-21 §7)
 
 _LEN_EPS = 0.05    # seconds of slack beyond one frame — a re-encoded window lands ±1 frame
 
@@ -52,6 +55,35 @@ def extract(src: str, start: float, dur: float, out: str, crf: int = 18) -> str:
         "-vf", "scale=in_range=auto:out_range=tv", "-color_range", "tv",
         "-c:v", "libx264", "-crf", str(crf), "-preset", "medium",
         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", out,
+    ]
+    proc.run(cmd)
+    return out
+
+
+def extract_freeze(prev_segment: str, dur: float, out: str, crf: int = 18) -> str:
+    """The LAST decoded frame of `prev_segment` — the previous episode's own segment —
+    held for `dur` at that segment's rate (design 2026-10-21 §3): a video segment like
+    extract's, on the same range contract, whose frames are one frame cloned.
+
+    The frame is taken by COUNT (`trim=start_frame=n-1`), so it is the last one the
+    previous episode shows by construction. A source time cannot promise that: which
+    source frames extract's output-side `-ss`/`-t` keeps depends on both ends' phase
+    against the frame grid, and measured over 28 random off-grid cuts the time
+    `start + dur - 1/fps` named a NEIGHBOUR of the segment's last frame in 5, in both
+    directions (tests/integration/test_freeze.py carries three of them). A ramped previous
+    segment is already retimed when this runs, so its last frame is the one that plays.
+
+    NO `-ss` at all: the trim is the selection. No audio: the sound stopping on a freeze
+    is part of the effect."""
+    n = assembly.count_frames(prev_segment)
+    hold = max(1, round(dur * assembly.probe_stream(prev_segment).fps))
+    cmd = [
+        ffbin.ffmpeg(), "-y", "-i", prev_segment,
+        # the same range pair extract carries, for the same contract (design 2026-08-27)
+        "-vf", f"trim=start_frame={n - 1},setpts=PTS-STARTPTS,"
+               f"tpad=stop_mode=clone:stop={hold - 1},scale=in_range=auto:out_range=tv",
+        "-color_range", "tv", "-an",
+        "-c:v", "libx264", "-crf", str(crf), "-preset", "medium", "-pix_fmt", "yuv420p", out,
     ]
     proc.run(cmd)
     return out
@@ -96,7 +128,8 @@ def _photo_delivery(edl: EDL, photos: list[int], segments: dict[int, str],
 
 
 def render_photo(ep: EDLEpisode, src: str, out: str, project: ProjectConfig,
-                 rate: tuple[str, int], delivery: Delivery | None = None) -> dict:
+                 rate: tuple[str, int], delivery: Delivery | None = None, *,
+                 colour: still.Colour, colour_from: str | None) -> dict:
     """One photo episode into `out` (design 2026-10-20 §2-§4), and the record of it.
 
     The layout comes through the SAME bridge every episode's manifest does
@@ -104,7 +137,9 @@ def render_photo(ep: EDLEpisode, src: str, out: str, project: ProjectConfig,
     will find: the segment is sized to what reframe would scale it to — the delivered
     canvas for fill, the content rect for fit/insert — and shaped to the layout's crop
     aspect, so reframe's crop is the whole segment. `delivery` overrides the project's
-    for the sizing only (_photo_delivery)."""
+    for the sizing only (_photo_delivery). `colour` is the description the segment is
+    written in, and `colour_from` the segment it was read off (None: a reel of photos
+    alone), both kept in the record."""
     m = _manifest(ep, out, project)
     st = still.load(src)
     rl = layout_lib.resolve(_layout_of(m), m.canvas, st.dims,
@@ -116,12 +151,14 @@ def render_photo(ep: EDLEpisode, src: str, out: str, project: ProjectConfig,
     num, den = (float(v) for v in rate[0].split("/"))
     pl = kenburns.plan(st.dims, rl.crop_aspect, m.crop_scale, subject, m.composition,
                        m.grid, move, max(1, round(ep.dur * num / den)))
-    facts = still.render(st, pl.frames, tuple(out_dims), rate[0], out, timescale=rate[1])
+    facts = still.render(st, pl.frames, tuple(out_dims), rate[0], out, colour=colour,
+                         timescale=rate[1])
     return {"source": ep.source, "decode": st.record, "people": len(boxes),
             "canvas_px": [rl.out_w, rl.out_h],
             "subject": None if subject is None else subject.to_list(),
             "layout": rl.mode, "aspect": list(rl.crop_aspect), "out_dims": list(out_dims),
-            "rate": rate[0], "frames": len(pl.frames), "base": pl.base.to_list(),
+            "rate": rate[0], "colour": {"from": colour_from, **colour.to_dict()},
+            "frames": len(pl.frames), "base": pl.base.to_list(),
             "anchor": [round(v, 3) for v in pl.anchor],
             "first": pl.frames[0].to_list(), "last": pl.frames[-1].to_list(),
             "move": {"planned": pl.planned.to_dict(), "applied": pl.applied.to_dict(),
@@ -137,8 +174,12 @@ def extract_edl(edl: EDL, footage_root: str, seg_dir: str,
 
     A photo episode is RENDERED into the same name (render_photo), with its record
     beside it as ep{i}_raw.still.json. It needs `project` for the canvas and the
-    delivery, and takes the clock of the EDL's first video segment, so the videos are
-    cut first."""
+    delivery, and takes the clock and the colour description of the EDL's first video
+    segment, so the videos are cut first.
+
+    A freeze (design 2026-10-21 §3) is cut in the video loop by extract_freeze from the
+    previous episode's segment, under the same length gate. EDL never lets one open the
+    cut, so the photos' clock still comes from a played window."""
     Path(seg_dir).mkdir(parents=True, exist_ok=True)
     photos = [i for i, ep in enumerate(edl.episodes) if runlayout.is_photo(ep.source)]
     if photos and project is None:
@@ -160,13 +201,27 @@ def extract_edl(edl: EDL, footage_root: str, seg_dir: str,
             raise ValueError(f"EDL episode {i} source not found: {src!r} "
                              f"(footage_root={footage_root!r} + source={ep.source!r})")
         out = str(Path(seg_dir) / f"ep{i}_raw.mp4")
-        extract(src, ep.start, ep.dur, out)
+        if ep.freeze:
+            # The previous episode's segment, finished one iteration ago — cut, and
+            # retimed in place when it ramps — because this loop runs in reel order and
+            # photos are rendered after it. EDL refuses a freeze that does not follow a
+            # played window; this guards the ORDER, which a reshuffle of this loop would
+            # otherwise break silently (the freeze would hold a stale or missing file).
+            if i - 1 not in segments:
+                raise ValueError(f"EDL episode {i} is a freeze, and episode {i - 1} has no "
+                                 f"played segment cut before it to take the last frame "
+                                 f"from — a freeze must follow a played video window")
+            extract_freeze(segments[i - 1], ep.dur, out)
+        else:
+            extract(src, ep.start, ep.dur, out)
         probed, fps = _probe_dur(out), assembly.probe_stream(out).fps
         if probed + 1.0 / fps + _LEN_EPS < ep.dur:
-            raise ValueError(
-                f"EDL episode {i} segment is {probed:.3f}s — shorter than its {ep.dur}s window "
-                f"(source {src!r} start={ep.start}); the window runs past the clip. Trim the window "
-                "or fix the in-point.")
+            what = (f"{ep.dur}s hold of episode {i - 1}'s last frame ({segments.get(i - 1)}); "
+                    f"the encode lost frames" if ep.freeze else
+                    f"{ep.dur}s window (source {src!r} start={ep.start}); the window runs past "
+                    f"the clip. Trim the window or fix the in-point.")
+            raise ValueError(f"EDL episode {i} segment is {probed:.3f}s — shorter than its "
+                             f"{what}")
         if ep.ramp is not None:
             # A PRE-STAGE writing a file, exactly like vidstab.stabilize and for
             # the same reason (design §4): the route must be measured on the
@@ -184,14 +239,17 @@ def extract_edl(edl: EDL, footage_root: str, seg_dir: str,
             Path(ramped).replace(out)
         segments[i] = out
     if photos:
-        rate = assembly.probe_rate(segments[min(segments)]) if segments else PHOTO_RATE
+        first = segments[min(segments)] if segments else None
+        rate = assembly.probe_rate(first) if first else PHOTO_RATE
+        colour = still.colour_of(first) if first else PHOTO_COLOUR
         delivery = _photo_delivery(edl, photos, segments, footage_root, project)
         track.ensure_model(track.MODEL)     # the subject pass needs the weights on disk
         for i in photos:
             ep = edl.episodes[i]
             out = str(Path(seg_dir) / f"ep{i}_raw.mp4")
             record = render_photo(ep, str(Path(footage_root) / ep.source), out, project, rate,
-                                  delivery)
+                                  delivery, colour=colour,
+                                  colour_from=Path(first).name if first else None)
             Path(out).with_suffix(runlayout.STILL_SIDECAR).write_text(json.dumps(record, indent=2))
             probed = _probe_dur(out)
             num, den = (float(v) for v in rate[0].split("/"))

@@ -1,6 +1,10 @@
-"""lib/still: the one photo decoder and the subject rule (design 2026-10-20 §1, §2)."""
+"""lib/still: the one photo decoder, the subject rule and the colour a photo segment takes
+(design 2026-10-20 §1, §2, §4; 2026-10-21 §7)."""
+import datetime as dt
 import io
+import json
 import shutil
+import struct
 import subprocess
 import sys
 import types
@@ -203,3 +207,222 @@ def test_a_jpeg_named_heic_is_still_turned_by_its_exif_tag(tmp_path):
     st = still.load(named)
     assert st.dims == (800, 1200) and _near(st.rgb[5, 800 - 6], RED)
     assert st.record["orientation"] == 6
+
+
+# --- capture time (design 2026-10-21 §5) -------------------------------------------
+
+def _dated_jpeg(path: Path, date=None, subsec=None, offset=None, im=None) -> Path:
+    """A JPEG whose EXIF IFD carries the three capture-time tags given (None = absent)."""
+    ex = Image.Exif()
+    ifd = ex.get_ifd(still.EXIF_IFD)
+    for tag, v in ((still.DATE_ORIGINAL, date), (still.SUBSEC_ORIGINAL, subsec),
+                   (still.OFFSET_ORIGINAL, offset)):
+        if v is not None:
+            ifd[tag] = v
+    (im or _marked(64, 48)).save(path, exif=ex.tobytes(), quality=95)
+    return path
+
+
+def _epoch(*ymdhms, tz=0.0) -> float:
+    return dt.datetime(*ymdhms, tzinfo=dt.timezone(dt.timedelta(hours=tz))).timestamp()
+
+
+def test_the_capture_time_is_read_from_exif_with_subseconds_and_offset(tmp_path):
+    st = still.load(_dated_jpeg(tmp_path / "a.jpg", "2026:10:21 12:34:56", "25", "+02:00"))
+    assert st.record["taken"] == _epoch(2026, 10, 21, 12, 34, 56, tz=2.0) + 0.25
+
+
+@pytest.mark.parametrize("sub, frac", [("5", 0.5), ("007", 0.007), ("12345", 0.12345)])
+def test_subseconds_are_digits_of_a_fraction_not_a_count(tmp_path, sub, frac):
+    # three digits alone cannot tell a fraction from a millisecond count: "5" and
+    # "12345" can
+    st = still.load(_dated_jpeg(tmp_path / "a.jpg", "2026:10:21 12:34:56", sub, "-05:30"))
+    assert st.record["taken"] == _epoch(2026, 10, 21, 12, 34, 56, tz=-5.5) + frac
+
+
+def test_a_date_without_subseconds_or_offset_is_read_as_whole_seconds_utc(tmp_path):
+    st = still.load(_dated_jpeg(tmp_path / "a.jpg", "2026:10:21 12:34:56"))
+    assert st.record["taken"] == _epoch(2026, 10, 21, 12, 34, 56)
+
+
+def test_two_photos_a_burst_apart_differ_by_the_burst_interval(tmp_path):
+    a = still.load(_dated_jpeg(tmp_path / "a.jpg", "2026:10:21 12:34:56", "900"))
+    b = still.load(_dated_jpeg(tmp_path / "b.jpg", "2026:10:21 12:34:57", "200"))
+    assert round(b.record["taken"] - a.record["taken"], 6) == 0.3
+
+
+def test_a_photo_without_a_capture_time_has_no_taken_key(tmp_path):
+    p = tmp_path / "plain.png"
+    _marked(64, 48).save(p)
+    assert "taken" not in still.load(p).record
+    assert "taken" not in still.load(_dated_jpeg(tmp_path / "o.jpg", subsec="5",
+                                                 offset="+01:00")).record
+
+
+@pytest.mark.parametrize("date", ["garbage", "0000:00:00 00:00:00", "2026:13:40 99:99:99",
+                                  "2026-10-21 12:34:56", ""])
+def test_an_unparseable_date_is_absent_never_a_failure(tmp_path, date):
+    st = still.load(_dated_jpeg(tmp_path / "a.jpg", date, "12", "+02:00"))
+    assert "taken" not in st.record and st.dims == (64, 48)
+
+
+@pytest.mark.parametrize("offset", ["zz", "+24:00", "+05:99"])
+def test_garbage_subseconds_and_offset_leave_the_date_standing(tmp_path, offset):
+    # "+24:00" is past what dt.timezone accepts and would raise outside any guard;
+    # "+05:99" would otherwise read as UTC+06:39
+    st = still.load(_dated_jpeg(tmp_path / "a.jpg", "2026:10:21 12:34:56", "x1", offset))
+    assert st.record["taken"] == _epoch(2026, 10, 21, 12, 34, 56)
+
+
+# an EXIF IFD pointer of a SIGNED type holding -1: Pillow seeks the sub-IFD at offset -1
+_SIGNED_IFD_POINTER = (b"Exif\x00\x00II*\x00" + struct.pack("<L", 8) + struct.pack("<H", 1)
+                       + struct.pack("<HHLl", still.EXIF_IFD, 9, 1, -1) + struct.pack("<L", 0))
+
+
+@pytest.mark.parametrize("dpi", [None, (72, 72)], ids=["no-density", "jfif-density"])
+@pytest.mark.parametrize("exif", [b"Exif\x00\x00garbagegarbage",     # SyntaxError
+                                  b"Exif\x00\x00II*\x00",             # struct.error
+                                  _SIGNED_IFD_POINTER],                # ValueError
+                         ids=["not-a-tiff-header", "header-cut-short", "signed-ifd-pointer"])
+def test_an_exif_block_pillow_cannot_parse_never_stops_the_decode(tmp_path, exif, dpi):
+    """Without a JFIF density Pillow reads the EXIF at open, for a DPI, and swallows a
+    broken block itself; with one, the block's error reaches still.load — which is why
+    the first version of this test, written without a density, proved nothing (the
+    2026-10-21 review's I1). Each payload is one of the three errors measured."""
+    p = tmp_path / "g.jpg"
+    _marked(64, 48).save(p, exif=exif, **({"dpi": dpi} if dpi else {}))
+    st = still.load(p)
+    assert "taken" not in st.record and st.dims == (64, 48)
+    assert st.record["orientation"] == 1                # an unreadable tag turns nothing
+
+
+def test_a_heif_whose_exif_pillow_cannot_parse_still_decodes(tmp_path, monkeypatch):
+    """pi_heif hands Pillow an EXIF block with a wrong 4-byte offset prefix shifted
+    ("bad EXIF data, skip first 4 bytes"), so no TIFF header survives. Stubbed: nothing
+    here can write a HEIF with that quirk."""
+    ex = Image.Exif()
+    ex.get_ifd(still.EXIF_IFD)[still.DATE_ORIGINAL] = "2026:10:21 12:34:56"
+    shifted = b"\x00\x00" + ex.tobytes().removeprefix(b"Exif\x00\x00")
+    p = tmp_path / "h.png"
+    _marked(64, 48).save(p)
+    real_open = Image.open
+
+    def heif_open(path, *a, **k):
+        im = real_open(path, *a, **k)
+        im.format = "HEIF"
+        im.info["exif"] = shifted
+        return im
+
+    monkeypatch.setattr(still.Image, "open", heif_open)
+    st = still.load(p)
+    assert st.record["decoder"] == "HEIF" and "taken" not in st.record
+    assert st.dims == (64, 48)
+
+
+@needs_sips
+def test_a_heic_carries_its_capture_time_the_same_way(tmp_path):
+    """pi_heif cannot ENCODE (no HEIF encoder in its build), so sips writes the fixture;
+    sips carries the JPEG's EXIF into the HEIF, and pi_heif hands it to Pillow."""
+    jpg = _dated_jpeg(tmp_path / "a.jpg", "2026:10:21 12:34:56", "5", "+02:00")
+    heic = tmp_path / "a.heic"
+    subprocess.run(["sips", "-s", "format", "heic", str(jpg), "--out", str(heic)],
+                   check=True, capture_output=True)
+    st = still.load(heic)
+    assert st.record["decoder"] == "HEIF"
+    assert st.record["taken"] == _epoch(2026, 10, 21, 12, 34, 56, tz=2.0) + 0.5
+
+
+def _render_cmd(monkeypatch, colour) -> list[str]:
+    """The ffmpeg argv render() feeds its frames to, with the frames never computed."""
+    seen = {}
+    monkeypatch.setattr(still.ffbin, "ffmpeg", lambda: "FFMPEG")
+    monkeypatch.setattr(still.proc, "feed", lambda cmd, chunks: seen.setdefault("cmd", cmd))
+    st = still.Still(rgb=np.zeros((90, 160, 3), np.uint8), record={})
+    still.render(st, [Rect(0.0, 0.0, 160.0, 90.0)] * 3, (160, 90), "24/1", "out.mp4",
+                 colour=colour)
+    return seen["cmd"]
+
+
+def _vf(cmd: list[str]) -> str:
+    return cmd[cmd.index("-vf") + 1]
+
+
+def test_a_photo_beside_described_video_converts_with_its_matrix_and_takes_its_tags(
+        monkeypatch):
+    """Design 2026-10-21 §7: the photo's segment is described exactly as the video beside
+    it — what it names, and nothing it does not — so the `-c copy` master never changes
+    description at the photo. Range is tv either way: extract's contract."""
+    cmd = _render_cmd(monkeypatch, still.Colour(space="smpte170m"))
+    assert _vf(cmd) == ("scale=out_color_matrix=smpte170m:out_range=tv,format=yuv420p,"
+                        "setsar=1,setparams=colorspace=smpte170m:color_primaries=unknown:"
+                        "color_trc=unknown:range=tv")
+    assert cmd[cmd.index("-color_range") + 1] == "tv"
+
+
+def test_a_photo_beside_undescribed_video_is_undescribed_and_converted_as_ffmpeg_reads_it(
+        monkeypatch):
+    """No tag at all, so the photo decodes like its neighbours under any reader; and the
+    matrix is the one ffmpeg decodes an undescribed frame with, BT.601 (measured on 8.1.2
+    at 640x360 and 1920x1080 alike), so ffmpeg reads the photo's colours back."""
+    assert _vf(_render_cmd(monkeypatch, still.Colour())) == (
+        "scale=out_color_matrix=bt601:out_range=tv,format=yuv420p,setsar=1,"
+        "setparams=colorspace=unknown:color_primaries=unknown:color_trc=unknown:range=tv")
+
+
+def test_a_reel_of_photos_alone_keeps_the_bt709_stamp(monkeypatch):
+    # byte-for-byte the filter every photo segment carried before 0.28.0's fix round
+    assert _vf(_render_cmd(monkeypatch, still.BT709)) == (
+        "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,"
+        "setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv")
+
+
+def test_a_matrix_scale_cannot_write_is_refused_by_name(monkeypatch):
+    with pytest.raises(ValueError, match="'ycgco' matrix, which scale cannot convert"):
+        still.Colour(space="ycgco")
+    _probed(monkeypatch, {"color_space": "gbr"})        # the segment it came off, named
+    with pytest.raises(ValueError, match="^ep0_raw.mp4: the video is described with the 'gbr'"):
+        still.colour_of("ep0_raw.mp4")
+
+
+def test_the_description_is_recorded_with_the_matrix_it_converted_by():
+    assert still.Colour().to_dict() == {"space": None, "primaries": None, "transfer": None,
+                                        "matrix": "bt601", "range": "tv"}
+    assert still.BT709.to_dict() == {"space": "bt709", "primaries": "bt709",
+                                     "transfer": "bt709", "matrix": "bt709", "range": "tv"}
+
+
+def _probed(monkeypatch, stream: dict):
+    seen = {}
+    monkeypatch.setattr(still.ffbin, "ffprobe", lambda: "FFPROBE")
+
+    def run(cmd, **kw):
+        seen["cmd"] = cmd
+        return types.SimpleNamespace(stdout=json.dumps({"streams": [stream]}).encode())
+    monkeypatch.setattr(still.proc, "run", run)
+    return seen
+
+
+def test_colour_of_reads_the_segments_tags_and_none_where_it_names_none(monkeypatch):
+    seen = _probed(monkeypatch, {"color_space": "bt709", "color_range": "tv"})
+    assert still.colour_of("ep0_raw.mp4") == still.Colour(space="bt709")
+    assert seen["cmd"][-1] == "ep0_raw.mp4" and "v:0" in seen["cmd"]
+    # ffprobe's own name for an unspecified field reads as no field
+    _probed(monkeypatch, {"color_space": "unknown", "color_primaries": "unknown"})
+    assert still.colour_of("x.mp4") == still.Colour()
+    _probed(monkeypatch, {"color_space": "bt470bg", "color_primaries": "bt470bg",
+                          "color_transfer": "bt470bg"})
+    assert still.colour_of("x.mp4") == still.Colour("bt470bg", "bt470bg", "bt470bg")
+
+
+def test_colour_of_refuses_a_segment_off_the_tv_range_contract(monkeypatch):
+    _probed(monkeypatch, {"color_space": "bt709", "color_range": "pc"})
+    with pytest.raises(ValueError, match="x.mp4 is pc range.*extract"):
+        still.colour_of("x.mp4")
+
+
+def test_colour_of_refuses_a_file_with_no_video_stream(monkeypatch):
+    monkeypatch.setattr(still.ffbin, "ffprobe", lambda: "FFPROBE")
+    monkeypatch.setattr(still.proc, "run", lambda cmd, **kw: types.SimpleNamespace(
+        stdout=json.dumps({"streams": []}).encode()))
+    with pytest.raises(RuntimeError, match="x.mp4 has no video stream"):
+        still.colour_of("x.mp4")

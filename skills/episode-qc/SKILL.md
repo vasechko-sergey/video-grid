@@ -53,8 +53,9 @@ place of `check_episode`'s mechanical gates — those already ran, inside
   at.
 - Nothing else. No `FOOTAGE.json`, no `SPEC.json` — each episode's own
   manifest already carries its declared intent (`composition`/`grid`/`hero`/
-  `target_dur`/`layout`/`pan`/`stabilize`/`still`/`canvas`), and `pack` puts it
-  straight into that episode's `evidence.json`.
+  `target_dur`/`layout`/`pan`/`stabilize`/`still`/`freeze`/`canvas`), and `pack`
+  puts it straight into that episode's `evidence.json`, beside `shutter` —
+  whether `EPISODES.json`'s `shutters` accents this episode's cut.
 
 ## The Process
 
@@ -289,6 +290,18 @@ project. If `"$VG"` says there is no runtime, it has not been set up yet: run th
   move was rendered with nothing tracked — no tracked subject, no marker. Report
   the axis as not-judgeable (a real finding, `route: "none"`), never as a
   silent pass.
+- **A freeze is one frame held on purpose.** `intent.freeze` set means the
+  previous episode's last frame, held "like a photograph" (design 2026-10-21
+  §3): every frame of its strip is the same frame, which is the intent and not a
+  stalled render. Its `path` and motion are not judgeable — report `path` as
+  not-judgeable (a minor finding, `route: "none"`), as for a pan or a photo. Nothing
+  re-renders a freeze — its framing and grade are the previous episode's — so a
+  composition finding on it routes `edit-plan` (drop the freeze, or move the
+  previous window's end), a colour finding routes as on the previous episode, and
+  neither routes `reprocess`. With
+  `intent.shutter` set, the white flash and the shutter click are added at
+  delivery and are NOT in the clip the judge sees, so their absence is not a
+  finding either.
 - **N judges per run is the accepted cost of this gate.** A 20-episode reel
   dispatches 20 subagents. Sampling was rejected — an unjudged episode is
   exactly what the run this stage answers for shipped.

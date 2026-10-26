@@ -11,8 +11,15 @@ with NO plateau, so on a 9:16 canvas it is a top-and-bottom dimmer, not a vignet
 angle while the corner is only at 0.413 (design §2.1). The mask below holds an
 untouched plateau to 55% of the corner radius and darkens only past it, and a
 one-shot mask + overlay renders it 26x cheaper than the equivalent per-frame geq
-(design §2.2)."""
+(design §2.2).
+
+It also owns the shutter accent's white flash (design 2026-10-21 §4): the filters,
+and the windows around each one the look gate must not sample."""
+import math
+from collections.abc import Sequence
 from dataclasses import dataclass
+
+from scripts.lib.color import TV_LO, TV_SPAN
 
 LOOK_VIGNETTE_MAX = 0.6      # past this the corners read as a black border, not a vignette
 LOOK_FADE_MAX = 2.0          # seconds per end; a 2.0s bookend already needs a >=4s reel
@@ -21,6 +28,14 @@ VIGNETTE_FALLOFF = 0.45      # 1 - PLATEAU: the rest of the ramp. Named, not inl
                              # because the mask expression divides by it and a 0 here
                              # would be a division by zero rather than "no falloff".
 _CORNER = 1.41421356         # sqrt(2) — normalizes the corner distance to 1
+FLASH_ALPHA = (0.85, 0.5, 0.2)   # the shutter flash's white, one frame at each opacity:
+                                 # a convention from the 2026-10-20 research (a minimal
+                                 # dip on the cut), not measured on a real run (design
+                                 # 2026-10-21 §7)
+FLASH_FRAMES = len(FLASH_ALPHA)
+# White in the planes a master carries — 8-bit tv yuv420p (extract's range contract,
+# color.refuse_ungradeable_plane): luma 235, chroma at its neutral 128.
+_WHITE_Y, _NEUTRAL_C = TV_LO + TV_SPAN, 128
 
 
 def _num(v: object) -> bool:
@@ -165,20 +180,124 @@ def fade_args(fade: float, dur: float, fade_in: float | None = None) -> list[str
     return out
 
 
-def chain(spec: "LookSpec | None", dur: float, titles: str = "") -> list[str]:
+def _flash_inputs(times: Sequence[float], fps: float) -> None:
+    """The shared refusal of flash_args and flash_windows: both turn a cut time into
+    frame instants, and neither can do that without a real rate and a real time."""
+    if not times:
+        return
+    if not _num(fps) or not math.isfinite(fps) or fps <= 0:
+        raise ValueError(
+            f"a shutter flash needs the reel's fps — a positive number, the flash being "
+            f"{FLASH_FRAMES} frames long — got {fps!r}; deliver probes it off the master")
+    for t in times:
+        if not _num(t) or not math.isfinite(t) or t < 0:
+            raise ValueError(
+                f"a shutter flash's time must be a non-negative number of seconds on the "
+                f"master (the cut it sits on), got {t!r}; build_reel derives it from the "
+                f"probed clip durations")
+
+
+def flash_args(times: Sequence[float], fps: float) -> list[str]:
+    """The shutter accent's white flash (design 2026-10-21 §4): for each cut time,
+    one `lutyuv` per frame of FLASH_ALPHA, moving every sample of every plane the
+    opacity's fraction of the way to white: `a·white + (1−a)·picture`.
+
+    A per-plane LUT and not `drawbox ... color=white@a:t=fill`, because drawbox blends
+    a 4:2:0 chroma sample once per LUMA pixel it covers — four times — so its chroma
+    alpha is 1−(1−a)^4. Measured over flat patches of seven colours, decoded to RGB:
+    drawbox missed the blend by up to 67 codes in one channel (yellow's blue at
+    a=0.5) where luma moved by `a`, and this LUT lands within 3.4 codes on every
+    channel. `round` because lutyuv truncates the expression, which put every frame a
+    code or two low (the proof: tests/integration/test_shutter.py).
+
+    Frame k of a flash at `t` is the frame in [t + k/fps, t + (k+1)/fps). `between`
+    is closed at both ends, so that window written as-is enables two frames when `t`
+    sits on the frame grid; it is written shifted back half a frame instead —
+    [t + (k-0.5)/fps, t + (k+0.5)/fps] — whose edges fall half a frame from any
+    frame, so a cut time a hair off the grid (it is a sum of probed float durations)
+    still enables exactly that one frame. The enable value is single-quoted because
+    it carries commas, which would otherwise split the filter chain (CLAUDE.md); the
+    plane expressions carry none and are quoted anyway, so an edit that adds one
+    cannot split it either.
+
+    [] with no times: no filter, so a delivery with no accent keeps its argv."""
+    _flash_inputs(times, fps)
+    out = []
+    for t in times:
+        for k, a in enumerate(FLASH_ALPHA):
+            lo, hi = max(0.0, t + (k - 0.5) / fps), t + (k + 0.5) / fps
+            y, c = (f"'round(val+({w:g}-val)*{a:g})'" for w in (_WHITE_Y, _NEUTRAL_C))
+            out.append(f"lutyuv=y={y}:u={c}:v={c}:"
+                       f"enable='between(t,{lo:.6f},{hi:.6f})'")
+    return out
+
+
+def flash_windows(times: Sequence[float], fps: float) -> list[tuple[float, float]]:
+    """The span around each flash that a delivered-vs-master comparison must not
+    sample: [t - 1/fps, t + (FLASH_FRAMES + 1)/fps), a whole frame of margin either
+    side of the flashed frames, because the look gate picks frames by rounding a time
+    to a frame number and the flash exists only in the delivered file."""
+    _flash_inputs(times, fps)
+    return [(t - 1 / fps, t + (FLASH_FRAMES + 1) / fps) for t in times]
+
+
+def clear_of_flash(t: float, windows: Sequence[tuple[float, float]], *,
+                   before: bool = False) -> float:
+    """`t` itself when no window holds it, else the end of the window that does — or,
+    with `before`, one frame before that window's start, for a sample that must not
+    move later (reel_review's ending still, whose later side is the bookend fade) —
+    repeated, since either can sit inside another flash's window. The one membership
+    rule (lo <= t < hi) every sample of a flashed delivery is judged by: a time is
+    clear exactly when this returns it unchanged."""
+    moved = True
+    while moved:
+        moved = False
+        for lo, hi in windows:
+            if lo <= t < hi:
+                # flash_windows makes a window FLASH_FRAMES + 2 frames long, so this is
+                # one of its frames: the start itself is inside, a frame before is not
+                t = lo - (hi - lo) / (FLASH_FRAMES + 2) if before else hi
+                moved = True
+    return t
+
+
+def flash_free(lo: float, hi: float,
+               windows: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
+    """The parts of [lo, hi] outside every window, in time order; empty when flashes
+    cover the whole span. A part is closed and ends AT the next window's start, an
+    instant clear_of_flash counts as inside — so only a part's interior is clear, and
+    _title_times takes a part's midpoint, never its end."""
+    parts, at = [], lo
+    for w_lo, w_hi in sorted(windows):
+        if w_hi <= at or w_lo >= hi:
+            continue
+        if w_lo > at:
+            parts.append((at, w_lo))
+        at = max(at, w_hi)
+    if at < hi:
+        parts.append((at, hi))
+    return parts
+
+
+def chain(spec: "LookSpec | None", dur: float, titles: str = "",
+          flashes: Sequence[str] = ()) -> list[str]:
     """The video filters deliver applies AFTER the vignette overlay, in the ONE
-    correct order: the title drawtext, then the bookend fade.
+    correct order: the shutter flashes (flash_args' filters), the title drawtext,
+    then the bookend fade.
 
     The fade is last and that is MEASURED, not a preference: with it last the first
     delivered frame reads 0.0 — the title goes to black with the picture. Put it
     before the drawtext and the title burns on at full brightness over a black
-    frame (design §4).
+    frame (design §4). The flashes come first for the same reason: a fade after them
+    still darkens a flash at t=0, and a title drawn after them sits on the white
+    rather than under it. That keeps the title from being washed out, not legible:
+    a white title on a 0.85 flash frame is barely there.
 
     The vignette overlay is deliberately NOT in this list: it needs a second input,
     so deliver wires it by label and prepends it. An empty list means deliver emits
     no video-filter slot at all, which is what keeps a look-less delivery's argv
     byte-identical to what it was before this module existed."""
-    parts: list[str] = []
+    parts: list[str] = list(flashes)
     if titles:
         parts.append(titles)
     if spec is not None:

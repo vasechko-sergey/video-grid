@@ -39,10 +39,16 @@ def _epdir(ep, i: int) -> Path:
 
 
 def _evidence(ep, i: int, clip_stats: dict, strip: dict,
-              clip_px: tuple[int, int]) -> dict:
+              clip_px: tuple[int, int], *, shutter: bool = False) -> dict:
     """What the judge reads besides the pixels. The episode's declared INTENT is in
     here deliberately: composition is judged against what this episode asked for, never
-    against a global rule (design §6)."""
+    against a global rule (design §6).
+
+    `freeze` (the manifest's) and `shutter` (whether ReelManifest.shutters accents this
+    cut — the one place below the EDL that records it) ride in the intent too: a freeze
+    is a strip of one frame held, and its clip carries no flash because deliver adds it,
+    so without the two a correct freeze reads as a stalled render (design 2026-10-21 §3,
+    final review I3)."""
     d = _epdir(ep, i)
     m = ep.manifest
     storyboard = d / "storyboard.jpg"
@@ -54,9 +60,10 @@ def _evidence(ep, i: int, clip_stats: dict, strip: dict,
         # was stamped against another — which is what happened on the real run, and
         # only a judge's own blocking verdict caught it.
         "clip_digest": provenance.digest_file(ep.clip),
-        "intent": {k: m.get(k) for k in ("composition", "grid", "hero", "target_dur",
-                                         "layout", "pan", "stabilize", "still",
-                                         "canvas")},
+        "intent": {**{k: m.get(k) for k in ("composition", "grid", "hero", "target_dur",
+                                            "layout", "pan", "stabilize", "still",
+                                            "freeze", "canvas")},
+                   "shutter": shutter},
         # Absent is reported as absent, never as a path that resolves to nothing — the
         # same rule the loop below applies to the other three sidecars, and the one the
         # `hero` axis stands on (design §6): a judge must be able to tell "there was no
@@ -266,7 +273,8 @@ def pack(episodes_path: str, out_dir: str, *, frames: int = FRAMES) -> dict:
         stats = naturalness.measure(assembly.frames_rgb(ep.clip, times, info.fps))
         clip_stats = {"stats": stats, "flags": naturalness.evaluate(stats),
                       **_source_reading(ep, stats)}
-        ev = _evidence(ep, i, clip_stats, strip, (info.w, info.h))
+        ev = _evidence(ep, i, clip_stats, strip, (info.w, info.h),
+                       shutter=i in rm.shutters)
         (d / "evidence.json").write_text(json.dumps(ev, indent=2))
         (d / "judge_prompt.md").write_text(judge_prompt(ev, d))
         packets.append(str(d))

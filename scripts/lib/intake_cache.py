@@ -13,12 +13,14 @@ imported: a lib module must not depend on a driver (scripts.track), and the
 a third (cap-3 design §5's registered drift landmine).
 """
 import json
+import math
 import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from PIL import Image
 
+from scripts.lib import runlayout
 from scripts.lib.footage import FootageClip
 
 # Bump when Phase-1 logic changes shape (carve/score/descriptor/phash-point): it
@@ -42,6 +44,13 @@ CACHE_VERSION = 9   # 8→9 (2026-09-03): the carve band joins the key. carve_wi
                     # was the only carve input absent from the key (design
                     # 2026-09-03 §0.5). The bump exists so the reason is recorded rather
                     # than inferred from a key that merely happens to differ.
+PHOTO_CACHE_VERSION = 1   # joins a PHOTO's key only. 1 (2026-10-21): a photo's capture
+                          # time and sharpness join the payload — Phase 2 groups photos on
+                          # the first and ranks them on the second — and an entry written
+                          # before them carries neither, so it must miss (design 2026-10-21
+                          # §5). Its own term, not a CACHE_VERSION bump: no video payload
+                          # changed, and a bump would re-scan every video of an existing run,
+                          # the costliest Phase 1 there is, for nothing (the review's M9).
 
 
 @dataclass
@@ -63,6 +72,8 @@ class ClipResult:
     clip: FootageClip
     phashes: list[str] = field(default_factory=list)   # hex, parallel to clip.windows
     cast: list[CastEntry] = field(default_factory=list)
+    taken: float | None = None       # a photo's capture time, seconds since the epoch
+    sharpness: float | None = None   # a photo's Laplacian variance at the analysis scale
 
 
 def clip_key(path: str, sample_fps: float, model: str, proxy_long_side: int,
@@ -75,13 +86,17 @@ def clip_key(path: str, sample_fps: float, model: str, proxy_long_side: int,
     without torchreid caches an empty cast, and a later resume WITH torchreid must
     not silently serve that stale empty cast (design 2026-08-04).
     `band` is the carve band (win_min, win_max): window BOUNDARIES are decided
-    inside the cached phase, so a changed band must miss (design 2026-09-03 §3)."""
+    inside the cached phase, so a changed band must miss (design 2026-09-03 §3).
+    A photo's key adds PHOTO_CACHE_VERSION; a video's stays as it was."""
     st = os.stat(path)
-    return {"size": st.st_size, "mtime_ns": st.st_mtime_ns,
-            "sample_fps": float(sample_fps), "model": model,
-            "proxy_long_side": int(proxy_long_side),
-            "reid_model": str(reid_model), "band": [float(band[0]), float(band[1])],
-            "version": CACHE_VERSION}
+    key = {"size": st.st_size, "mtime_ns": st.st_mtime_ns,
+           "sample_fps": float(sample_fps), "model": model,
+           "proxy_long_side": int(proxy_long_side),
+           "reid_model": str(reid_model), "band": [float(band[0]), float(band[1])],
+           "version": CACHE_VERSION}
+    if runlayout.is_photo(path):
+        key["photo_version"] = PHOTO_CACHE_VERSION
+    return key
 
 
 def _dir(out_dir: str, path: str) -> Path:
@@ -113,10 +128,14 @@ def store(out_dir: str, path: str, sample_fps: float, result: ClipResult,
                "cast": [{"source": e.source, "tid": e.tid, "conf": e.conf,
                          "descriptor": e.descriptor, "presence": e.presence,
                          "crop": e.crop} for e in cached]}
+    for k in ("taken", "sharpness"):              # photos only: a video entry carries neither
+        if getattr(result, k) is not None:
+            payload[k] = getattr(result, k)
     tmp = d / "clip.json.tmp"
     tmp.write_text(json.dumps(payload))
     os.replace(tmp, d / "clip.json")               # atomic commit; presence == committed
-    return ClipResult(clip=result.clip, phashes=list(result.phashes), cast=cached)
+    return ClipResult(clip=result.clip, phashes=list(result.phashes), cast=cached,
+                      taken=result.taken, sharpness=result.sharpness)
 
 
 def load(out_dir: str, path: str, sample_fps: float, model: str,
@@ -139,6 +158,10 @@ def load(out_dir: str, path: str, sample_fps: float, model: str,
         cast = [CastEntry(source=c["source"], tid=c["tid"], conf=c["conf"],
                           descriptor=c["descriptor"], presence=c.get("presence", 0.0),
                           crop=c["crop"]) for c in payload["cast"]]
-        return ClipResult(clip=clip, phashes=payload["phashes"], cast=cast)
+        photo = (payload.get("taken"), payload.get("sharpness"))
+        if not all(v is None or (isinstance(v, float) and math.isfinite(v)) for v in photo):
+            return None      # the writer only writes a finite float; Phase 2 sorts on them
+        return ClipResult(clip=clip, phashes=payload["phashes"], cast=cast,
+                          taken=photo[0], sharpness=photo[1])
     except (FileNotFoundError, OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         return None

@@ -187,6 +187,26 @@ def test_exclude_without_a_window_bans_the_whole_clip():
     assert not rep.ok and "the whole clip" in rep.violations[0].message
 
 
+def test_a_refusal_names_the_edl_index_a_projection_carries():
+    # A projection that skipped an episode (edit_plan projects no freeze) runs low; the
+    # message must name the EDL index each Placed carries, never its position here.
+    no_repeat = Constraints.from_dict({"rules": [{"kind": "no_repeat", "stated": "no repeats"}]})
+    placed = (Placed("A.mp4", (0.0, 10.0), index=0), Placed("A.mp4", (10.0, 20.0), index=2),
+              Placed("A.mp4", (0.0, 10.0), index=3))
+    assert evaluate(no_repeat, placed, _footage()).violations[0].message.startswith(
+        "episodes 0, 3 are all from A.mp4 [0.00s–10.00s]")
+    exclude = Constraints.from_dict({"rules": [
+        {"kind": "exclude", "stated": "not that take", "source": "A.mp4", "window": 0}]})
+    assert evaluate(exclude, placed, _footage()).violations[0].message.startswith(
+        "episode(s) 0, 3 use A.mp4 [0.00s–10.00s]")
+
+
+@pytest.mark.parametrize("bad", [-1, True, "2", 1.0])
+def test_placed_index_is_an_edl_index_or_none(bad):
+    with pytest.raises(ValueError, match="Placed.index must be the episode's EDL index"):
+        Placed("A.mp4", (0.0, 10.0), index=bad)
+
+
 def test_a_stale_exclude_raises_instead_of_enforcing_nothing():
     gone = Constraints.from_dict({"rules": [
         {"kind": "exclude", "stated": "skip", "source": "GONE.mp4"}]})

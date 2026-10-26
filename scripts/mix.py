@@ -2,7 +2,8 @@
 chosen fragment, fade, two-pass loudnorm to −14 LUFS → aac. Given `segments` and
 `ambient`, each clip's preserved nat-sound is ducked under the music
 (sidechaincompress); with `sfx`, a synthesized whoosh is placed on the reel's major
-transitions and mixed in on top. Both bake into the one stem before the final
+transitions and mixed in on top, and with `shutters` a synthesized shutter click on
+the accented cuts, in the same layer. All bake into the one stem before the final
 loudnorm, so deliver/check_reel see a single pre-normalized signal."""
 import argparse
 import json
@@ -10,10 +11,11 @@ import os
 import re
 import statistics
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
 
 from scripts.lib import assembly, ffbin, proc
-from scripts.lib.models import MusicSpec
+from scripts.lib.models import MUSIC_OVERRUN_TOL, MusicSpec
 
 _TARGET_LUFS = -14.0                                  # EBU R128 (montage §5.12). The gate's copy is
                                                       # ReelCheckSpec.loudness_target and the two must
@@ -57,6 +59,15 @@ _SFX_MIX = 1.0          # whoosh volume entering the final amix (relative punch)
 _AMB_MIX = 0.6          # ambient bed volume entering the duck — shared by both graphs so the
                         # music-less stem keeps the weight the music stem gave it
 _SFX_SEED = 42          # anoisesrc seed → a deterministic whoosh
+
+# --- SFX: the shutter accent's click (design 2026-10-21 §4) — conventions from the
+# 2026-10-20 research, not measured on a real run: a camera shutter reads as two short
+# clicks, the curtain opening and closing.
+_CLICK_DUR = 0.015      # each burst's length (s)
+_CLICK_GAP = 0.07       # from the first burst's start to the second's (s)
+_CLICK_HP = 1800        # high-pass corner (Hz): a click, not a thud
+_CLICK_AMP = 0.5        # anoisesrc amplitude of each burst
+_CLICK_SEEDS = (7, 11)  # one seed per burst → two different, deterministic clicks
 
 
 def _has_audio(path: str) -> bool:
@@ -127,27 +138,64 @@ def _whoosh(tmp_dir: str) -> str:
     return out
 
 
-def _build_sfx(durs: list[float], tmp_dir: str) -> str | None:
-    """Render a whoosh at each major internal cut (see _major_cuts) into one sfx-bed
-    wav, or None when the reel has no major cut. The whoosh is synthesized once and
-    placed by adelay onto the cut offsets (started _SFX_LEAD early so its attack peaks
-    near the cut); amix normalize=0 keeps each whoosh at its own level. The bed is
-    truncated/padded to the music length by mix's own amix=duration=first."""
-    cuts = _major_cuts(durs)
-    if not cuts:
+def _shutter(tmp_dir: str) -> str:
+    """Synthesize one shutter click → wav (48 kHz stereo s16, like _whoosh): two
+    _CLICK_DUR bursts of seeded white noise _CLICK_GAP apart, each high-passed and
+    faded out over its own length — a fast decay. No asset, deterministic (fixed
+    seeds)."""
+    out = os.path.join(tmp_dir, "shutter.wav")
+    shape = f"highpass=f={_CLICK_HP},afade=t=out:st=0:d={_CLICK_DUR}"
+    gap_ms = int(round(_CLICK_GAP * 1000))
+    proc.run([ffbin.ffmpeg(), "-y",
+              *(x for seed in _CLICK_SEEDS for x in (
+                  "-f", "lavfi", "-i",
+                  f"anoisesrc=color=white:r={_AR}:d={_CLICK_DUR}:a={_CLICK_AMP}:seed={seed}")),
+              "-filter_complex",
+              (f"[0:a]{shape}[c0];[1:a]{shape},adelay={gap_ms}:all=1[c1];"
+               "[c0][c1]amix=inputs=2:duration=longest:normalize=0[shutter]"),
+              "-map", "[shutter]", "-ac", "2", "-ar", str(_AR), "-c:a", "pcm_s16le", out])
+    return out
+
+
+def _build_sfx(durs: list[float], tmp_dir: str, *, whoosh: bool = True,
+               shutters: Sequence[float] = ()) -> str | None:
+    """Render one sfx-bed wav: with `whoosh`, a whoosh at each major internal cut (see
+    _major_cuts); and a shutter click at each `shutters` time (the master's real cut
+    times of the accented episodes, design 2026-10-21 §4). None when the bed would be
+    empty. Each sound is synthesized once and placed by adelay — a whoosh started
+    _SFX_LEAD early so its attack peaks near the cut, a click with no lead so its
+    first burst is on the cut. amix normalize=0 keeps each at its own level. The bed
+    is truncated/padded to the music length by mix's own amix=duration=first.
+
+    Without shutters the argv is exactly the whoosh-only bed's (pinned by a test), so
+    a reel without accents sounds as it did."""
+    cuts = _major_cuts(durs) if whoosh else []
+    shutters = list(shutters)
+    if not cuts and not shutters:
         return None
-    whoosh = _whoosh(tmp_dir)
     out = os.path.join(tmp_dir, "sfx.wav")
     total = sum(durs)
-    k = len(cuts)
-    fc = ["[1:a]asplit=%d%s" % (k, "".join(f"[w{i}]" for i in range(k)))]
-    for i, t in enumerate(cuts):
-        ms = max(0, int(round((t - _SFX_LEAD) * 1000)))
-        fc.append(f"[w{i}]adelay={ms}:all=1[d{i}]")
-    terms = "[0:a]" + "".join(f"[d{i}]" for i in range(k))
-    fc.append(f"{terms}amix=inputs={k + 1}:duration=first:normalize=0[sfx]")
+    inputs: list[str] = []
+    fc: list[str] = []
+    terms = "[0:a]"
+    # (copy label, placed label, times, lead, synthesizer) per sound; input 0 is the
+    # silent base and each sound present takes the next input index
+    for src, dst, times, lead, make in (("w", "d", cuts, _SFX_LEAD, _whoosh),
+                                        ("s", "c", shutters, 0.0, _shutter)):
+        if not times:
+            continue
+        idx = 1 + len(inputs) // 2
+        inputs += ["-i", make(tmp_dir)]
+        fc.append(f"[{idx}:a]asplit={len(times)}"
+                  + "".join(f"[{src}{i}]" for i in range(len(times))))
+        for i, t in enumerate(times):
+            ms = max(0, int(round((t - lead) * 1000)))
+            fc.append(f"[{src}{i}]adelay={ms}:all=1[{dst}{i}]")
+        terms += "".join(f"[{dst}{i}]" for i in range(len(times)))
+    fc.append(f"{terms}amix=inputs={1 + len(cuts) + len(shutters)}:duration=first:"
+              f"normalize=0[sfx]")
     proc.run([ffbin.ffmpeg(), "-y", "-t", f"{total}", "-f", "lavfi", "-i",
-              f"anullsrc=r={_AR}:cl=stereo", "-i", whoosh,
+              f"anullsrc=r={_AR}:cl=stereo", *inputs,
               "-filter_complex", ";".join(fc), "-map", "[sfx]",
               "-c:a", "pcm_s16le", out])
     return out
@@ -215,7 +263,8 @@ def _nomusic_graph(has_ambient: bool, has_sfx: bool, gain_db: float, fades: list
 def mix(music: MusicSpec, out_dir: str, dur: float,
         segments: list[tuple[str, float]] | None = None,
         ambient: bool = True, sfx: bool = False, fade: float = _FADE,
-        fade_in: float | None = None, without_music: str | None = None) -> str:
+        fade_in: float | None = None, without_music: str | None = None,
+        shutters: Sequence[float] = ()) -> str:
     """Audio stem for a `dur`-second reel → out_dir/audio.m4a (aac, −14 LUFS). With
     `segments` ([(raw_segment_path, episode_dur), …] in reel order) and `ambient`,
     each clip's nat-sound is ducked under the music; with `sfx`, a synthesized whoosh
@@ -233,13 +282,24 @@ def mix(music: MusicSpec, out_dir: str, dur: float,
     `fade` is the CLOSING fade and, unless `fade_in` sets it apart, the opening one too
     (LookSpec's own convention). The opening never drops below ANTICLICK.
 
+    `shutters` are the master's real cut times of the episodes that carry the shutter
+    accent (design 2026-10-21 §4): a click on each, in the same un-ducked bed as the
+    whooshes, so it reaches everything the sfx input reaches. It needs `segments` — the
+    bed's length comes from them — and is refused without them rather than dropped.
+
     `without_music`, when given, is a second path: the same reel with the track muted
     (design 2026-10-20 §2, see _nomusic_graph), rendered here from the same beds and the
     same measurement so the two stems cannot drift apart. With neither ambient nor sfx
     it is silence of the reel's length — still the deliverable a picture needs."""
     if dur <= 0:
         raise ValueError(f"mix: dur must be positive, got {dur}")
-    if dur > music.duration + 0.1:
+    if shutters and not segments:
+        raise ValueError(f"mix: shutters {list(shutters)} were given without segments — a "
+                         f"click rides the SFX bed, which is cut to the segments' lengths, "
+                         f"so without them it would be dropped in silence. Pass segments "
+                         f"([(raw_segment, episode_dur), …] in reel order), as build_reel "
+                         f"does")
+    if dur > music.duration + MUSIC_OVERRUN_TOL:
         raise ValueError(f"mix: reel dur {dur}s exceeds the analyzed music window {music.duration}s "
                          f"(track={music.track}, start_offset={music.start_offset}) — analyze a longer "
                          "window or shorten the reel; a shorter stem would silently desync from the video")
@@ -262,7 +322,8 @@ def mix(music: MusicSpec, out_dir: str, dur: float,
         proc.run([ffbin.ffmpeg(), "-y", "-accurate_seek", "-ss", f"{music.start_offset}",
                   "-i", music.track, "-t", f"{dur}", frag])
         amb = _build_ambient(segments, d) if (segments and ambient) else None
-        sfx_bed = _build_sfx([du for _, du in segments], d) if (segments and sfx) else None
+        sfx_bed = (_build_sfx([du for _, du in segments], d, whoosh=sfx, shutters=shutters)
+                   if (segments and (sfx or shutters)) else None)
         norm_src = frag
         if amb is not None or sfx_bed is not None:
             inputs = ["-i", frag]
@@ -300,9 +361,17 @@ def mix(music: MusicSpec, out_dir: str, dur: float,
             # measured 4.9 and 6.3 dB on wide-range fixtures — so the note says so.
             linear = (float(st["input_lra"]) <= _LRA_TARGET
                       and float(st["input_tp"]) + gain <= _TP_MAX)
+            # The bed by what it holds, not by whether it exists: `sfx` is the whooshes
+            # (the flag's own meaning, and all a bed held before the accent) and
+            # `clicks` the shutter accent's, present only when placed — so the note
+            # never calls a bed of clicks "the transition whooshes", and a record with
+            # no accent is the one it always was.
+            whooshes = sfx_bed is not None and sfx and bool(
+                _major_cuts([du for _, du in segments]))
             Path(without_music).with_suffix(".json").write_text(json.dumps(
-                {"ambient": amb is not None, "sfx": sfx_bed is not None,
-                 "gain_db": round(gain, 3), "linear": linear}))
+                {"ambient": amb is not None, "sfx": whooshes,
+                 "gain_db": round(gain, 3), "linear": linear,
+                 **({"clicks": True} if sfx_bed is not None and shutters else {})}))
     return out
 
 

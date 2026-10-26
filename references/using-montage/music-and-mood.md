@@ -2,7 +2,10 @@
 
 **music-and-mood (optional).** The cuts already exist (step 6), so the reel's
 length is the sum of `EDL.json`'s episode durations — analyse the track against
-**that** length, not a SPEC target. Point music-source's fetch at the shared
+**that** length, not a SPEC target. When the cut has photos or freezes, analyse with
+headroom (`--duration` two bars past that sum), because the grid sets their length and
+their 2.0 s placeholders can come back longer — pacing names a window the fitted reel
+overruns, and `build_reel` refuses one. Point music-source's fetch at the shared
 bucket — `--cache-dir <run>/music/cache` — whenever it runs below: the
 downloaded audio is a function of the *track*, not the cut, so it survives a
 second `--reel` variant instead of re-fetching (`music-match` only ranks a

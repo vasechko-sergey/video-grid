@@ -609,3 +609,145 @@ def test_a_video_clip_still_refuses_a_zero_rate():
 def test_footage_markdown_names_a_photo_as_one():
     md = Footage(clips=[_photo()]).to_markdown()
     assert "## IMG_0001.HEIC  (photo · 3024×4032 · may hold up to 8.0s)" in md
+
+
+# --- photo groups and the photo scoring block (design 2026-10-21 §5) -----------------
+
+def test_a_grouped_photo_round_trips_its_group():
+    c = _photo(group="g1")
+    d = c.to_dict()
+    assert d["group"] == "g1"
+    assert FootageClip.from_dict(json.loads(json.dumps(d))).group == "g1"
+
+
+def test_a_lone_photo_omits_group_so_its_json_is_unchanged():
+    c = _photo()
+    assert c.group is None and "group" not in c.to_dict()
+    assert FootageClip.from_dict(c.to_dict()).group is None
+
+
+@pytest.mark.parametrize("bad", ["", 3, True, ["g1"]])
+def test_a_group_must_be_a_non_empty_string(bad):
+    with pytest.raises(ValueError, match="group must be a non-empty string"):
+        _photo(group=bad)
+
+
+def test_only_a_photo_can_be_grouped():
+    with pytest.raises(ValueError, match="only a photo"):
+        FootageClip(source="a.mp4", dur=2.0, res=(10, 10), fps=30.0, group="g1")
+
+
+_VIDEO_SCORING = {"windows": 4, "separated": {"present": 0, "motion": 3, "shake": 4}}
+_PHOTOS = {"windows": 5, "separated": {"present": 2, "sharpness": 4}}
+
+
+def test_the_scoring_photos_block_round_trips():
+    f = Footage(clips=[], scoring={**_VIDEO_SCORING, "photos": _PHOTOS})
+    back = Footage.from_dict(json.loads(json.dumps(f.to_dict())))
+    assert back.scoring == {**_VIDEO_SCORING, "photos": _PHOTOS}
+    assert back.to_dict()["scoring"] == {**_VIDEO_SCORING, "photos": _PHOTOS}
+
+
+def test_a_video_only_scoring_report_carries_no_photos_key():
+    f = Footage(clips=[], scoring=dict(_VIDEO_SCORING))
+    assert f.to_dict()["scoring"] == _VIDEO_SCORING
+    assert "photos" not in f.scoring
+
+
+def test_the_photo_terms_are_presence_and_sharpness():
+    assert footage.PHOTO_SCORE_TERMS == ("present", "sharpness")
+
+
+@pytest.mark.parametrize("photos, msg", [
+    ([1, 2], r"Footage.scoring\['photos'\] must be"),
+    ({"windows": 5}, r"Footage.scoring\['photos'\] must be"),
+    ({"windows": 5, "separated": {}, "extra": 1}, r"Footage.scoring\['photos'\] must be"),
+    ({"windows": -1, "separated": {"present": 0, "sharpness": 0}},
+     r"\['photos'\]\['windows'\] must be an int >= 0"),
+    ({"windows": True, "separated": {"present": 0, "sharpness": 0}},
+     r"\['photos'\]\['windows'\] must be an int >= 0"),
+    ({"windows": 5, "separated": {"present": 1, "motion": 1}}, "one count per"),
+    ({"windows": 5, "separated": {"present": 1, "sharpness": 6}}, "cannot separate more"),
+    ({"windows": 5, "separated": {"present": 1.0, "sharpness": 1}}, "cannot separate more"),
+])
+def test_a_malformed_photos_block_is_refused_with_the_remedy(photos, msg):
+    with pytest.raises(ValueError, match=msg) as e:
+        Footage(clips=[], scoring={**_VIDEO_SCORING, "photos": photos})
+    assert "re-run footage-intake" in str(e.value)
+
+
+def test_footage_markdown_prints_the_photo_line_beside_the_video_one():
+    md = Footage(clips=[], scoring={**_VIDEO_SCORING, "photos": _PHOTOS}).to_markdown()
+    assert "**present** 0/4, **motion** 3/4, **shake** 4/4." in md
+    assert "**present** 2/5, **sharpness** 4/5." in md
+    assert md.index("**shake** 4/4") < md.index("**sharpness** 4/5")
+
+
+def test_footage_markdown_without_photos_is_unchanged():
+    md = Footage(clips=[], scoring=dict(_VIDEO_SCORING)).to_markdown()
+    assert "sharpness" not in md and "photo" not in md
+
+
+def test_a_grouped_photos_heading_names_its_group_and_size():
+    clips = [_photo(source="IMG_1.jpg", group="g1"), _photo(source="IMG_2.jpg", group="g1"),
+             _photo(source="IMG_3.jpg", group="g1"), _photo(source="IMG_4.jpg")]
+    md = Footage(clips=clips).to_markdown()
+    assert ("## IMG_1.jpg  (photo · 3024×4032 · may hold up to 8.0s) · group g1 (3 photos)"
+            in md.splitlines())
+    assert "## IMG_4.jpg  (photo · 3024×4032 · may hold up to 8.0s)" in md.splitlines()
+
+
+def test_the_header_counts_photos_and_groups():
+    clips = [_photo(source="IMG_1.jpg", group="g1"), _photo(source="IMG_2.jpg", group="g1"),
+             _photo(source="IMG_3.jpg", group="g2"), _photo(source="IMG_4.jpg", group="g2"),
+             _photo(source="IMG_5.jpg"),
+             FootageClip(source="a.mp4", dur=22.0, res=(1920, 1080), fps=30.0, windows=[_win()])]
+    head = Footage(clips=clips).to_markdown().splitlines()[0]
+    assert head == "# Footage — 6 clips, 6 windows (0 best) · 5 photos, 4 in 2 groups"
+
+
+def test_the_header_counts_photos_without_groups_and_one_of_each_in_the_singular():
+    assert (Footage(clips=[_photo()]).to_markdown().splitlines()[0]
+            == "# Footage — 1 clips, 1 windows (0 best) · 1 photo")
+    two = [_photo(source="IMG_1.jpg", group="g1"), _photo(source="IMG_2.jpg", group="g1")]
+    assert (Footage(clips=two).to_markdown().splitlines()[0]
+            == "# Footage — 2 clips, 2 windows (0 best) · 2 photos, 2 in 1 group")
+
+
+def test_the_header_says_how_many_photos_are_grouped_not_all_of_them():
+    # "4 photos in 1 group" read as all four in one (the 2026-10-21 review's M7)
+    clips = [_photo(source=f"IMG_{i}.jpg", group="g1") for i in (1, 2, 3)] + [
+        _photo(source="IMG_4.jpg")]
+    assert (Footage(clips=clips).to_markdown().splitlines()[0]
+            == "# Footage — 4 clips, 4 windows (0 best) · 4 photos, 3 in 1 group")
+
+
+def test_beside_photos_the_score_is_a_percentile_within_its_kind():
+    video = FootageClip(source="a.mp4", dur=22.0, res=(1920, 1080), fps=30.0, windows=[_win()])
+    md = Footage(clips=[video, _photo()],
+                 scoring={**_VIDEO_SCORING, "photos": _PHOTOS}).to_markdown()
+    assert "`score` is a percentile within its kind in THIS footage set" in md
+    assert "nor a photo's to a video's" in md
+    assert ("`separated` count is how many of the video windows it told apart" in md
+            and "**present** 0/4, **motion** 3/4, **shake** 4/4." in md)
+
+
+def test_a_photo_only_pool_prints_no_video_scoring_line():
+    md = Footage(clips=[_photo()],
+                 scoring={"windows": 0, "separated": {"present": 0, "motion": 0, "shake": 0},
+                          "photos": {"windows": 1, "separated": {"present": 0,
+                                                                 "sharpness": 0}}}).to_markdown()
+    assert "**motion**" not in md and "**sharpness** 0/1" in md
+
+
+def test_a_video_only_pool_keeps_its_score_and_scoring_wording():
+    c = FootageClip(source="a.mp4", dur=22.0, res=(1920, 1080), fps=30.0, windows=[_win()])
+    md = Footage(clips=[c], scoring=dict(_VIDEO_SCORING)).to_markdown()
+    assert "`score` is a percentile within THIS footage set (design " in md
+    assert "how many of those windows it told apart" in md and "its kind" not in md
+
+
+def test_a_video_only_header_is_unchanged():
+    c = FootageClip(source="a.mp4", dur=22.0, res=(1920, 1080), fps=30.0, windows=[_win()])
+    assert (Footage(clips=[c]).to_markdown().splitlines()[0]
+            == "# Footage — 1 clips, 1 windows (0 best)")

@@ -229,5 +229,107 @@ def test_band_is_a_required_keyword(tmp_path):
         intake_cache.clip_key(str(p), 2.0, "m.pt", 960)
 
 
-def test_cache_version_is_nine():
-    assert intake_cache.CACHE_VERSION == 9
+def _photo_result(name="IMG_1.jpg", taken=1_760_000_000.25, sharpness=812.375):
+    w = FootageWindow(start=0.0, dur=2.0, shot_type="wide", people=0, motion=0.0, shake=0.0)
+    clip = FootageClip(source=name, dur=8.0, res=(400, 300), fps=0.0, windows=[w],
+                       kind="photo")
+    return ClipResult(clip=clip, phashes=["8f3c2a1b0d4e5f60"], taken=taken,
+                      sharpness=sharpness)
+
+
+def test_a_photos_capture_time_and_sharpness_round_trip(tmp_path):
+    out, src = tmp_path / "out", _src(tmp_path, "IMG_1.jpg")
+    stored = intake_cache.store(str(out), str(src), 3.0, _photo_result(), _M, _PROXY,
+                                band=carve.DEFAULT_BAND)
+    loaded = intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
+    assert (stored.taken, stored.sharpness) == (1_760_000_000.25, 812.375)
+    assert (loaded.taken, loaded.sharpness) == (1_760_000_000.25, 812.375)
+    assert loaded.clip.to_dict() == _photo_result().clip.to_dict()
+
+
+def test_a_video_result_writes_no_photo_fields_and_reads_back_none(tmp_path):
+    out, src = tmp_path / "out", _src(tmp_path)
+    intake_cache.store(str(out), str(src), 3.0, _result(), _M, _PROXY, band=carve.DEFAULT_BAND)
+    payload = json.loads((out / ".intake_cache" / "a.mp4" / "clip.json").read_text())
+    assert "taken" not in payload and "sharpness" not in payload
+    loaded = intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
+    assert (loaded.taken, loaded.sharpness) == (None, None)
+
+
+def test_a_zero_capture_time_and_sharpness_round_trip_as_zero_not_none(tmp_path):
+    # 0.0 is "1970:01:01 00:00:00", a reset camera clock's date: a truthiness test in
+    # store would keep it on a scan and drop it on a cache hit (the review's M6)
+    out, src = tmp_path / "out", _src(tmp_path, "IMG_1.jpg")
+    intake_cache.store(str(out), str(src), 3.0, _photo_result(taken=0.0, sharpness=0.0),
+                       _M, _PROXY, band=carve.DEFAULT_BAND)
+    payload = json.loads((out / ".intake_cache" / "IMG_1.jpg" / "clip.json").read_text())
+    assert (payload["taken"], payload["sharpness"]) == (0.0, 0.0)
+    loaded = intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
+    assert (loaded.taken, loaded.sharpness) == (0.0, 0.0)
+
+
+def test_a_photo_without_a_capture_time_round_trips_none(tmp_path):
+    out, src = tmp_path / "out", _src(tmp_path, "IMG_2.png")
+    intake_cache.store(str(out), str(src), 3.0, _photo_result("IMG_2.png", taken=None),
+                       _M, _PROXY, band=carve.DEFAULT_BAND)
+    loaded = intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
+    assert (loaded.taken, loaded.sharpness) == (None, 812.375)
+
+
+# --- the photo-only key term (design 2026-10-21 §5; the 2026-10-21 review's M9) -------
+
+def _v9_key(src):
+    """The key exactly as the pre-photo-rhythm code wrote it: no photo term."""
+    st = src.stat()
+    return {"size": st.st_size, "mtime_ns": st.st_mtime_ns, "sample_fps": 3.0, "model": _M,
+            "proxy_long_side": _PROXY, "reid_model": "",
+            "band": [float(v) for v in carve.DEFAULT_BAND], "version": 9}
+
+
+def _write_entry(out, src, key, result):
+    d = out / ".intake_cache" / src.name
+    d.mkdir(parents=True)
+    (d / "clip.json").write_text(json.dumps(
+        {"key": key, "clip": result.clip.to_dict(), "phashes": result.phashes, "cast": []}))
+
+
+def test_a_video_entry_written_before_the_photo_fields_still_loads(tmp_path):
+    # a photo-only payload change must not re-scan every video of an existing run
+    out, src = tmp_path / "out", _src(tmp_path)
+    _write_entry(out, src, _v9_key(src), _result())
+    hit = intake_cache.load(str(out), str(src), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
+    assert hit is not None and hit.clip.to_dict() == _clip().to_dict()
+
+
+def test_a_photo_entry_written_before_the_photo_fields_misses(tmp_path):
+    # it carries no capture time and no sharpness: Phase 2 would group it with no time
+    # and rank it the least sharp, so it re-scans instead
+    out, src = tmp_path / "out", _src(tmp_path, "IMG_1.jpg")
+    _write_entry(out, src, _v9_key(src), _photo_result(taken=None, sharpness=None))
+    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY,
+                             band=carve.DEFAULT_BAND) is None
+
+
+def test_only_a_photos_key_carries_the_photo_term(tmp_path):
+    video, photo = _src(tmp_path), _src(tmp_path, "IMG_1.HEIC")
+    vk = intake_cache.clip_key(str(video), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
+    pk = intake_cache.clip_key(str(photo), 3.0, _M, _PROXY, band=carve.DEFAULT_BAND)
+    assert vk == _v9_key(video)
+    assert pk == {**_v9_key(photo), "photo_version": intake_cache.PHOTO_CACHE_VERSION}
+    assert intake_cache.PHOTO_CACHE_VERSION == 1
+
+
+@pytest.mark.parametrize("field", ["taken", "sharpness"])
+@pytest.mark.parametrize("bad", ["x", True, [1.0], 5, float("nan"), float("inf")])
+def test_a_corrupt_photo_field_reads_as_a_miss_not_a_crash(tmp_path, field, bad):
+    # "x" would crash Phase 2 (group_photos' sort, score_pool's float()); a NaN would
+    # sort nowhere. The writer only ever writes a finite float (the review's M12).
+    out, src = tmp_path / "out", _src(tmp_path, "IMG_1.jpg")
+    intake_cache.store(str(out), str(src), 3.0, _photo_result(), _M, _PROXY,
+                       band=carve.DEFAULT_BAND)
+    f = out / ".intake_cache" / "IMG_1.jpg" / "clip.json"
+    payload = json.loads(f.read_text())
+    payload[field] = bad
+    f.write_text(json.dumps(payload))
+    assert intake_cache.load(str(out), str(src), 3.0, _M, _PROXY,
+                             band=carve.DEFAULT_BAND) is None

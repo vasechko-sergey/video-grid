@@ -167,10 +167,17 @@ class Placed:
 
     The projection is built by the caller (edit_plan holds both the clip, for
     shot_at, and the episode, for the pin) because importing EDLEpisode here would
-    close a cycle with edl.py, which imports ConstraintReport to carry it."""
+    close a cycle with edl.py, which imports ConstraintReport to carry it.
+
+    `index` is the episode's EDL index, which a refusal names. It differs from the
+    projection's own position once a caller skips an episode — edit_plan projects no
+    freeze (design 2026-10-21 §3), so every episode after one would be named one low,
+    and the agent would edit the wrong selection entry. None reads as the position, the
+    same number when nothing was skipped."""
     source: str
     shot: tuple[float, float]
     hero: str | None = None
+    index: int | None = None
 
     def __post_init__(self) -> None:
         if not (isinstance(self.source, str) and self.source):
@@ -183,6 +190,15 @@ class Placed:
         self.shot = (float(self.shot[0]), float(self.shot[1]))
         if self.hero is not None and not (isinstance(self.hero, str) and self.hero.strip()):
             raise ValueError(f"Placed.hero must be a cast name or None, got {self.hero!r}")
+        if self.index is not None and (isinstance(self.index, bool)
+                                       or not isinstance(self.index, int) or self.index < 0):
+            raise ValueError(f"Placed.index must be the episode's EDL index (an int >= 0) or "
+                             f"None, got {self.index!r}")
+
+
+def _named(i: int, p: Placed) -> int:
+    """The episode number a refusal prints: its EDL index, else its position."""
+    return p.index if p.index is not None else i
 
 
 @dataclass
@@ -240,7 +256,7 @@ class ConstraintReport:
 def _no_repeat(placed: tuple[Placed, ...]) -> str | None:
     groups: dict[tuple, list[int]] = {}
     for i, p in enumerate(placed):
-        groups.setdefault((p.source, p.shot), []).append(i)
+        groups.setdefault((p.source, p.shot), []).append(_named(i, p))
     dups = [(key, idx) for key, idx in groups.items() if len(idx) > 1]
     if not dups:
         return None
@@ -288,7 +304,7 @@ def _exclude(rule: Rule, placed: tuple[Placed, ...], by_source: dict[str, Footag
         # different (non-round) `t`, which is exactly what happens here — `banned`
         # is built from the window's start, `p.shot` from the episode's own start.
         banned = clip.shot_at(clip.windows[rule.window].start)
-    hits = [i for i, p in enumerate(placed)
+    hits = [_named(i, p) for i, p in enumerate(placed)
             if p.source == rule.source and (banned is None or p.shot == banned)]
     if not hits:
         return None

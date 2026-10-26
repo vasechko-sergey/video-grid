@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from scripts import deliver as deliver_mod
-from scripts.lib import lookcheck, provenance
+from scripts.lib import look as look_lib, lookcheck, provenance
 from scripts.lib.assembly import StreamInfo
 from scripts.lib.look import LookSpec
 from scripts.lib.models import CheckResult, REEL_H264, ReelReport
@@ -285,3 +285,137 @@ def test_a_look_less_delivery_runs_no_look_check_at_all(tmp_path, monkeypatch):
     assert calls == []
     att = json.loads(Path(provenance.attest_path(out)).read_text())
     assert att["look_checks"] == []
+
+
+# --- the shutter accent's flash (design 2026-10-21 §4) --------------------------------
+
+def _stub_probes(monkeypatch, *, dur=10.0, fps=30.0, seen=None):
+    def stream(p):
+        if seen is not None:
+            seen.append(("stream", p))
+        return StreamInfo(1080, 1920, fps, "yuv420p", "h264")
+
+    def duration(p):
+        if seen is not None:
+            seen.append(("duration", p))
+        return dur
+    monkeypatch.setattr(deliver_mod.assembly, "probe_stream", stream)
+    monkeypatch.setattr(deliver_mod.assembly, "probe_duration", duration)
+
+
+def _encode_argv(tmp_path, monkeypatch, **kw):
+    """The encode argv of one delivery, with the look gate stubbed (its own tests are in
+    tests/lib/test_deliver.py)."""
+    calls = _capture(monkeypatch)
+    monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **k: [])
+    master, rep = _bound(tmp_path)
+    deliver_mod.deliver(master, REEL_H264, str(tmp_path / "out"), "cl", rep,
+                        scratch_dir=str(tmp_path / "scratch"), **kw)
+    return calls[-1], master
+
+
+def test_a_delivery_with_no_flash_keeps_its_argv_byte_for_byte(tmp_path, monkeypatch):
+    """Pinned before the flash existed: a vignette + fade + stem delivery, and a plain
+    one. Passing no flash, or an empty list, changes neither."""
+    _stub_probes(monkeypatch)
+    stem = tmp_path / "stem.aac"
+    stem.write_bytes(b"aac-bytes")
+    ff = deliver_mod.ffbin.ffmpeg()
+    for k, extra in enumerate(({}, {"flashes": ()}, {"flashes": []})):
+        d = tmp_path / f"v{k}"
+        d.mkdir()
+        cmd, master = _encode_argv(d, monkeypatch, audio=str(stem),
+                                   look=LookSpec(vignette=0.3, fade=0.5), **extra)
+        assert cmd == [ff, "-y", "-i", master, "-loop", "1", "-i",
+                       str(d / "scratch" / "look_mask.png"), "-i", str(stem),
+                       "-filter_complex",
+                       "[0:v][1:v]overlay=shortest=1,fade=t=in:st=0:d=0.500,"
+                       "fade=t=out:st=9.500:d=0.500[v]",
+                       *deliver_mod._video_only_args(REEL_H264), "-map", "[v]",
+                       "-map", "2:a:0", "-c:a", "copy", "-shortest",
+                       str(d / "out" / ".REEL_v1.part.mp4")]
+        d = tmp_path / f"p{k}"
+        d.mkdir()
+        cmd, master = _encode_argv(d, monkeypatch, **extra)
+        assert cmd == [ff, "-y", "-i", master, *REEL_H264.args(),
+                       str(d / "out" / ".REEL_v1.part.mp4")]
+
+
+def test_the_attestation_lists_the_flashes_and_a_delivery_without_one_has_no_key(
+        tmp_path, monkeypatch):
+    """design 2026-10-21 §4: the delivered file is deliberately not the master at the
+    accents, and the attestation is where a reader holding master_digest looks."""
+    _stub_probes(monkeypatch)
+    _capture(monkeypatch)
+    monkeypatch.setattr(deliver_mod, "_verify_look", lambda *a, **k: [])
+    for name, extra, want in (("a", {"flashes": [1.0, 2.0 + 1 / 3]}, [1.0, 2.333333]),
+                              ("b", {}, None)):
+        d = tmp_path / name
+        d.mkdir()
+        master, rep = _bound(d)
+        out = deliver_mod.deliver(master, REEL_H264, str(d / "out"), "cl", rep,
+                                  scratch_dir=str(d / "scratch"), **extra)
+        att = json.loads(Path(provenance.attest_path(out)).read_text())
+        assert att.get("flashes") == want
+
+
+def test_deliver_hands_its_flashes_to_the_look_gate(tmp_path, monkeypatch):
+    """Review M7: every other unit test stubs the gate away, so a deliver that dropped
+    the argument passed the whole unit tier and sampled the white frames blind."""
+    _stub_probes(monkeypatch)
+    _capture(monkeypatch)
+    seen = []
+
+    def gate(master, out, look, titles, platform="", flashes=()):
+        seen.append(list(flashes))
+        return []
+    monkeypatch.setattr(deliver_mod, "_verify_look", gate)
+    master, rep = _bound(tmp_path)
+    deliver_mod.deliver(master, REEL_H264, str(tmp_path / "out"), "cl", rep,
+                        scratch_dir=str(tmp_path / "scratch"), flashes=[1.0, 2.5])
+    assert seen == [[1.0, 2.5]]
+
+
+def test_a_flash_alone_still_takes_the_vf_slot(tmp_path, monkeypatch):
+    seen = []
+    _stub_probes(monkeypatch, seen=seen)
+    cmd, master = _encode_argv(tmp_path, monkeypatch, flashes=[1.0, 2.5])
+    assert "-filter_complex" not in cmd
+    assert cmd[cmd.index("-vf") + 1] == ",".join(look_lib.flash_args([1.0, 2.5], 30.0))
+    assert ("stream", master) in seen                   # the flash is placed at the MASTER's rate
+
+
+def test_the_flash_rides_after_the_vignette_and_before_the_titles_and_fade(tmp_path,
+                                                                         monkeypatch, make_ttf):
+    _stub_probes(monkeypatch, fps=25.0)
+    f = tmp_path / "f.ttf"
+    make_ttf(f, [ord(c) for c in "Hook"])
+    tj = tmp_path / "TITLES.json"
+    Titles(items=(Title("Hook", 0.0, 2.0, font=str(f)),)).write(tj)
+    cmd, _ = _encode_argv(tmp_path, monkeypatch, titles=str(tj),
+                          look=LookSpec(vignette=0.3, fade=0.5), flashes=[4.0])
+    g = cmd[cmd.index("-filter_complex") + 1]
+    flash = ",".join(look_lib.flash_args([4.0], 25.0))
+    assert g.startswith("[0:v][1:v]overlay=shortest=1," + flash + ",drawtext=")
+    assert g.index("drawtext") < g.index("fade=t=in") and g.endswith("[v]")
+
+
+def test_no_flash_probes_nothing_it_did_not_probe_before(tmp_path, monkeypatch):
+    seen = []
+    _stub_probes(monkeypatch, seen=seen)
+    _encode_argv(tmp_path, monkeypatch)
+    assert seen == []
+
+
+def test_a_flash_whose_frames_do_not_fit_in_the_reel_is_refused_before_the_encode(
+        tmp_path, monkeypatch):
+    """A flash needs its three frames and a frame after them inside the reel; one placed
+    later renders partly or not at all, and nothing would notice."""
+    _stub_probes(monkeypatch, dur=10.0, fps=30.0)
+    calls = _capture(monkeypatch)
+    master, rep = _bound(tmp_path)
+    with pytest.raises(ValueError, match=r"flash at 9\.9s.*10s reel"):
+        deliver_mod.deliver(master, REEL_H264, str(tmp_path / "out"), "cl", rep,
+                            scratch_dir=str(tmp_path / "scratch"), flashes=[1.0, 9.9])
+    assert calls == []
+    _encode_argv(tmp_path, monkeypatch, flashes=[10.0 - 4 / 30])   # the last one that fits

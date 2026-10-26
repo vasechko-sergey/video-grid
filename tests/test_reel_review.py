@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from scripts import reel_review
-from scripts.lib import provenance
+from scripts.lib import look as look_lib, provenance
 from scripts.lib.look import LookSpec
 from scripts.lib.models import CheckResult, ReelEpisode, ReelManifest, ReelReport
 from scripts.lib.review import Review
@@ -182,7 +182,35 @@ def test_still_times_without_a_look_use_the_bare_margins():
                                                          "mid0": 1.5}
 
 
-def _run(tmp_path, *, music=True, spec=True, manifest_music=True):
+def test_still_times_step_back_off_a_flash_on_an_accented_closer():
+    """Review I1: a 1.0 s accented photo closing the reel. The ending still is the
+    latest frame clear of the fade-out, which is exactly the photo's cut — the flash's
+    0.85 frame. Past the flash is the fade, so the still steps back a frame before the
+    flash's window; the last mid, clamped onto the same instant, steps back with it."""
+    durs, look = [3.0, 2.5, 1.0], LookSpec(fade=0.5)
+    blind = reel_review.still_times(durs, 6.5, look)
+    assert blind["ending"] == blind["mid2"] == 5.5          # on the cut that flashes
+    t = reel_review.still_times(durs, 6.5, look, shutters=(2,), fps=30.0)
+    w = look_lib.flash_windows([5.5], 30.0)
+    assert t["ending"] == t["mid2"] == pytest.approx(5.5 - 2 / 30)
+    assert all(look_lib.clear_of_flash(x, w) == x for x in t.values())
+    assert {k: t[k] for k in ("hook", "mid0", "mid1")} == {
+        k: blind[k] for k in ("hook", "mid0", "mid1")}      # the clear ones never move
+
+
+def test_still_times_step_past_a_flash_on_an_accented_opener():
+    """A run of short photos at the head clamps the hook onto the second one's cut."""
+    t = reel_review.still_times([0.5, 0.5, 2.0], 3.0, None, shutters=(1,), fps=30.0)
+    assert t["hook"] == pytest.approx(0.5 + 4 / 30)          # the window's end
+    assert t["mid1"] == pytest.approx(0.75)                  # clear: untouched
+
+
+def test_still_times_refuse_a_still_with_no_clear_frame_either_side():
+    with pytest.raises(ValueError, match=r"shutter flash.*drop a `shutter`"):
+        reel_review.still_times([0.5, 1.1], 1.6, None, shutters=(1,), fps=30.0)
+
+
+def _run(tmp_path, *, music=True, spec=True, manifest_music=True, shutters=()):
     reel_dir = tmp_path / "montage" / "reels" / "main"
     for sub in ("episodes", "deliveries", "build/reel"):
         (reel_dir / sub).mkdir(parents=True)
@@ -195,7 +223,7 @@ def _run(tmp_path, *, music=True, spec=True, manifest_music=True):
     music_path = reel_dir / "MUSIC.json"
     ReelManifest(episodes=clips, target_dur=6.0,
                  music=str(music_path) if music and manifest_music else None,
-                 ).write(reel_dir / "episodes" / "EPISODES.json")
+                 shutters=shutters).write(reel_dir / "episodes" / "EPISODES.json")
     reel = reel_dir / "deliveries" / "REEL_v1.mp4"
     reel.write_bytes(b"reel")
     (reel_dir / "EDL.md").write_text("# EDL\n\n| 0 | a.mp4 |\n")
@@ -247,6 +275,25 @@ def test_pack_writes_the_stills_and_a_filled_prompt(tmp_path, monkeypatch):
     assert f"The reel is at {reel.resolve()}." in text
     assert str((review / "hook.png").resolve()) in text
     assert f"Write your output to {(reel_dir / 'review_findings.json').resolve()}" in text
+
+
+def test_pack_grabs_its_stills_off_the_flashes_the_manifest_names(tmp_path, monkeypatch):
+    """ep0 4 s and an accented ep1 of 1 s: the ending still (and the last mid) would sit
+    on the flash at 4 s. pack hands still_times EPISODES.json's shutters and the
+    reel's own fps, and grabs what it returns."""
+    _fake_media(monkeypatch)
+    monkeypatch.setattr(reel_review.assembly, "probe_duration",
+                        lambda p: 5.0 if "REEL" in str(p) else (4.0 if "ep0" in str(p) else 1.0))
+    grabbed = []
+    monkeypatch.setattr(reel_review.assembly, "frames_rgb",
+                        lambda src, times, fps: (grabbed.append((tuple(times), fps)),
+                                                 [np.full((16, 8, 3), 100, np.uint8)
+                                                  for _ in times])[1])
+    reel_dir, reel, _ = _run(tmp_path, shutters=(1,))
+    reel_review.pack(str(reel), str(reel_dir))
+    want = reel_review.still_times([4.0, 1.0], 5.0, None, shutters=(1,), fps=30.0)
+    assert grabbed == [(tuple(want.values()), 30.0)]
+    assert 4.0 not in want.values()
 
 
 def test_pack_names_a_silent_reel_and_a_missing_brief(tmp_path, monkeypatch):

@@ -1269,6 +1269,13 @@ class ReelCheckSpec:
                              f"number of CIEDE2000 chroma units, got {self.chroma_spread_max!r}")
 
 
+MUSIC_OVERRUN_TOL = 0.1   # s a reel may run past its analysed music window. mix refuses a
+                          # stem longer than that (a shorter one would desync from the
+                          # picture), build_reel refuses the target before any ffmpeg, and
+                          # pacing and edit_plan judge an overrun by it: one number, so the
+                          # four cannot disagree about which reel the music covers.
+
+
 @dataclass
 class MusicSpec:
     """MUSIC.json — the lean music analysis a reel is cut to (design §2, Phase B).
@@ -1746,6 +1753,11 @@ class ReelManifest:
     music_in_app: bool = False         # EDL.music_in_app: build_reel's deliver arm also
                                        # writes deliveries/no-music/REEL_v{n}.mp4 and its
                                        # sound note (design 2026-10-20). Omitted when False.
+    shutters: tuple[int, ...] = ()     # indices of the episodes whose cut carries the
+                                       # shutter accent — deliver's white flash and mix's
+                                       # click, on the master's real cut time (design
+                                       # 2026-10-21 §4); edl_to_reel fills it from
+                                       # EDLEpisode.shutter. Omitted when empty.
     provenance: dict = field(default_factory=dict)   # run-level record threaded to deliver (§6)
 
     def __post_init__(self) -> None:
@@ -1820,6 +1832,16 @@ class ReelManifest:
             raise ValueError("ReelManifest.music_in_app asks for a sound note naming the "
                              "track, but the reel has no music — pass edl_to_reel --music "
                              "<MUSIC.json>, or drop --music-in-app from the brief")
+        sh = self.shutters
+        if not (isinstance(sh, tuple)
+                and all(isinstance(i, int) and not isinstance(i, bool)
+                        and 0 <= i < len(self.episodes) for i in sh)
+                and all(a < b for a, b in zip(sh, sh[1:]))):
+            raise ValueError(
+                f"ReelManifest.shutters must be a tuple of the accented episodes' indices, "
+                f"each a whole number in [0, {len(self.episodes) - 1}], ascending and "
+                f"unrepeated, got {sh!r} — re-run edl_to_reel to regenerate EPISODES.json "
+                f"from the EDL's `shutter` flags")
         if not isinstance(self.provenance, dict):
             raise ValueError(f"ReelManifest.provenance must be an object, got "
                              f"{type(self.provenance).__name__}")
@@ -1871,6 +1893,9 @@ class ReelManifest:
         # the block to `[]` or `false` must not load as "no gates", with every authored bar
         # silently back at its default, which is what `d.get("gates") or {}` made of it.
         g = d.get("gates")
+        # A JSON list becomes the tuple the field holds; null reads as absent, the `gates`
+        # rule above; anything else goes to the constructor to be refused by name.
+        sh = d.get("shutters")
         return cls(episodes=eps, target_dur=d.get("target_dur"),
                    variety_min=d.get("variety_min", 8),
                    cap=d.get("cap", 3), changelog=d.get("changelog", ""),
@@ -1882,6 +1907,7 @@ class ReelManifest:
                    brief_len=d.get("brief_len"),
                    gates={} if g is None else g,
                    music_in_app=d.get("music_in_app", False),
+                   shutters=() if sh is None else (tuple(sh) if isinstance(sh, list) else sh),
                    provenance=d.get("provenance") or {})
 
     @classmethod
@@ -1906,6 +1932,8 @@ class ReelManifest:
             d["gates"] = dict(self.gates)
         if self.music_in_app:              # omitted when False, like gates
             d["music_in_app"] = True
+        if self.shutters:                  # omitted when empty, like gates
+            d["shutters"] = list(self.shutters)
         return d
 
     def write(self, path: str | Path) -> None:

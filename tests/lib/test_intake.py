@@ -1,10 +1,13 @@
+import datetime as dt
 import os
 import json
 import shutil
 import threading
 import types
+import cv2
 import numpy as np
 import pytest
+from PIL import Image as _PImg
 from scripts import intake
 from scripts.lib import carve, footage, reid
 from scripts.lib.footage import DESCRIPTOR_LEN, Cast
@@ -1342,3 +1345,451 @@ def test_intake_names_what_it_skipped_and_the_live_photo_pairs(monkeypatch, tmp_
     err = capsys.readouterr().err
     assert "skipped 2 .dng, 1 .webp" in err                 # dotfiles are not news
     assert "1 photo+video pair(s) share a name (img_7)" in err
+
+
+# --- photo groups, and photos ranked among photos (design 2026-10-21 §5) -------------
+
+
+def _texture(seed, size=(480, 360)):
+    """Random grey-level noise, upscaled so a blur has structure to remove: distinct
+    seeds give pHashes ~32 bits apart, far past DEDUP_DIST."""
+    rng = np.random.default_rng(seed)
+    small = rng.integers(0, 256, (size[1] // 8, size[0] // 8), dtype=np.uint8)
+    g = cv2.resize(small, size, interpolation=cv2.INTER_NEAREST)
+    return np.repeat(g[:, :, None], 3, axis=2)
+
+
+def test_a_blurred_copy_is_less_sharp():
+    img = _texture(1)
+    soft = cv2.GaussianBlur(img, (0, 0), 2.0)
+    softer = cv2.GaussianBlur(img, (0, 0), 6.0)
+    assert intake._sharpness(img) > intake._sharpness(soft) > intake._sharpness(softer)
+
+
+def _laplacian_var(gray):
+    return round(float(cv2.Laplacian(gray, cv2.CV_64F).var()), 3)
+
+
+def test_sharpness_is_measured_at_the_analysis_proxys_long_side():
+    # the Laplacian's variance depends on scale, so two photos of one burst exported at
+    # different sizes must be compared on one: the analysis proxy's long side, reached
+    # down with INTER_AREA and UP with INTER_CUBIC
+    big = _texture(2, (2000, 1500))
+    down = cv2.resize(cv2.cvtColor(big, cv2.COLOR_RGB2GRAY), (intake.PROXY_LONG_SIDE, 720),
+                      interpolation=cv2.INTER_AREA)
+    assert intake._sharpness(big) == _laplacian_var(down)
+    small = _texture(2, (400, 300))
+    up = cv2.resize(cv2.cvtColor(small, cv2.COLOR_RGB2GRAY), (intake.PROXY_LONG_SIDE, 720),
+                    interpolation=cv2.INTER_CUBIC)
+    assert intake._sharpness(small) == _laplacian_var(up)
+    exact = _texture(2, (intake.PROXY_LONG_SIDE, 720))    # already at the scale: as it is
+    assert intake._sharpness(exact) == _laplacian_var(cv2.cvtColor(exact, cv2.COLOR_RGB2GRAY))
+
+
+def _pink(w, h, seed):
+    """A 1/f grey scene — detail at every scale, as a photographed one has."""
+    rng = np.random.default_rng(seed)
+    f = np.hypot(np.fft.fftfreq(h)[:, None], np.fft.rfftfreq(w)[None, :])
+    f[0, 0] = 1.0
+    img = np.fft.irfft2((rng.standard_normal(f.shape) + 1j * rng.standard_normal(f.shape)) / f,
+                        s=(h, w))
+    img = (img - img.min()) / (img.max() - img.min()) * 255
+    return np.repeat(img.astype(np.uint8)[:, :, None], 3, axis=2)
+
+
+def test_a_small_copy_reads_softer_than_its_large_original():
+    """A thumbnail or a messenger copy pHash-groups with its original, and only one of
+    the two may take the group's ★. Read at its own scale the 480 copy scored ABOVE
+    the 4032 original (the 2026-10-21 review's M1); read at the proxy's, it is below."""
+    original = _pink(4032, 3024, 5)
+    copy = cv2.resize(original, (480, 360), interpolation=cv2.INTER_AREA)
+    assert intake._sharpness(original) > intake._sharpness(copy)
+
+
+def _dated_photo(path, rgb, taken_s=None, subsec=None):
+    """A JPEG of `rgb` whose EXIF says it was taken `taken_s` seconds after
+    2026-10-21 12:00:00 (with `subsec` digits), or carries no date at all."""
+    ex = _PImg.Exif()
+    if taken_s is not None:
+        ifd = ex.get_ifd(0x8769)
+        ifd[0x9003] = f"2026:10:21 12:{taken_s // 60:02d}:{taken_s % 60:02d}"
+        if subsec is not None:
+            ifd[0x9291] = subsec
+    _PImg.fromarray(rgb).save(path, exif=ex.tobytes(), quality=95)
+    return path
+
+
+def test_the_photo_road_records_capture_time_and_sharpness(monkeypatch, tmp_path):
+    monkeypatch.setattr(intake.still, "people", lambda rgb, model: [])
+    img = _texture(3)
+    sharp = intake._process_photo(str(_dated_photo(tmp_path / "a.jpg", img, 5, "3")))
+    soft = intake._process_photo(str(_dated_photo(tmp_path / "b.jpg",
+                                                  cv2.GaussianBlur(img, (0, 0), 4.0))))
+    noon = dt.datetime(2026, 10, 21, 12, 0, 0, tzinfo=dt.timezone.utc).timestamp()
+    assert sharp.taken == noon + 5 + 0.3                   # no offset in the EXIF: read as UTC
+    assert soft.taken is None                              # no EXIF date → no time
+    assert sharp.sharpness > soft.sharpness > 0
+    assert sharp.sharpness == intake._sharpness(intake.still.load(tmp_path / "a.jpg").rgb)
+
+
+def _photo_res(name, taken=None, phash="0000000000000000", people=1, sharpness=None):
+    w = footage.FootageWindow(start=0.0, dur=intake.PHOTO_HOLD, shot_type="medium",
+                              people=people, motion=0.0, shake=0.0,
+                              present=1.0 if people else 0.0)
+    clip = footage.FootageClip(source=name, dur=intake.PHOTO_ROOM, res=(400, 300), fps=0.0,
+                               windows=[w], kind="photo")
+    return intake.ClipResult(clip=clip, phashes=[phash], taken=taken, sharpness=sharpness)
+
+
+# five pHashes 32 bits from each other, and one a single bit from the first
+_FAR = ["0000000000000000", "ffffffffffffffff", "00000000ffffffff", "ffff0000ffff0000",
+        "0f0f0f0f0f0f0f0f"]
+_NEAR0 = "0000000000000001"
+
+
+def _groups(results):
+    return [r.clip.group for r in results]
+
+
+def test_photos_taken_within_the_burst_gap_chain_into_one_group():
+    rs = [_photo_res("a.jpg", 100.0, _FAR[0]), _photo_res("b.jpg", 100.5, _FAR[1]),
+          _photo_res("c.jpg", 102.5, _FAR[2]),            # exactly BURST_GAP after b: joins
+          _photo_res("d.jpg", 700.0, _FAR[3])]            # ten minutes later: alone
+    intake.group_photos(rs)
+    assert _groups(rs) == ["g1", "g1", "g1", None]
+    assert intake.BURST_GAP == 2.0
+
+
+def test_a_gap_past_the_burst_gap_splits_the_chain():
+    rs = [_photo_res("a.jpg", 100.0, _FAR[0]), _photo_res("b.jpg", 102.25, _FAR[1])]
+    intake.group_photos(rs)
+    assert _groups(rs) == [None, None]
+
+
+def test_the_time_chain_follows_capture_order_not_file_order():
+    # c sits between a and b in time; without sorting a-b (3.0 s) would not chain
+    rs = [_photo_res("a.jpg", 100.0, _FAR[0]), _photo_res("b.jpg", 103.0, _FAR[1]),
+          _photo_res("c.jpg", 101.5, _FAR[2])]
+    intake.group_photos(rs)
+    assert _groups(rs) == ["g1", "g1", "g1"]
+
+
+def test_a_photo_without_a_time_is_not_chained():
+    rs = [_photo_res("a.jpg", 100.0, _FAR[0]), _photo_res("b.jpg", None, _FAR[1]),
+          _photo_res("c.jpg", 100.3, _FAR[2])]
+    intake.group_photos(rs)
+    assert _groups(rs) == ["g1", None, "g1"]
+
+
+def test_near_identical_photos_group_by_phash_without_a_time():
+    rs = [_photo_res("a.jpg", None, _FAR[0]), _photo_res("b.jpg", None, _FAR[1]),
+          _photo_res("c.jpg", None, _NEAR0)]                # 1 bit from a: a retake
+    intake.group_photos(rs)
+    assert _groups(rs) == ["g1", None, "g1"]
+
+
+def test_the_phash_rule_is_strictly_under_dedup_dist():
+    at = f"{0xff:016x}"                                    # 8 bits from all-zero
+    assert intake.check_reel._hamming(intake.imagehash.hex_to_hash(at),
+                                      intake.imagehash.hex_to_hash(_FAR[0])) == intake.DEDUP_DIST
+    rs = [_photo_res("a.jpg", None, _FAR[0]), _photo_res("b.jpg", None, at)]
+    intake.group_photos(rs)
+    assert _groups(rs) == [None, None]
+
+
+def test_time_and_phash_links_join_one_group():
+    # a-b by time, b-c by pHash (c taken an hour later — a retake of the same pose)
+    rs = [_photo_res("a.jpg", 100.0, _FAR[0]), _photo_res("b.jpg", 101.0, _FAR[1]),
+          _photo_res("c.jpg", 3700.0, "fffffffffffffffe"), _photo_res("d.jpg", 9000.0, _FAR[2])]
+    intake.group_photos(rs)
+    assert _groups(rs) == ["g1", "g1", "g1", None]
+
+
+def test_lone_photos_get_no_group():
+    rs = [_photo_res(f"{i}.jpg", 1000.0 * i, h) for i, h in enumerate(_FAR)]
+    intake.group_photos(rs)
+    assert _groups(rs) == [None] * 5
+
+
+def test_groups_are_numbered_by_the_path_order_of_their_first_member():
+    # group Y (c, e) was shot FIRST, group X (b, d) later: numbering follows the files
+    rs = [_photo_res("a.jpg", 50.0, _FAR[0]),
+          _photo_res("b.jpg", 500.0, _FAR[1]), _photo_res("c.jpg", 10.0, _FAR[2]),
+          _photo_res("d.jpg", 500.4, _FAR[3]), _photo_res("e.jpg", 10.4, _FAR[4])]
+    intake.group_photos(rs)
+    assert _groups(rs) == [None, "g1", "g2", "g1", "g2"]
+
+
+def test_regrouping_reflects_the_current_links_not_a_previous_calls():
+    rs = [_photo_res("a.jpg", 100.0, _FAR[0]), _photo_res("b.jpg", 100.5, _FAR[1])]
+    intake.group_photos(rs)
+    rs[1].taken = 900.0                                    # b no longer follows a
+    intake.group_photos(rs)
+    assert _groups(rs) == [None, None]
+
+
+def test_video_clips_are_never_grouped_or_linked():
+    # a video window whose pHash matches a photo's, and two photos only that video
+    # could link: none of them groups
+    vw = footage.FootageWindow(start=0.0, dur=2.0, shot_type="wide", people=0, motion=0.1,
+                               shake=0.0)
+    video = intake.ClipResult(clip=footage.FootageClip(source="v.mp4", dur=4.0, res=(100, 100),
+                                                       fps=30.0, windows=[vw, vw]),
+                              phashes=[_FAR[0], _FAR[1]])
+    rs = [_photo_res("a.jpg", None, _FAR[0]), video, _photo_res("b.jpg", None, _FAR[1])]
+    intake.group_photos(rs)
+    assert _groups(rs) == [None, None, None]
+
+
+# The pre-change result of score_pool on a fixture, pinned by running the code as it
+# stood before photos ranked among photos: a video-only pool must not move a bit.
+def _pinned_video_pool():
+    def W(m, s, p, people, shot):
+        return footage.FootageWindow(start=0.0, dur=2.0, shot_type=shot, people=people,
+                                     motion=m, shake=s, present=p)
+    big = [W(0.010, 0.004, 1.0, 1, "wide"), W(0.030, 0.001, 0.5, 2, "medium"),
+           W(0.020, 0.009, 1.0, 1, "close"), W(0.050, 0.002, 0.0, 0, "wide"),
+           W(0.040, 0.006, 0.75, 3, "medium"), W(0.060, 0.003, 1.0, 1, "wide")]
+    small = [W(0.015, 0.005, 0.25, 1, "wide"), W(0.070, 0.008, 1.0, 2, "close"),
+             W(0.005, 0.0, 0.0, 0, "wide")]
+    return [footage.FootageClip(source="big.mp4", dur=60.0, res=(1920, 1080), fps=30.0,
+                                windows=big),
+            footage.FootageClip(source="small.mp4", dur=60.0, res=(1920, 1080), fps=30.0,
+                                windows=small)]
+
+
+_PINNED_REPORT = {"windows": 9, "separated": {"present": 5, "motion": 7, "shake": 8}}
+_PINNED = {"big.mp4": [(0.625, "1 person, wide, calm"), (0.75, "2 people, medium, calm"),
+                       (0.25, "1 person, close, calm"), (0.5, "no people, wide, dynamic"),
+                       (0.375, "3 people, medium, dynamic"), (1.0, "1 person, wide, dynamic")],
+           "small.mp4": [(0.0, "1 person, wide, calm"), (0.875, "2 people, close, dynamic"),
+                         (0.125, "no people, wide, calm")]}
+
+
+def _scored(clips):
+    return {c.source: [(w.score, w.description) for w in c.windows]
+            for c in clips if c.kind == "video"}
+
+
+def test_a_video_only_pool_scores_exactly_as_before_photos_ranked_apart():
+    clips = _pinned_video_pool()
+    assert intake.score_pool(clips) == _PINNED_REPORT
+    assert _scored(clips) == _PINNED
+
+
+def _photo_clip(name, people=1):
+    return _photo_res(name, people=people).clip
+
+
+def test_adding_photos_moves_no_video_score_and_no_video_report_count():
+    clips = _pinned_video_pool()
+    photos = [_photo_clip("p1.jpg"), _photo_clip("p2.jpg", people=0), _photo_clip("p3.jpg")]
+    rep = intake.score_pool(photos[:1] + clips[:1] + photos[1:] + clips[1:],
+                            sharpness={"p1.jpg": 5.0, "p2.jpg": 50.0, "p3.jpg": 20.0})
+    assert _scored(clips) == _PINNED
+    assert {k: v for k, v in rep.items() if k != "photos"} == _PINNED_REPORT
+
+
+def test_photos_rank_among_photos_and_sharpness_breaks_a_presence_tie():
+    ps = [_photo_clip("a.jpg"), _photo_clip("b.jpg"), _photo_clip("c.jpg")]
+    rep = intake.score_pool(ps, sharpness={"a.jpg": 10.0, "b.jpg": 30.0, "c.jpg": 20.0})
+    assert [p.windows[0].score for p in ps] == [0.0, 1.0, 0.5]
+    assert rep == {"windows": 0, "separated": {"present": 0, "motion": 0, "shake": 0},
+                   "photos": {"windows": 3, "separated": {"present": 0, "sharpness": 2}}}
+
+
+def test_the_photo_blend_is_w_present_presence_and_the_rest_sharpness():
+    # a and c hold a person, b and d do not. Hand-computed from W_PRESENT = 0.44:
+    #   presence ranks  a 5/6  b 1/6  c 5/6  d 1/6     (two tie groups of two)
+    #   sharpness ranks a 0    b 1    c 1/3  d 2/3
+    #   blend           a .367 b .633 c .553 d .447    -> ranked a 0, d 1/3, c 2/3, b 1
+    # c beats the sharper d on presence; b, empty but sharpest, beats c because the
+    # sharpness term carries 0.56 of the blend.
+    ps = [_photo_clip("a.jpg"), _photo_clip("b.jpg", people=0), _photo_clip("c.jpg"),
+          _photo_clip("d.jpg", people=0)]
+    rep = intake.score_pool(ps, sharpness={"a.jpg": 1.0, "b.jpg": 40.0, "c.jpg": 20.0,
+                                           "d.jpg": 30.0})
+    assert [p.windows[0].score for p in ps] == [0.0, 1.0, round(2 / 3, 3), round(1 / 3, 3)]
+    assert rep["photos"] == {"windows": 4, "separated": {"present": 2, "sharpness": 3}}
+
+
+def test_a_photo_without_a_sharpness_ranks_as_zero():
+    ps = [_photo_clip("a.jpg"), _photo_clip("b.jpg"), _photo_clip("c.jpg")]
+    intake.score_pool(ps, sharpness={"a.jpg": 0.5, "c.jpg": 2.0})
+    # b reads as 0.0, below a's 0.5
+    assert [p.windows[0].score for p in ps] == [0.5, 0.0, 1.0]
+
+
+def test_a_photos_description_names_it_without_motion():
+    ps = [_photo_clip("a.jpg"), _photo_res("b.jpg", people=0).clip,
+          _photo_res("c.jpg", people=2).clip]
+    intake.score_pool(ps, sharpness={})
+    assert [p.windows[0].description for p in ps] == [
+        "photo, 1 person, medium", "photo, no people, medium", "photo, 2 people, medium"]
+
+
+def test_the_photo_report_passes_footage_validation():
+    ps = [_photo_clip("a.jpg"), _photo_clip("b.jpg", people=0)]
+    clips = _pinned_video_pool() + ps
+    rep = intake.score_pool(clips, sharpness={"a.jpg": 1.0, "b.jpg": 2.0})
+    f = footage.Footage(clips=clips, scoring=rep)
+    assert f.scoring["photos"] == {"windows": 2, "separated": {"present": 1, "sharpness": 1}}
+
+
+def _gwin(score, people=1):
+    return footage.FootageWindow(start=0.0, dur=2.0, shot_type="medium", people=people,
+                                 motion=0.0, shake=0.0, present=1.0, score=score)
+
+
+def _gphoto(name, score, group=None):
+    return footage.FootageClip(source=name, dur=8.0, res=(400, 300), fps=0.0,
+                               windows=[_gwin(score)], kind="photo", group=group)
+
+
+def test_cull_keeps_one_best_per_group_the_highest_scored():
+    ps = [_gphoto("a.jpg", 0.9, "g1"), _gphoto("b.jpg", 0.8, "g1"), _gphoto("c.jpg", 0.95, "g1"),
+          _gphoto("d.jpg", 0.7)]
+    hashes = dict(zip("abcd", _FAR))
+    intake.cull(ps, phash_of=lambda c, w: intake.imagehash.hex_to_hash(hashes[c.source[0]]))
+    assert [p.windows[0].best for p in ps] == [False, False, True, True]
+
+
+def test_a_group_member_passed_over_is_not_kept_for_the_phash_rule():
+    # b loses to a in their group; e (no group, lower score) shares b's pHash. Had b been
+    # KEPT, e would read as b's duplicate and lose too.
+    ps = [_gphoto("a.jpg", 0.9, "g1"), _gphoto("b.jpg", 0.8, "g1"), _gphoto("e.jpg", 0.6)]
+    hashes = {"a": _FAR[0], "b": _FAR[1], "e": _FAR[1]}
+    intake.cull(ps, phash_of=lambda c, w: intake.imagehash.hex_to_hash(hashes[c.source[0]]))
+    assert [p.windows[0].best for p in ps] == [True, False, True]
+
+
+def test_two_groups_each_keep_their_own_best():
+    ps = [_gphoto("a.jpg", 0.9, "g1"), _gphoto("b.jpg", 0.8, "g2"), _gphoto("c.jpg", 0.85, "g1"),
+          _gphoto("d.jpg", 0.75, "g2")]
+    hashes = dict(zip("abcd", _FAR))
+    intake.cull(ps, phash_of=lambda c, w: intake.imagehash.hex_to_hash(hashes[c.source[0]]))
+    assert [p.windows[0].best for p in ps] == [True, True, False, False]
+
+
+def _gvideo(name, score):
+    return footage.FootageClip(source=name, dur=8.0, res=(400, 300), fps=30.0,
+                               windows=[_gwin(score)])
+
+
+def test_a_group_whose_top_photo_repeats_a_kept_image_takes_no_star():
+    """The group's top-scored member speaks for it. When that member is a pHash
+    duplicate of an image already kept — a video window of the same moment — the moment
+    is starred already, so the group gets NO star rather than handing it to a lower
+    member (the 2026-10-21 review's M3): p2 is a different frame of the same burst."""
+    clips = [_gvideo("v.mp4", 0.95), _gphoto("p1.jpg", 0.9, "g1"), _gphoto("p2.jpg", 0.8, "g1"),
+             _gphoto("q.jpg", 0.7)]
+    hashes = {"v": _FAR[0], "p1": _FAR[0], "p2": _FAR[1], "q": _FAR[2]}
+    intake.cull(clips, phash_of=lambda c, w: intake.imagehash.hex_to_hash(
+        hashes[c.source.split(".")[0]]))
+    assert [c.windows[0].best for c in clips] == [True, False, False, True]
+
+
+def test_intake_groups_a_burst_and_keeps_its_sharpest(monkeypatch, tmp_path):
+    """Three JPEGs taken 0.3 s apart and one ten minutes later, all different pictures
+    (so only the capture time can group them) — real decode, real EXIF, real sharpness.
+    The burst's SOFTER members would still clear BEST_FLOOR on their own: the middle
+    one ranks 2/3 among the photos, so one-per-group is what stops it."""
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    monkeypatch.setattr(intake.reid, "available", lambda: False)
+    monkeypatch.setattr(intake.still, "people", lambda rgb, model: [(200, 150, 120, 200)])
+    root = tmp_path / "footage"; root.mkdir()
+    #          name         seed  taken  subsec  blur sigma (None = as shot)
+    shots = [("IMG_1.jpg", 11,   0,     "0",    2.0),      # the burst: 12:00:00.0,
+             ("IMG_2.jpg", 12,   0,     "3",    1.0),      #   .3 and .6 — IMG_3 the
+             ("IMG_3.jpg", 13,   0,     "6",    None),     #   sharpest of the three
+             ("IMG_4.jpg", 14,   600,   None,   4.0)]      # ten minutes on, softest of all
+    for name, seed, taken, sub, sigma in shots:
+        img = _texture(seed)
+        _dated_photo(root / name, cv2.GaussianBlur(img, (0, 0), sigma) if sigma else img,
+                     taken, sub)
+    f = intake.intake(str(root), str(tmp_path / "out"), jobs=1)
+    by = {c.source: c for c in f.clips}
+    hs = [intake.imagehash.phash(_PImg.open(root / n)) for n in sorted(by)]
+    assert min(int(a - b) for i, a in enumerate(hs) for b in hs[i + 1:]) >= intake.DEDUP_DIST
+    assert [by[n].group for n in sorted(by)] == ["g1", "g1", "g1", None]
+    assert [by[n].windows[0].best for n in ("IMG_1.jpg", "IMG_2.jpg", "IMG_3.jpg")] == [
+        False, False, True]
+    assert by["IMG_2.jpg"].windows[0].score >= intake.BEST_FLOOR    # one-per-group decided it
+    md = (tmp_path / "out" / "FOOTAGE.md").read_text()
+    assert md.splitlines()[0].endswith(" · 4 photos, 3 in 1 group")
+    assert "## IMG_1.jpg  (photo · 480×360 · may hold up to 8.0s) · group g1 (3 photos)" in md
+    assert f.scoring["photos"]["windows"] == 4
+    on_disk = json.loads((tmp_path / "out" / "FOOTAGE.json").read_text())
+    assert [c.get("group") for c in on_disk["clips"]] == ["g1", "g1", "g1", None]
+
+
+# two bursts by capture time — {p1, p3} and {p2, p4} — every pHash far from every other
+_BURSTS = {"p1.jpg": (0.0, _FAR[0], 10.0), "p2.jpg": (100.0, _FAR[1], 20.0),
+           "p3.jpg": (1.0, _FAR[2], 30.0), "p4.jpg": (101.0, _FAR[3], 40.0)}
+
+
+def _burst_root(tmp_path):
+    root = tmp_path / "footage"; root.mkdir()
+    for n in _BURSTS:
+        (root / n).write_bytes(n.encode())
+    return root
+
+
+def _burst_photo(path, sf=intake.SAMPLE_FPS, embed_cast=True, band=carve.DEFAULT_BAND):
+    name = intake.Path(path).name
+    taken, phash, sharpness = _BURSTS[name]
+    return _photo_res(name, taken=taken, phash=phash, sharpness=sharpness)
+
+
+def _footage_groups(footage_json):
+    return [c.get("group") for c in json.loads(footage_json)["clips"]]
+
+
+def test_group_numbering_is_the_same_across_a_cache_mix(monkeypatch, tmp_path):
+    """Groups are numbered by the PATH order of their first member. Under a cache mix
+    `results` holds the hits first, so numbering in its order would swap g1 and g2
+    here: p2 and p4 stay cached while the first group's p1 and p3 re-scan (the
+    2026-10-21 review's M4)."""
+    root, out = _burst_root(tmp_path), tmp_path / "out"
+    monkeypatch.setattr(intake, "ensure_model", lambda *a, **k: None)
+    monkeypatch.setattr(intake.reid, "available", lambda: False)
+    monkeypatch.setattr(intake, "_process_clip", _burst_photo)
+    intake.intake(str(root), str(out), jobs=1)
+    cold = (out / "FOOTAGE.json").read_text()
+    assert _footage_groups(cold) == ["g1", "g2", "g1", "g2"]
+    for n in ("p1.jpg", "p3.jpg"):
+        shutil.rmtree(out / ".intake_cache" / n)
+    intake.intake(str(root), str(out), jobs=1)
+    assert json.loads((out / "intake_report.json").read_text())["cached"] == 2
+    assert (out / "FOOTAGE.json").read_text() == cold
+
+
+def test_group_numbering_is_the_same_across_jobs(monkeypatch, tmp_path):
+    """At jobs=3 the first group's members are held until p4 is stored, so the pool
+    completes out of path order every time — at jobs=1, completion order IS path order
+    and could not tell numbering by `paths` from numbering by completion."""
+    root = _burst_root(tmp_path)
+    _stub_cache(monkeypatch)
+    monkeypatch.setattr(intake.reid, "available", lambda: False)
+    monkeypatch.setattr(intake, "_process_clip", _burst_photo)
+    intake.intake(str(root), str(tmp_path / "o1"), jobs=1)
+    stored, p4_stored = [], threading.Event()
+
+    def store(o, path, s, r, *a, **k):              # runs on the driver, in completion order
+        stored.append(intake.Path(path).name)
+        if stored[-1] == "p4.jpg":
+            p4_stored.set()
+        return r
+
+    def held(path, *a, **k):
+        if intake.Path(path).name in ("p1.jpg", "p3.jpg"):
+            assert p4_stored.wait(timeout=10)
+        return _burst_photo(path)
+
+    monkeypatch.setattr(intake.intake_cache, "store", store)
+    monkeypatch.setattr(intake, "_process_clip", held)
+    intake.intake(str(root), str(tmp_path / "o3"), jobs=3)
+    assert set(stored[:2]) == {"p2.jpg", "p4.jpg"}  # load-bearing: the 2nd group first
+    one = (tmp_path / "o1" / "FOOTAGE.json").read_text()
+    assert _footage_groups(one) == ["g1", "g2", "g1", "g2"]
+    assert (tmp_path / "o3" / "FOOTAGE.json").read_text() == one

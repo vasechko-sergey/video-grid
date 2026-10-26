@@ -123,6 +123,10 @@ def conduct(geo: ReelGeometry, edl: EDL, *, eps: float = matchgrade.MATCH_EPS,
     Every measure_crop call carries the SAME decl: one declaration governs the
     whole reel, not a per-episode choice.
 
+    A freeze (design 2026-10-21 §3) is not measured and does not vote in the target: it
+    takes its predecessor's decision whole, and the pair that predecessor ships
+    (matchgrade.follow) — so the held frame keeps the grade of the frame it holds.
+
     The scale is 1.0 unless the supplied bias had to be shrunk to fit (see biased_target); it
     is returned rather than swallowed because a weakened displacement is invisible in the
     pixels and the report is the only place it can be seen. The decisions
@@ -137,12 +141,16 @@ def conduct(geo: ReelGeometry, edl: EDL, *, eps: float = matchgrade.MATCH_EPS,
     # from inside reframe._probe (whole-branch review, minor 5).
     for i, eg in enumerate(geo.episodes):
         eg.require_inputs(i)
+    # A freeze is not measured and does not vote: it takes its predecessor's decision
+    # whole (matchgrade.follow, design 2026-10-21 §3). Everything below the next line is
+    # the conductor as it always was, over the played episodes only.
+    played = [i for i, e in enumerate(edl.episodes) if not e.freeze]
     # measure_crop returns (profile, rows) (design 2026-09-15): rows carry one
     # AnchorReading per anchor, naming which region actually supplied it. Both
     # halves are kept — profiles feed the target exactly as before, and the rows
     # ride into matchgrade.plan so MATCH.json/MATCH.md can carry the provenance.
-    measured = [measure_crop(eg.manifest, eg.source, eg.route, decl=decl)
-                for eg in geo.episodes]
+    measured = [measure_crop(geo.episodes[i].manifest, geo.episodes[i].source,
+                             geo.episodes[i].route, decl=decl) for i in played]
     profiles = [p for p, _ in measured]
     region_rows = [tuple(_row_dict(r) for r in rows) for _, rows in measured]
     target = matchgrade.common_target(profiles)
@@ -150,13 +158,23 @@ def conduct(geo: ReelGeometry, edl: EDL, *, eps: float = matchgrade.MATCH_EPS,
     # what a preset is, so an authored bias and a preset's taste reach the target the
     # same way and there is one place that decides between them.
     target, scale = matchgrade.biased_target(target, bias)
-    has_tone = [e.tone_src is not None for e in edl.episodes]
-    decisions = matchgrade.plan(profiles, has_tone, target, eps=eps, force=force,
-                                regions=region_rows)
-    new_episodes = tuple(
-        e if d.reason == "hand-authored"                       # respect the human's pair
-        else replace(e, tone_src=d.tone_src, tone_dst=d.tone_dst)  # set, or clear (None) a stale one
-        for e, d in zip(edl.episodes, decisions))
+    has_tone = [edl.episodes[i].tone_src is not None for i in played]
+    planned = matchgrade.plan(profiles, has_tone, target, eps=eps, force=force,
+                              regions=region_rows)
+    # plan numbers its own list; put each decision back on its EDL index
+    decided = {i: replace(d, index=i) for i, d in zip(played, planned)}
+    episodes = {i: (edl.episodes[i] if d.reason == "hand-authored"   # respect the human's pair
+                    else replace(edl.episodes[i], tone_src=d.tone_src,
+                                 tone_dst=d.tone_dst))       # set, or clear (None) a stale one
+                for i, d in decided.items()}
+    for f in (i for i, e in enumerate(edl.episodes) if e.freeze):
+        # EDL refuses a freeze at 0 or after a photo or a freeze, so f-1 was played and
+        # is decided; what it SHIPS is its episode after the pass above
+        pair = (episodes[f - 1].tone_src, episodes[f - 1].tone_dst)
+        decided[f] = matchgrade.follow(decided[f - 1], f, pair)
+        episodes[f] = replace(edl.episodes[f], tone_src=pair[0], tone_dst=pair[1])
+    decisions = [decided[i] for i in range(len(edl.episodes))]
+    new_episodes = tuple(episodes[i] for i in range(len(edl.episodes)))
     return replace(edl, episodes=new_episodes), target, decisions, scale
 
 
@@ -231,6 +249,12 @@ def _report_md(sources: list[str], target: matchgrade.Profile,
              "| # | source | measured (p5/p50/p95) | max Δ | action · reason |",
              "|---|--------|-----------------------|:-----:|-----------------|"]
     for src, d in zip(sources, decisions):
+        if d.reason == matchgrade.FREEZE_REASON:
+            # nothing was measured on a freeze: printing its predecessor's profile here
+            # would read as a reading of the held frame (matchgrade.follow)
+            lines.append(f"| {d.index} | {src} | – | – | {d.action} · freeze — follows "
+                         f"episode {d.index - 1} |")
+            continue
         delta = max(abs(a - b) for a, b in zip(d.measured, target))
         lines.append(f"| {d.index} | {src} | {_triple(d.measured)} | {delta:.0f} | {d.action} · {d.reason} |")
     # regions.assemble fills all three anchors for every real episode — an
@@ -344,8 +368,13 @@ def write_match(geometry_path: str, *, eps: float = matchgrade.MATCH_EPS,
     write_edl(out, geo.edl)       # re-stamp: match_grade is a legitimate tool, and its
                                   # output is the tool's output (design §4)
     sources = [e.source for e in edl.episodes]
-    lifts = matchgrade.toe_lifts([(e.tone_src, e.tone_dst) for e in out.episodes],
-                                 offset=bias[0] * k)
+    # A freeze carries its predecessor's pair, whose own line already names the lift —
+    # and a freeze's selection entry cannot carry a pair to pin, so its line would
+    # advise the impossible.
+    lifts = [lift for lift in
+             matchgrade.toe_lifts([(e.tone_src, e.tone_dst) for e in out.episodes],
+                                  offset=bias[0] * k)
+             if not out.episodes[lift[0]].freeze]
     for i, lo, hi in lifts:
         print(_toe_lift_line(i, sources[i], lo, hi, bias[0] * k).removeprefix("> "),
               file=sys.stderr)

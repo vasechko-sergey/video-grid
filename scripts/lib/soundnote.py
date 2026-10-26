@@ -15,23 +15,25 @@ def clock(seconds: float) -> str:
     return f"{int(m)}:{s:04.1f}"
 
 
-def _kept(ambient: bool, sfx: bool) -> str:
-    if ambient and sfx:
-        return "with the natural sound and the transition whooshes kept"
-    if ambient:
-        return "with the natural sound kept"
-    if sfx:
-        return "with the transition whooshes kept"
-    return "and silent: the reel had no natural sound to keep"
+def _kept(ambient: bool, sfx: bool, clicks: bool = False) -> str:
+    """What the music-less stem holds, by name — every part it has and none it lacks."""
+    held = [name for on, name in ((ambient, "the natural sound"),
+                                  (sfx, "the transition whooshes"),
+                                  (clicks, "the shutter clicks")) if on]
+    if not held:
+        return "and silent: the reel had no natural sound to keep"
+    listed = held[0] if len(held) == 1 else ", ".join(held[:-1]) + " and " + held[-1]
+    return f"with {listed} kept"
 
 
 def render(music: MusicSpec, meta: dict | None, reel_name: str, reel_digest: str,
            reel_dur: float, cuts: list[float], platform: str = "", *,
            ambient: bool = True, sfx: bool = False, linear: bool = True,
-           fitted: bool = True) -> str:
+           fitted: bool = True, clicks: bool = False) -> str:
     """The note's text. `meta` is fetch.track_meta(music.track) or None; `cuts` are the
     reel's internal cut times in seconds; `platform` is the brief's zone name.
-    `ambient`/`sfx` say what the music-less stem holds and `linear` whether its level is
+    `ambient`/`sfx`/`clicks` say what the music-less stem holds — its natural sound, the
+    transition whooshes, the shutter accent's clicks — and `linear` whether its level is
     the music version's exactly (mix's record); `fitted` whether the cuts were fitted to
     this music (an outro fit exists only after the pacing pass), since only then is
     "the first cut lands on a beat" a check rather than a hope."""
@@ -67,7 +69,7 @@ def render(music: MusicSpec, meta: dict | None, reel_name: str, reel_digest: str
         f"# Sound for {reel_name} — attach it in {app}",
         "",
         f"`{reel_name}` in this folder is the delivered reel with the song removed: the "
-        f"same picture, titles and look, {_kept(ambient, sfx)}.",
+        f"same picture, titles and look, {_kept(ambient, sfx, clicks)}.",
         "",
         "| | |",
         "|---|---|",

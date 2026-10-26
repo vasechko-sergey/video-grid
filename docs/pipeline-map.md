@@ -55,10 +55,14 @@ already-rendered path, run between `episodes` (5.14's first sub-stage) and
 it keeps the drift oracle. `probe.json`'s `tone_profile` is ONE pooled
 `(p5, p50, p95)` across all the probe's frames, not a reading per frame, so it
 reads straight into a `tone_src`/`tone_dst` pair. `probe look` re-runs the
-OTHER half by hand: the post-encode look-gate check `deliver` (5.14) now
-hard-refuses on, sampling a delivered reel against its master for a declared
-vignette/fade that did not reach the pixels (a declared titles track gets a
-`not-checked` finding, not a check yet — §11). See
+OTHER half by hand: it IS `deliver`'s own post-encode look gate (5.14,
+`deliver._verify_look`), sampling a delivered reel against its master for a
+declared vignette, bookend fade or title ink that did not reach the pixels —
+titles and shutter flashes included. Its `--titles` takes the TITLES.json path,
+`--platform` the safe-zone table the titles were laid out by, and `--flash`
+(repeatable) each shutter flash's time on the master, which the delivery's
+attestation lists as `flashes`; the check steps around them as deliver's does
+(design 2026-10-21 §4). See
 [the frame-probe-look-gate design](specs/2026-08-15-frame-probe-look-gate-design.md).
 
 ## Automation loops (design §4.1 ladder)

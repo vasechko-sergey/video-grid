@@ -116,3 +116,38 @@ def test_the_router_carries_the_generated_chain():
     assert toolindex.chain() in desc, (
         f"using-montage's description does not carry the chain rendered from "
         f"V1_STAGES: {toolindex.chain()!r}")
+
+
+def test_the_judge_is_told_every_intent_key_the_packet_carries(tmp_path):
+    """The intent header lists what the judge will find in {INTENT}; a key the packet
+    carries and the header never names is one the judge reads without a word on what it
+    means. Derived from episode_qc._evidence itself, so a key added there and not here
+    turns this red (final review I3: `freeze` reached neither)."""
+    from scripts import episode_qc
+    from scripts.lib.models import ReelEpisode
+    (tmp_path / "ep0").mkdir()
+    clip = tmp_path / "ep0.mp4"
+    clip.write_bytes(b"x")
+    ep = ReelEpisode(manifest={"segment": "s.mp4"}, clip=str(clip),
+                     path=str(tmp_path / "ep0" / "path.json"),
+                     meta=str(tmp_path / "ep0" / "path.meta.json"))
+    keys = episode_qc._evidence(ep, 0, {}, {"strip": "s.jpg", "cell_px": [1, 1]},
+                                (1, 1))["intent"]
+    text = (ROOT / "skills/episode-qc/episode-reviewer.md").read_text()
+    header = text[text.index("## This episode's declared intent"):text.index("{INTENT}")]
+    assert [k for k in keys if not re.search(rf"\b{k}\b", header)] == []
+
+
+def test_the_judge_and_the_skill_say_what_a_freeze_is():
+    # a correct freeze is a strip of one frame and a clip with no flash — read without
+    # this as a stalled render, filed blocking, and refused with no waiver (final review I3)
+    judge = (ROOT / "skills/episode-qc/episode-reviewer.md").read_text()
+    skill = (ROOT / "skills/episode-qc/SKILL.md").read_text()
+    for text in (judge, skill):
+        assert "intent.freeze" in text and "intent.shutter" in text
+        assert "not judgeable" in text.lower()
+        # nothing re-renders a freeze, so its composition finding must not route to the
+        # stage that re-renders (final re-review m2)
+        flat = " ".join(text.split())
+        assert "composition finding on it" in flat and "routes `edit-plan`" in flat
+        assert "neither ever routes `reprocess`" in flat or "neither routes `reprocess`" in flat

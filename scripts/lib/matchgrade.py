@@ -22,8 +22,9 @@ MATCH_EPS = 4.0        # luma units (0-255). An episode whose every anchor is wi
 def common_target(profiles: list[Profile]) -> Profile:
     """The reel's common tone target: the per-anchor MEDIAN across episodes, gap-repaired
     so color.tone_arg accepts it. Median (not mean) so one blown-out or crushed episode
-    cannot drag the target off the group it should represent. Every episode votes — even
-    a flat clip that cannot itself receive a tone (valid_src) is a real exposure sample.
+    cannot drag the target off the group it should represent. Every measured episode
+    votes — even a flat clip that cannot itself receive a tone (valid_src) is a real
+    exposure sample. A freeze is not measured and does not vote (see `follow`).
     Because each row is ordered (p5<=p50<=p95), the column medians are ordered too, so the
     target is always non-decreasing; only narrow gaps need repair, never an inversion."""
     if not profiles:
@@ -122,7 +123,9 @@ class ToneDecision:
     author, and (when not) why. author -> tone_src/tone_dst carry the pair; within-eps/flat
     -> None (the driver CLEARS a stale pair on a --force re-conduct); hand-authored -> the
     driver leaves the episode as-is. `measured` is carried so the report and the driver need
-    no second measure pass.
+    no second measure pass. A freeze's decision is its predecessor's (`follow`): reason
+    "freeze", the predecessor's action and profile, and the pair the predecessor ships —
+    whichever action, so the driver writes exactly that pair onto the freeze.
 
     `regions` is one row per tone anchor: the author's name for the region, the
     kind declared, the kind actually used, that region's frame fraction, the
@@ -140,6 +143,7 @@ class ToneDecision:
     index: int
     action: str                    # "author" | "skip"
     reason: str                    # "authored" | "within-eps" | "flat-source" | "hand-authored"
+                                   # | "freeze"
     measured: Profile
     tone_src: Profile | None = None
     tone_dst: Profile | None = None
@@ -197,6 +201,30 @@ def plan(profiles: list[Profile], has_tone: list[bool], target: Profile,
             out.append(ToneDecision(i, "author", "authored", measured=p, tone_src=p,
                                     tone_dst=target, regions=rows))
     return out
+
+
+FREEZE_REASON = "freeze"
+
+
+def follow(prev: ToneDecision, index: int,
+           pair: tuple[Profile | None, Profile | None]) -> ToneDecision:
+    """A freeze's decision (design 2026-10-21 §3): the one its predecessor got, whole.
+
+    A freeze holds the predecessor's last frame, so it takes the predecessor's grade
+    exactly — the authored pair, the conducted pair, or none. Measured on its own (its
+    one frame, three times, against the predecessor's profile pooled over a whole
+    window) the two land on different sides of `eps` whenever the window's light
+    moves, and "the same frame, held" changes brightness on the cut by the
+    predecessor's whole correction (final review I1). It is never measured and never
+    votes in `common_target`: its frame is already in the predecessor's reading, and
+    counting it again weights that content twice.
+
+    `pair` is what the predecessor SHIPS (`prev`'s own pair when it was authored, its
+    hand-authored pair when it was left alone, None when skipped) — supplied by the
+    caller, because only it holds the EDL. `measured` is the predecessor's: the profile
+    the decision was made on. `regions` is empty: nothing was measured here."""
+    return ToneDecision(index, prev.action, FREEZE_REASON, measured=prev.measured,
+                        tone_src=pair[0], tone_dst=pair[1])
 
 
 TOE_LIFT_WARN = 15.0   # luma units. A first cut, not a measurement: the one case on

@@ -17,15 +17,15 @@ import json
 import sys
 from pathlib import Path
 
-from scripts.lib import edl as edl_lib, gridfit, moodpreset, outro, ramp as ramp_mod, safezones
+from scripts.lib import edl as edl_lib, gridfit, hold, moodpreset, outro, ramp as ramp_mod, safezones
 from scripts.lib.constraints import Constraints, Placed, evaluate as check_constraints
 from scripts.lib.edl import EDL, EDLEpisode, preflight, write_edl
 from scripts.lib.footage import (Footage, FootageClip, FootageWindow, SHOT_TYPES, delivered_shot,
                                  shot_type)
 from scripts.lib.look import LookSpec
-from scripts.lib.models import HERO_RULES, MusicSpec, RampSpec
+from scripts.lib.models import HERO_RULES, MUSIC_OVERRUN_TOL, MusicSpec, RampSpec
 from scripts.lib.moodpreset import MoodPreset
-from scripts.lib.pacing import Spine, music_identity
+from scripts.lib.pacing import Spine, music_identity, reanalysis_duration
 from scripts.lib.project import ProjectConfig
 from scripts.lib.spec import Spec, share_line
 
@@ -233,9 +233,16 @@ def _resolve_window(clip: FootageClip, window: object, source: str, k: int) -> F
 
 _SNAP_TOL = 1e-3      # s of float slack when comparing a slot against its episode
 
+_HOLD_TOL = 1e-6      # s of float slack on a held slot's [HOLD_MIN, HOLD_ROOM]: every
+                      # planned length the fit writes lies within 1e-9 of that range
+
 _TEMPO_TOL = 0.5      # BPM. A spine copies MusicSpec.tempo straight through, so an honest
                       # pair is bit-identical; half a BPM is far below any musically
                       # meaningful difference and far above float round-trip noise.
+
+
+def _hold_word(count: int | None) -> str:
+    return "none (the grid's own count)" if count is None else str(count)
 
 
 def _bind_pacing(episodes: list, spine: Spine) -> list:
@@ -253,12 +260,58 @@ def _bind_pacing(episodes: list, spine: Spine) -> list:
     edit, and copying its length across would truncate a shot exactly the way the
     generator used to: a 7.3s ride into a 4.6s slot, in silence. Refuse instead.
 
+    A HELD episode (a photo or a freeze, design 2026-10-21 §2.3) is the exception: the
+    grid authored its length, which legitimately moves by seconds, so the guard cannot
+    apply. Identity is checked kind against kind instead — a held episode needs a held
+    slot and footage a footage slot, either mismatch refused — and count against count:
+    a slot records the `hold` it was fitted with, and an episode that authors another
+    (added, removed or changed) is refused. It takes the slot's length as is (no ramp can
+    ride a held episode).
+
     Zip-to-min; an over/underflow is logged, never a silent drop (§4.1)."""
     allow = gridfit.allowance(spine.tempo) + _SNAP_TOL
     n = min(len(episodes), len(spine.slots))
     bound = []
     for i in range(n):
         slot, ep = spine.slots[i], episodes[i]
+        if ep.held() and not slot.held:
+            raise ValueError(
+                f"pacing: slot {i} was fitted with episode {i} as footage; it is now a "
+                f"{'freeze' if ep.freeze else 'photo'} — re-run pacing against the current "
+                f"EDL.json before binding, so the grid authors its length")
+        if slot.held and not ep.held():
+            raise ValueError(
+                f"pacing: slot {i} was fitted with episode {i} held (a photo or a freeze); "
+                f"it is now footage — re-run pacing against the current EDL.json before "
+                f"binding")
+        if ep.held() and ep.hold != slot.hold:
+            # The slot was placed for the count the episode authored THEN: binding its
+            # length to a changed `hold` would ignore the new count in silence
+            raise ValueError(
+                f"pacing: slot {i} was fitted with hold={_hold_word(slot.hold)}; episode "
+                f"{i} now authors {_hold_word(ep.hold)} — re-run pacing against the current "
+                f"EDL.json before binding, so the grid places the count it now asks for")
+        if ep.held():
+            # Where the half-beat guard stood, the one thing a held length can be checked
+            # against: the range the fit writes it in. An authored count keeps its own
+            # detected beat even a hair outside that range (gridfit._held_cut), so its
+            # slot may also sit within half a beat of the count itself
+            beat = 2.0 * gridfit.allowance(spine.tempo)
+            in_range = hold.HOLD_MIN - _HOLD_TOL <= slot.dur <= hold.HOLD_ROOM + _HOLD_TOL
+            on_count = (slot.hold is not None
+                        and abs(slot.dur - slot.hold * beat) <= beat / 2 + _HOLD_TOL)
+            if not (in_range or on_count):
+                count = ("" if slot.hold is None else
+                         f" and further than half a beat from its authored {slot.hold} "
+                         f"beat{'' if slot.hold == 1 else 's'}")
+                raise ValueError(
+                    f"pacing: slot {i} holds {slot.dur:.3f}s, outside the "
+                    f"[{hold.HOLD_MIN:.2f}, {hold.HOLD_ROOM:.1f}]s a held episode may last"
+                    f"{count} — the fit never writes that, so this PACING.json was edited "
+                    f"or is corrupt. Re-run pacing against the current EDL.json before "
+                    f"binding")
+            bound.append(dataclasses.replace(ep, beat_slot=i, dur=slot.dur))
+            continue
         # PLAYED time on both sides, and the SCENARIO's played time on the episode
         # side: the spine was fitted to base_play_dur (scripts/pacing.py), so
         # comparing the already-bound length would refuse a correct re-apply by
@@ -378,7 +431,11 @@ def _apply_outro(episodes: list[EDLEpisode], footage: Footage, music: MusicSpec,
         return episodes, outro.OutroFit(reel_dur=realized, line=None, fade=fade, tail=0.0,
                                         rung="unchanged", moved=0.0, brief_len=brief_len,
                                         cause="closer-not-in-footage")
-    grow_max = max(0.0, clip.room_after(last.start) - last.dur)
+    # A held closer grows into HOLD_ROOM, not into its clip's room: a freeze's start is
+    # still a placeholder here (resolved after this fit) and the room after a frame it
+    # holds means nothing; a photo's clip `dur` IS HOLD_ROOM, so no photo result moves.
+    grow_max = (max(0.0, hold.HOLD_ROOM - last.dur) if last.held()
+                else max(0.0, clip.room_after(last.start) - last.dur))
     shrink_max = max(0.0, last.play_dur() - outro.MIN_LAST)
     fit = outro.fit_outro(lines, music.vocal_spans, realized,
                           outro.bar_seconds(music.tempo), fade,
@@ -456,15 +513,95 @@ def _candidates(footage: Footage, aspect: tuple[int, int], want: str,
     return sorted(rows, key=lambda r: r[2], reverse=True)[:limit]
 
 
-def _placed(clip: FootageClip, ep: EDLEpisode) -> Placed:
-    """Project one episode onto what an editorial rule can judge (design §4).
+def _placed(clip: FootageClip, ep: EDLEpisode, index: int) -> Placed:
+    """Project one episode onto what an editorial rule can judge (design §4). `index` is
+    its EDL index, which a refusal names: a freeze is not projected, so the projection's
+    own positions run low after one.
 
     A hero reaches the projection only when it is a cast NAME: a str that is not one
     of models.HERO_RULES. A bbox tuple, a track id, and "largest" all name a tracking
     target rather than a person, so they project to None — which a bookend rule reads
     as unsatisfied, never as satisfied."""
     hero = ep.hero if isinstance(ep.hero, str) and ep.hero not in HERO_RULES else None
-    return Placed(source=ep.source, shot=clip.shot_at(ep.start), hero=hero)
+    return Placed(source=ep.source, shot=clip.shot_at(ep.start), hero=hero, index=index)
+
+
+FREEZE_KEYS = ("freeze", "shutter", "hold")   # all a selection's freeze entry may carry
+
+
+def _freeze_entry(sel: dict, episodes: list[EDLEpisode], k: int) -> EDLEpisode:
+    """A selection entry `{"freeze": true}` → the episode that holds the previous one's
+    last frame (design 2026-10-21 §3). It copies the previous episode's editorial fields
+    — composing `center` at the crop it ends on — and drops every field that addresses
+    time; its `start` is a placeholder until _resolve_freezes, because the previous cut
+    may still move (pacing, the outro fit). It is not tracked: edl_to_reel renders it
+    over the previous episode's last route sample, held."""
+    # The value first: `"freeze": false` beside a source and a window is a played window
+    # with a stray key, and "drop the key" is the remedy that applies — not "a freeze
+    # carries only freeze, shutter, hold", which reads it as a freeze.
+    if sel["freeze"] is not True:
+        raise ValueError(f"selection episode {k}: `freeze` must be true, got "
+                         f"{sel['freeze']!r} — to cut a played window, drop the key and "
+                         f"name a source and a window")
+    extra = sorted(set(sel) - set(FREEZE_KEYS))
+    if extra:
+        raise ValueError(
+            f"selection episode {k}: a freeze carries only {', '.join(FREEZE_KEYS)} — got "
+            f"{', '.join(extra)}. It inherits the previous episode's framing (source, "
+            f"window, layout, crop, hero, colour) and composes center; author those there")
+    prev = episodes[-1] if episodes else None
+    if prev is None or prev.held():
+        why = ("it cannot open the cut" if prev is None else
+               f"episode {k - 1} is a {'freeze' if prev.freeze else 'photo'}")
+        raise ValueError(f"selection episode {k}: a freeze holds the previous episode's last "
+                         f"frame, so it must follow a video episode — {why}")
+    if prev.pan is not None:
+        # A freeze is rendered over the predecessor's last route sample (design §3), and a
+        # pan has no route — its window holds nobody to hold still on.
+        raise ValueError(f"selection episode {k}: a freeze holds the subject where the "
+                         f"previous episode left them, and episode {k - 1} is a pan, which "
+                         f"follows nobody — freeze the episode before or after it, or drop "
+                         f"the pan")
+    try:
+        # shutter defaults ON: without the accent a held frame reads as a stalled player.
+        # `center`: a held route has no travel to lead with. The crop is the one the
+        # previous episode ENDS on — times its zoom's end width when it pushed in.
+        return dataclasses.replace(
+            prev, freeze=True, shutter=sel.get("shutter", True), hold=sel.get("hold"),
+            dur=hold.HOLD_DEFAULT, base_dur=hold.HOLD_DEFAULT, beat_slot=None,
+            composition="center",
+            crop_scale=prev.crop_scale * (prev.zoom["to"] if prev.zoom is not None else 1.0),
+            ramp=None, pan=None, zoom=None, still=None, motion=None, smooth_window_s=None,
+            stabilize=False,
+            processing_notes=f"freeze · {prev.processing_notes}".rstrip(" ·"))
+    except ValueError as e:
+        raise ValueError(f"selection episode {k}: {e}") from e
+
+
+def _resolve_freezes(episodes: list[EDLEpisode], footage: Footage) -> list[EDLEpisode]:
+    """Every freeze's `start` from its predecessor AS IT IS NOW: `start + dur - 1/fps`,
+    the source time of the frame it holds, never before its own in-point (design
+    2026-10-21 §3). A LABEL — the cut identity and EDL.md read it. The pixels come from
+    the predecessor's own segment (extract.extract_freeze), whose last frame this time can
+    miss by one either way when both ends of the window are off the frame grid. Run last,
+    after pacing and the outro fit — either may move the predecessor's cut, and the outro
+    fit may grow the freeze's own length, which moves nothing here."""
+    by_source = {c.source: c for c in footage.clips}
+    out = list(episodes)
+    for i, ep in enumerate(out):
+        if not ep.freeze:
+            continue
+        if i == 0:      # out[-1] would be the reel's LAST episode: a wrong frame, silently
+            raise ValueError("edit_plan: freeze 0 has no episode before it — a freeze holds "
+                             "the previous episode's last frame, so it cannot open the cut")
+        prev = out[i - 1]
+        clip = by_source.get(prev.source)
+        if clip is None:
+            raise ValueError(f"edit_plan: freeze {i} follows {prev.source!r}, which is not in "
+                             f"FOOTAGE — its frame rate names the last frame it shows")
+        out[i] = dataclasses.replace(
+            ep, start=max(prev.start, prev.start + prev.dur - 1 / clip.fps))
+    return out
 
 
 def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
@@ -506,6 +643,11 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     evaluated", never as "passed". As with variety, build_edl only MEASURES; the
     refusal lives one level up in write_edit_plan, so a caller building an EDL in
     memory still gets the finding.
+
+    A selection entry carrying `freeze` (design 2026-10-21 §3) holds the previous
+    episode's last frame — see _freeze_entry. It is resolved LAST (_resolve_freezes), after
+    pacing and the outro fit have moved the cut it freezes. An authored `hold` (beats) with
+    no pacing bound is logged as unused, never refused: beats need a tempo.
 
     `platform` (design 2026-08-12 §1.1, keyword-only) rides straight onto EDL.platform —
     build_edl does not resolve it from anything, write_edit_plan already reads SPEC.platform
@@ -551,6 +693,11 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
     for k, sel in enumerate(eps_in):
         if not isinstance(sel, dict):
             raise ValueError(f"selection episode {k} must be an object, got {type(sel).__name__}")
+        if "freeze" in sel:
+            # Neither censused nor placed: a freeze is not a new use of footage, and
+            # `no_repeat` would refuse every freeze as a repeat of its own shot (§3).
+            episodes.append(_freeze_entry(sel, episodes, k))
+            continue
         ed = dict(sel)
         source = ed.pop("source", None)
         window = ed.pop("window", None)
@@ -571,7 +718,7 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
         if aspect is not None:
             used[_delivered(clip, fw, aspect, ep.layout, ep.rect)] += 1
         episodes.append(ep)
-        placed.append(_placed(clip, ep))
+        placed.append(_placed(clip, ep, len(episodes) - 1))
     # the reel's bookend fade, resolved exactly as EDL.look is (selection.json wins over
     # the preset), because it is the number mix uses and therefore the number the outro
     # fit must add to the bar line. No look at all -> mix's own default.
@@ -658,6 +805,27 @@ def build_edl(footage: Footage, selection: dict, pacing: Spine | None = None,
                      f"the fitter bounded against the music, so the target stays clamped at "
                      f"{target:.2f}s and the over-flow escalates at the reel gate. Re-run "
                      f"pacing against the current EDL.json, or drop episodes")
+    if (music is not None and pacing is not None
+            and target > music.duration + MUSIC_OVERRUN_TOL):
+        # build_reel refuses this reel too, but only after phase 1 has rendered and judged
+        # every episode, and as a bare error. Here both numbers are in hand before any
+        # ffmpeg; held lengths make it likelier, since the grid sets them (final review M5)
+        raise ValueError(
+            f"edit_plan: the reel's target {target:.2f}s overruns its music window "
+            f"({music.duration:.2f}s, {Path(music.track).name}) by "
+            f"{target - music.duration:.2f}s — build_reel refuses a reel longer than its "
+            f"window, and only after every episode is rendered and judged. Held lengths "
+            f"(photos, freezes) are the grid's and can grow a reel past the length its "
+            f"music was analysed for: re-analyse with headroom (beats --auto-start "
+            f"--duration {reanalysis_duration(target, music.tempo)}), re-run pacing, then "
+            f"this build")
+    authored = [i for i, e in enumerate(episodes) if e.hold is not None]
+    if authored and pacing is None:
+        _log(f"hold: episode{'s' if len(authored) > 1 else ''} "
+             f"{', '.join(map(str, authored))} authored a length in beats, but no pacing is "
+             f"bound and beats need a tempo — unused, each plays {hold.HOLD_DEFAULT:.1f}s. "
+             f"Run pacing and re-build with --pacing to use them")
+    episodes = _resolve_freezes(episodes, footage)   # last: pacing and the outro moved cuts
     cap = selection.get("cap")
     variety = None
     if aspect is not None and preset is not None:
@@ -742,6 +910,17 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     build_edl's `music` paragraph and `_apply_outro`). Absent, EDL.outro stays None and
     the reel's length is whatever the footage/pacing already decided, unchanged."""
     footage = Footage.from_json(footage_path)
+    photos = sum(1 for c in footage.clips if c.kind == "photo")
+    if photos and not (footage.scoring and "photos" in footage.scoring):
+        # A pool scanned before 0.28 still loads — and its photo scores are percentiles
+        # against the video (motion 0 ranked a photo lowest) and it carries no burst
+        # groups, so "one photo per group" has nothing to read. Said, not refused: it is
+        # a usable cut, only a worse-informed one (final review M6).
+        _log(f"photos: FOOTAGE.json holds {photos} photo{'' if photos == 1 else 's'} but "
+             f"no photo ranking (scoring.photos) — it was scanned before 0.28, so its "
+             f"photo scores are percentiles against the video and it records no burst "
+             f"groups. Re-run footage-intake (it re-scans the photos only), then edit-plan "
+             f"and pacing")
     try:
         selection = json.loads(Path(selection_path).read_text())
     except json.JSONDecodeError as e:

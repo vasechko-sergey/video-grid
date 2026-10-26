@@ -5,10 +5,15 @@ load()    the one decoder — intake, the contact sheet and extract all call it 
           three cannot disagree about which way up a photo is or what colour it has.
 people()  one YOLO pass on the still; subject() the box a move aims at.
 render()  a planned move (lib/kenburns) warped in float and streamed into one x264
-          encode on the video segment's contract (§4).
+          encode on the video segment's contract (§4), in the colour description
+          colour_of() reads off the video beside it (2026-10-21 §7).
 """
+import datetime as dt
 import io
+import json
 import math
+import re
+import struct
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,6 +34,16 @@ DETECT_IMGSZ = 960       # the inference size track.py and intake use
 MAX_DENSITY = 2.0        # source pixels per output pixel a frame is warped from at most;
                          # past it the renderer drops to a half-size level (render)
 _SRGB = ImageCms.createProfile("sRGB")
+EXIF_IFD = 0x8769                    # the EXIF sub-IFD the capture-time tags live in
+DATE_ORIGINAL = 0x9003               # DateTimeOriginal, "YYYY:MM:DD HH:MM:SS"
+SUBSEC_ORIGINAL = 0x9291             # SubSecTimeOriginal, the fraction's digits
+OFFSET_ORIGINAL = 0x9011             # OffsetTimeOriginal, "+HH:MM"
+_OFFSET = re.compile(r"([+-])(\d{2}):(\d{2})")
+# what Pillow 12.3 raises reading an EXIF block it cannot parse, measured over 20 000 fuzzed
+# blocks: a header that is not TIFF (SyntaxError) or is cut short (struct.error). Reading
+# the EXIF sub-IFD adds a third, a pointer of a signed type that seeks before the block
+# (ValueError) — caught in _taken, around that read alone.
+_EXIF_UNREADABLE = (SyntaxError, struct.error)
 
 
 @dataclass(frozen=True)
@@ -64,12 +79,24 @@ def load(path: str | Path) -> Still:
         heif = im.format == "HEIF"
         rec: dict = {"decoder": im.format, "source_dims": list(im.size)}
         icc = im.info.get("icc_profile")
+        try:
+            exif = im.getexif()            # pi_heif hands a HEIF's EXIF to Pillow the same way
+        except _EXIF_UNREADABLE:
+            # reading the capture time never stops a decode (2026-10-21 review I1): a
+            # block nobody can parse carries no date and no orientation tag, so the photo
+            # decodes as stored — as Pillow has it when it reads the block first, at open
+            # (a JPEG without a JFIF density): it caches the block empty, and
+            # exif_transpose below reads that cached block too
+            exif = Image.Exif()
+        taken = _taken(exif)
+        if taken is not None:
+            rec["taken"] = taken
         if heif:
             rec["orientation"] = ("heif transforms, applied by libheif "
                                   f"(EXIF tag was {im.info.get('original_orientation')})")
             up = im
         else:
-            rec["orientation"] = int(im.getexif().get(0x0112, 1))
+            rec["orientation"] = int(exif.get(0x0112, 1))
             up = ImageOps.exif_transpose(im)
         mode = up.mode
         if mode.startswith("I;16"):
@@ -117,6 +144,40 @@ def load(path: str | Path) -> Still:
     return Still(rgb=rgb, record=rec)
 
 
+def _taken(exif: Image.Exif) -> float | None:
+    """When the photo was taken, in seconds since the epoch, or None when it carries no
+    capture time that parses (design 2026-10-21 §5). Absence is not a failure: a
+    screenshot or an exported PNG has none, and grouping then rests on the pHash alone.
+
+    No OffsetTimeOriginal reads as UTC. Only DIFFERENCES between photos are used, and
+    inside one camera those are right whatever its zone; across two cameras with
+    different clocks they are not (§7). An unparseable sub-second or offset is dropped
+    rather than taking the date with it."""
+    try:
+        # `or {}`: Pillow 10 returns None for a corrupt IFD pointer; 12.3 returns {}
+        ifd = exif.get_ifd(EXIF_IFD) or {}
+    except ValueError:                    # a signed pointer to before the block: seek(-1)
+        return None
+    date = ifd.get(DATE_ORIGINAL)
+    if not isinstance(date, str):
+        return None
+    try:
+        t = dt.datetime.strptime(date.strip("\x00 "), "%Y:%m:%d %H:%M:%S")
+    except ValueError:                    # "0000:00:00 00:00:00" is a camera's "unset"
+        return None
+    tz = dt.timezone.utc
+    m = _OFFSET.fullmatch(str(ifd.get(OFFSET_ORIGINAL, "")).strip("\x00 "))
+    if m and int(m[2]) < 24 and int(m[3]) < 60:
+        sign = 1 if m[1] == "+" else -1
+        tz = dt.timezone(sign * dt.timedelta(hours=int(m[2]), minutes=int(m[3])))
+    sub = str(ifd.get(SUBSEC_ORIGINAL, "")).strip("\x00 ")
+    frac = float("0." + sub) if sub.isascii() and sub.isdigit() else 0.0
+    try:
+        return t.replace(tzinfo=tz).timestamp() + frac
+    except (OverflowError, OSError, ValueError):   # a year the platform clock cannot hold
+        return None
+
+
 def people(rgb: np.ndarray, model_path: str) -> list[tuple[float, float, float, float]]:
     """Person boxes (cx, cy, w, h) in raster pixels, largest first: one YOLO predict at
     the inference size the tracker uses. A model is loaded per call — ultralytics'
@@ -144,8 +205,85 @@ def subject(boxes: list[tuple[float, float, float, float]],
     return Rect(x0, y0, x1 - x0, y1 - y0)
 
 
+# ffprobe's color_space names that `scale` also takes as an out_color_matrix — the
+# matrices a photo can be converted by. Any other (gbr, ycgco, ...) is refused by Colour.
+MATRICES = ("bt709", "smpte170m", "bt470bg", "fcc", "smpte240m", "bt2020nc")
+# The matrix ffmpeg decodes a frame with no matrix tag by: BT.601, measured on 8.1.2 at
+# 640x360 and 1920x1080 alike, portrait too (a BT.709 encode read back this way moves
+# saturated patches 21 codes). A photo beside undescribed video is converted by it, so
+# ffmpeg reads the photo's colours back as it reads the video's (design 2026-10-21 §7).
+UNDESCRIBED_MATRIX = "bt601"
+
+
+@dataclass(frozen=True)
+class Colour:
+    """The colour description a photo segment is written in, in ffprobe's names; None
+    where the stream names none. It is the video segment's own (design 2026-10-21 §7):
+    the master splices the episodes by `-c copy`, and where the description changes
+    mid-stream ffmpeg re-initializes its filter graph, so `select`'s `n` restarts and a
+    by-number read returns the right count of the wrong frames — a correct reel beside
+    undescribed video was refused by grade_faithful at residuals 0/34/76/16 against
+    4.0. The range is always tv, extract's contract, so it is not a field."""
+    space: str | None = None
+    primaries: str | None = None
+    transfer: str | None = None
+
+    def __post_init__(self):
+        if self.space is not None and self.space not in MATRICES:
+            raise ValueError(f"the video is described with the {self.space!r} matrix, which "
+                             f"scale cannot convert a photo into (it converts into "
+                             f"{', '.join(MATRICES)}); re-encode that clip with a BT.709 "
+                             f"description, or leave the photos out of this reel")
+
+    @property
+    def matrix(self) -> str:
+        return self.space or UNDESCRIBED_MATRIX
+
+    def filters(self) -> str:
+        """RGB→YUV by the description's matrix, then the description stamped on the
+        FRAMES, "unknown" where the video names nothing — a photo stamped BT.709 beside
+        undescribed video would change the master's description at the photo, and the
+        decoder carries a description over to later frames that name none. A player
+        that reads undescribed HD as BT.709 now misreads the photo exactly as it reads
+        the video, so the reel keeps one look. (`-color_primaries`/`-color_trc` as output
+        options never reach the file; only frame properties do.)"""
+        return (f"scale=out_color_matrix={self.matrix}:out_range=tv,format=yuv420p,setsar=1,"
+                f"setparams=colorspace={self.space or 'unknown'}:"
+                f"color_primaries={self.primaries or 'unknown'}:"
+                f"color_trc={self.transfer or 'unknown'}:range=tv")
+
+    def to_dict(self) -> dict:
+        return {"space": self.space, "primaries": self.primaries, "transfer": self.transfer,
+                "matrix": self.matrix, "range": "tv"}
+
+
+BT709 = Colour("bt709", "bt709", "bt709")    # a reel of photos alone: no video to follow
+
+
+def colour_of(path: str) -> Colour:
+    """The colour description of `path`'s first video stream — what a photo segment
+    beside it is written with, as it takes that stream's clock (assembly.probe_rate)."""
+    tags = ("color_space", "color_primaries", "color_transfer", "color_range")
+    out = proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
+                    "-show_entries", "stream=" + ",".join(tags), "-of", "json",
+                    str(path)]).stdout.decode("utf-8", errors="replace")
+    streams = json.loads(out).get("streams", [])
+    if not streams:
+        raise RuntimeError(f"{path} has no video stream to take a colour description from")
+    # "unknown" is ffprobe's own name for a field the stream leaves unspecified
+    space, primaries, transfer, rng = (None if streams[0].get(k) in (None, "unknown")
+                                       else streams[0][k] for k in tags)
+    if rng not in (None, "tv"):
+        raise ValueError(f"{path} is {rng} range; every segment is tv (extract's contract), "
+                         f"and a photo beside it is written tv — re-cut it with extract")
+    try:
+        return Colour(space, primaries, transfer)
+    except ValueError as e:
+        raise ValueError(f"{path}: {e}") from e
+
+
 def render(still: Still, frames: list[Rect], out_dims: tuple[int, int], rate: str,
-           out: str, *, timescale: int | None = None) -> dict:
+           out: str, *, colour: Colour, timescale: int | None = None) -> dict:
     """Encode `frames` (photo-pixel rects, one per output frame) into `out`.
 
     The raster is pre-scaled once with INTER_AREA so the TIGHTEST frame lands at 1:1 —
@@ -155,11 +293,8 @@ def render(still: Still, frames: list[Rect], out_dims: tuple[int, int], rate: st
     warp, so the frame moves by fractions of a pixel instead of zoompan's whole ones.
 
     The encode is the video segment's contract (design §4): yuv420p, tv range, SAR 1:1,
-    RGB→YUV through BT.709, and all four colour tags stamped on the FRAMES by
-    `setparams`. Measured on ffmpeg 8.1.2: `-color_primaries`/`-color_trc` given as
-    output options never reach the file, and an untagged segment is the silent trap —
-    ffmpeg decodes it as BT.601 and agrees with itself, while a player reading an
-    untagged HD stream as BT.709 shifts its saturated colours by 21 codes.
+    and the video's own colour description — `colour`, its matrix and its tags, stamped
+    on the frames (Colour.filters).
     """
     W, H = out_dims
     sw, sh = still.dims
@@ -209,8 +344,7 @@ def render(still: Still, frames: list[Rect], out_dims: tuple[int, int], rate: st
     cmd = [ffbin.ffmpeg(), "-y", "-v", "error",
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-framerate", rate,
            "-i", "-",
-           "-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,"
-                  "setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv",
+           "-vf", colour.filters(),
            "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p",
            "-color_range", "tv",
            *(["-video_track_timescale", str(timescale)] if timescale else []),

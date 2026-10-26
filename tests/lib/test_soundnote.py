@@ -55,6 +55,16 @@ def test_whooshes_are_named_only_when_the_stem_has_them():
     assert "whooshes" not in plain and "the natural sound and the transition whooshes kept" in both
 
 
+def test_the_note_names_shutter_clicks_and_never_calls_them_whooshes():
+    clicks = soundnote.render(_MS, _META, "R.mp4", "d", 45.0, [5.0], ambient=False,
+                              sfx=False, clicks=True)
+    assert "with the shutter clicks kept" in clicks and "whooshes" not in clicks
+    every = soundnote.render(_MS, _META, "R.mp4", "d", 45.0, [5.0], ambient=True,
+                             sfx=True, clicks=True)
+    assert ("with the natural sound, the transition whooshes and the shutter clicks kept"
+            in every)
+
+
 def test_a_dynamic_music_mix_is_said_to_shift_the_natural_sound():
     text = soundnote.render(_MS, _META, "R.mp4", "d", 45.0, [5.0], linear=False)
     assert "levelled dynamically" in text

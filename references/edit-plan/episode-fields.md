@@ -85,9 +85,47 @@ target length, and order them **hook first**. For each episode assign:
   4:5) and `fit` with the blurred field otherwise (square, landscape); author
   `layout` to override. A photo refuses `zoom`, `pan`, `ramp`, `stabilize`,
   `hero`, `motion`, `smooth_window_s` and any `start_offset`, and a move faster
-  than `ZOOM_MAX_RATE` for its hold. Pacing may grow its `dur` up to 8.0 s; there is
-  no field to set it by hand. The move keeps the TOP half of the people whole (heads),
-  shortening itself rather than cut it.
+  than `ZOOM_MAX_RATE` for its hold. With `--pacing` the music grid authors its `dur`
+  in whole beats — 1/3 s to 8.0 s, shorter where the music is louder (design 2026-10-21
+  §2); `hold` (below) asks for a count. The move keeps the TOP half of the people whole
+  (heads), shortening itself rather than cut it.
+- `freeze` (a selection entry of its own) — `{"freeze": true}` holds **the previous
+  episode's last frame**, "like a photograph" (design 2026-10-21 §3). It carries only
+  `freeze`, `shutter` and `hold`; source, window, layout, crop, hero and colour it
+  inherits from the episode before it, which must be a played video window that is not
+  a `pan` — a freeze cannot open the cut or follow a photo, another freeze or a pan
+  (a pan follows nobody). It composes `center` at the crop the previous episode ends
+  on (a `zoom` there: its end width). It is **not tracked**: it is framed over the
+  previous episode's last route sample, held — the same person, where that episode
+  left them — so after a `lead` the subject moves from the third line to the centre on
+  the cut. It drops what addresses time (`ramp`, `pan`, `zoom`, `still`, `motion`,
+  `smooth_window_s`, `stabilize`), plays 2.0 s when no music binds it, and its segment
+  is silent. Its `shutter` is on unless the entry says `"shutter": false`. match-grade
+  does not measure it: it takes the previous episode's grade exactly, conducted or
+  hand-authored. Its framing is not judged (the previous episode's was), so a subject
+  that episode leaves near the frame edge is held there — drop the freeze or move the
+  previous window's end if that reads wrong. It is not a new use of footage: the
+  variety census and `CONSTRAINTS.json`'s `no_repeat` both skip it. It follows wherever
+  the previous cut lands, after pacing and the outro fit.
+- `shutter` (optional, a photo or a freeze only) — the shutter accent on the
+  episode's cut: a white flash and a shutter click (design 2026-10-21 §4). A freeze
+  defaults it to `true` — without it a held frame reads as a stalled player; a photo
+  defaults to `false`. Refused on a played video window.
+- `hold` (optional, a photo or a freeze only) — a length in whole **beats** (an int
+  ≥ 1) that outranks the music grid's own pick (design 2026-10-21 §2.1), e.g. for a
+  hero photo the brief wants held longer. Without it the grid plans the count from the
+  music's energy over the bar that opens the hold — at 120 BPM 4, 2 or 1 beats as that
+  bar is quiet, mid or loud, never the same count three times in a row inside a run of
+  holds — and the run's last hold before a video ends on a line of the reel's level
+  when one lies within half to twice its plan. Beats need a tempo: without `--pacing` it is
+  unused — `edit_plan build` says so — and the episode plays 2.0 s. Pacing drops a
+  window whose tempo cannot hold the count 1/3 s to 8.0 s, and refuses only when no
+  window is left. An authored count is never moved to reach a line, nor to a beat when
+  the music detects none near it (it holds its count and the fit sees the distance), and the grid level is the whole reel's: when the hold is
+  the last before a video, the cut back stays on the level's lines only if the count is
+  a whole number of them — 4 or 8 beats keep a bar grid, 8 a 2-bar one, 2 only a
+  half-bar, an odd count only the beat — so one odd `hold` there can cost every cut in
+  the reel its bar alignment. Changing a `hold` means re-running pacing.
 - `pan` (optional) — `{"from": f, "to": f}`, a **generated** constant-velocity
   camera move: two fractions of the crop's horizontal freedom (`0.0` hard
   left, `1.0` hard right; direction is the sign of `to - from`). It replaces
@@ -184,6 +222,8 @@ is the index into it. Anything absent from this table is not authorable from
 | `pan` | a generated camera move; refused over a window holding people |
 | `zoom` | a subject-anchored push-in/pull-out along the tracked route |
 | `still` | a photo's move — a push toward its people, rendered into the segment |
+| `freeze` | a selection entry of its own: hold the previous episode's last frame |
+| `shutter` / `hold` | a photo's or a freeze's cut accent / its length in beats |
 | `ramp` | a speed ramp down to a slow plateau and back |
 | `stabilize` | the vidstab pre-stage; never on a wade-in/out shot |
 | `smooth_window_s` | seconds of path smoothing |

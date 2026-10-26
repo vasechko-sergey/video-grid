@@ -5,6 +5,7 @@ import json
 import pytest
 
 from scripts import mix
+from scripts.lib import lint
 from scripts.lib.models import MusicSpec
 
 
@@ -127,11 +128,120 @@ def test_build_sfx_places_a_whoosh_at_each_major_cut(tmp_path, monkeypatch):
     assert "amix=inputs=2:duration=first:normalize=0" in joined   # base + 1 whoosh, levels kept
 
 
+def test_build_sfx_whoosh_bed_argv_is_pinned(tmp_path, monkeypatch):
+    """The whoosh-only bed exactly as it was before the shutter click shared it: the
+    click is added beside it, and a reel without accents must not hear the difference."""
+    calls = []
+    monkeypatch.setattr(mix.proc, "run", lambda cmd, **k: (calls.append(cmd), _R())[1])
+    monkeypatch.setattr(mix, "_whoosh", lambda d: d + "/w.wav")
+    d = str(tmp_path)
+    assert mix._build_sfx([4.0, 0.3, 4.0, 0.3, 0.3], d) == d + "/sfx.wav"
+    assert calls == [[mix.ffbin.ffmpeg(), "-y", "-t", "8.9", "-f", "lavfi", "-i",
+                      "anullsrc=r=48000:cl=stereo", "-i", d + "/w.wav", "-filter_complex",
+                      "[1:a]asplit=2[w0][w1];[w0]adelay=3800:all=1[d0];"
+                      "[w1]adelay=8100:all=1[d1];"
+                      "[0:a][d0][d1]amix=inputs=3:duration=first:normalize=0[sfx]",
+                      "-map", "[sfx]", "-c:a", "pcm_s16le", d + "/sfx.wav"]]
+
+
+# --- the shutter click (design 2026-10-21 §4) -----------------------------------------
+
+def test_the_shutter_is_two_seeded_high_passed_bursts_seventy_ms_apart(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(mix.proc, "run", lambda cmd, **k: (calls.append(cmd), _R())[1])
+    d = str(tmp_path)
+    assert (mix._CLICK_DUR, mix._CLICK_GAP, mix._CLICK_HP) == (0.015, 0.07, 1800)
+    assert mix._shutter(d) == d + "/shutter.wav"
+    burst = "anoisesrc=color=white:r=48000:d=0.015:a=0.5:seed={}"
+    shape = "highpass=f=1800,afade=t=out:st=0:d=0.015"
+    assert calls == [[mix.ffbin.ffmpeg(), "-y",
+                      "-f", "lavfi", "-i", burst.format(mix._CLICK_SEEDS[0]),
+                      "-f", "lavfi", "-i", burst.format(mix._CLICK_SEEDS[1]),
+                      "-filter_complex",
+                      f"[0:a]{shape}[c0];[1:a]{shape},adelay=70:all=1[c1];"
+                      "[c0][c1]amix=inputs=2:duration=longest:normalize=0[shutter]",
+                      "-map", "[shutter]", "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le",
+                      d + "/shutter.wav"]]
+    assert mix._CLICK_SEEDS[0] != mix._CLICK_SEEDS[1]      # two bursts, not one twice
+    assert lint.check_argv(calls[0]) == []
+
+
+def test_build_sfx_puts_a_click_on_each_shutter_beside_the_whooshes(tmp_path, monkeypatch):
+    """The click's first burst is ON the cut — no lead, unlike the whoosh, whose swell
+    has to peak there."""
+    calls = []
+    monkeypatch.setattr(mix.proc, "run", lambda cmd, **k: (calls.append(cmd), _R())[1])
+    monkeypatch.setattr(mix, "_whoosh", lambda d: d + "/w.wav")
+    monkeypatch.setattr(mix, "_shutter", lambda d: d + "/s.wav")
+    d = str(tmp_path)
+    mix._build_sfx([3.0, 0.5, 0.5], d, shutters=[3.0, 3.5])
+    cmd = calls[-1]
+    assert cmd[cmd.index("-filter_complex") - 4:cmd.index("-filter_complex")] == [
+        "-i", d + "/w.wav", "-i", d + "/s.wav"]
+    assert cmd[cmd.index("-filter_complex") + 1] == (
+        "[1:a]asplit=1[w0];[w0]adelay=2800:all=1[d0];"
+        "[2:a]asplit=2[s0][s1];[s0]adelay=3000:all=1[c0];[s1]adelay=3500:all=1[c1];"
+        "[0:a][d0][c0][c1]amix=inputs=4:duration=first:normalize=0[sfx]")
+
+
+def test_a_click_only_bed_synthesizes_no_whoosh(tmp_path, monkeypatch):
+    calls, made = [], []
+    monkeypatch.setattr(mix.proc, "run", lambda cmd, **k: (calls.append(cmd), _R())[1])
+    monkeypatch.setattr(mix, "_whoosh", lambda d: made.append("whoosh") or d + "/w.wav")
+    monkeypatch.setattr(mix, "_shutter", lambda d: made.append("shutter") or d + "/s.wav")
+    d = str(tmp_path)
+    # whoosh off, and whoosh on over uniform pacing (no major cut): either way a click alone
+    for kw in ({"whoosh": False}, {}):
+        calls.clear(), made.clear()
+        assert mix._build_sfx([3.0, 0.5, 0.5] if kw else [2.0, 2.0], d,
+                              shutters=[2.0], **kw) == d + "/sfx.wav"
+        assert made == ["shutter"]
+        assert calls[-1][calls[-1].index("-filter_complex") + 1] == (
+            "[1:a]asplit=1[s0];[s0]adelay=2000:all=1[c0];"
+            "[0:a][c0]amix=inputs=2:duration=first:normalize=0[sfx]")
+
+
+def test_a_bed_with_nothing_on_it_is_none_and_costs_no_ffmpeg(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(mix.proc, "run", lambda cmd, **k: (calls.append(cmd), _R())[1])
+    assert mix._build_sfx([3.0, 0.5, 0.5], str(tmp_path), whoosh=False) is None
+    assert mix._build_sfx([2.0, 2.0], str(tmp_path), shutters=()) is None
+    assert calls == []
+
+
+def test_mix_builds_the_bed_for_shutters_alone_and_hands_it_the_whoosh_switch(tmp_path,
+                                                                              monkeypatch):
+    calls, got = [], {}
+    monkeypatch.setattr(mix.proc, "run",
+                        lambda cmd, **k: (calls.append(cmd), _R(stderr=_loudnorm_stderr()))[1])
+    monkeypatch.setattr(mix, "_build_sfx",
+                        lambda durs, d, **k: (got.update(durs=durs, **k), d + "/sfx.wav")[1])
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0,
+            segments=[("s0.mp4", 3.0), ("s1.mp4", 3.0)], ambient=False, shutters=[3.0])
+    assert got == {"durs": [3.0, 3.0], "whoosh": False, "shutters": [3.0]}
+    joined = " ".join(" ".join(map(str, c)) for c in calls)
+    assert "[sfx]" in joined and "amix=inputs=2:duration=first" in joined   # rides the sfx input
+
+
+def test_mix_refuses_shutters_without_segments_before_any_ffmpeg(tmp_path, monkeypatch):
+    """Review M5: with no segments there is no bed to click in, and a stem with no click
+    and no error is a caller's bug passed off as a delivery."""
+    calls = []
+    monkeypatch.setattr(mix.proc, "run", lambda cmd, **k: calls.append(cmd))
+    with pytest.raises(ValueError, match=r"shutters \[3\.0\] were given without "
+                                         r"segments.*Pass segments"):
+        mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0, shutters=[3.0])
+    assert calls == []
+    # an empty list is no shutter: no segments is then the music-only stem it always was
+    monkeypatch.setattr(mix.proc, "run", lambda cmd, **k: _R(stderr=_loudnorm_stderr()))
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0, shutters=[])
+
+
 def test_mix_sfx_only_makes_no_sidechain(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(mix.proc, "run",
                         lambda cmd, **k: (calls.append(cmd), _R(stderr=_loudnorm_stderr()))[1])
-    monkeypatch.setattr(mix, "_build_sfx", lambda durs, d: d + "/sfx.wav")
+    monkeypatch.setattr(mix, "_build_sfx", lambda durs, d, **k: d + "/sfx.wav")
     mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0,
             segments=[("s0.mp4", 3.0), ("s1.mp4", 3.0)], ambient=False, sfx=True)
     joined = " ".join(" ".join(map(str, c)) for c in calls)
@@ -144,7 +254,7 @@ def test_mix_ambient_and_sfx_compose_three_inputs(tmp_path, monkeypatch):
     monkeypatch.setattr(mix.proc, "run",
                         lambda cmd, **k: (calls.append(cmd), _R(stderr=_loudnorm_stderr()))[1])
     monkeypatch.setattr(mix, "_build_ambient", lambda segs, d: d + "/ambient.wav")
-    monkeypatch.setattr(mix, "_build_sfx", lambda durs, d: d + "/sfx.wav")
+    monkeypatch.setattr(mix, "_build_sfx", lambda durs, d, **k: d + "/sfx.wav")
     mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0,
             segments=[("s0.mp4", 3.0), ("s1.mp4", 3.0)], ambient=True, sfx=True)
     joined = " ".join(" ".join(map(str, c)) for c in calls)
@@ -332,3 +442,24 @@ def test_mix_records_what_the_music_less_stem_holds_and_whether_the_gain_is_exac
             without_music=str(nm))
     assert json.loads(nm.with_suffix(".json").read_text()) == {
         "ambient": True, "sfx": False, "gain_db": 6.0, "linear": linear}
+
+
+@pytest.mark.parametrize("sfx, segs, want", [
+    # clicks alone: the bed exists, and it holds no whoosh
+    (False, [("s0.mp4", 2.0), ("s1.mp4", 2.0), ("s2.mp4", 2.0)], {"sfx": False, "clicks": True}),
+    # whooshes enabled but no major cut to place one on: still clicks only
+    (True, [("s0.mp4", 2.0), ("s1.mp4", 2.0), ("s2.mp4", 2.0)], {"sfx": False, "clicks": True}),
+    # a held middle shot makes two major cuts: both kinds
+    (True, [("s0.mp4", 1.0), ("s1.mp4", 4.0), ("s2.mp4", 1.0)], {"sfx": True, "clicks": True}),
+])
+def test_mix_records_clicks_apart_from_whooshes(tmp_path, monkeypatch, sfx, segs, want):
+    """Review M1: the record said `sfx: true` for a bed of clicks alone, and the note
+    read that as "the transition whooshes kept"."""
+    stats = (b'"input_i" : "-20.0", "input_tp" : "-9.0", '
+             b'"input_lra" : "5.0", "input_thresh" : "-30.0"')
+    monkeypatch.setattr(mix.proc, "run", lambda cmd, **k: _R(stdout=b"48000,2\n", stderr=stats))
+    nm = tmp_path / "out" / "no_music.m4a"
+    mix.mix(_ms(tmp_path), str(tmp_path / "out"), 6.0, segments=segs, ambient=False,
+            sfx=sfx, shutters=[2.0], without_music=str(nm))
+    assert json.loads(nm.with_suffix(".json").read_text()) == {
+        "ambient": False, "gain_db": 6.0, "linear": True, **want}

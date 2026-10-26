@@ -113,6 +113,25 @@ def test_evidence_reports_an_existing_storyboard_path(tmp_path):
     assert ev["storyboard"] == str(d / "storyboard.jpg")
 
 
+def test_the_intent_names_a_freeze_and_its_shutter(tmp_path):
+    """A freeze reaches the judge as a strip of identical frames and a clip with no flash
+    (deliver adds it), which reads as a stalled render unless the packet says why — the
+    judge template's freeze paragraph keys on these two (final review I3)."""
+    ep, _ = _episode_with_scratch(tmp_path)
+    ep = ReelEpisode(manifest={"segment": "s.mp4", "freeze": True}, clip=ep.clip,
+                     path=ep.path, meta=ep.meta)
+    ev = episode_qc._evidence(ep, 1, {"stats": {}, "flags": {}},
+                              {"strip": "s.jpg", "cell_px": [1, 1]}, (10, 10), shutter=True)
+    assert (ev["intent"]["freeze"], ev["intent"]["shutter"]) == (True, True)
+
+
+def test_a_played_windows_intent_carries_no_freeze_and_no_shutter(tmp_path):
+    ep, _ = _episode_with_scratch(tmp_path)
+    ev = episode_qc._evidence(ep, 0, {"stats": {}, "flags": {}},
+                              {"strip": "s.jpg", "cell_px": [1, 1]}, (10, 10))
+    assert (ev["intent"]["freeze"], ev["intent"]["shutter"]) == (None, False)
+
+
 # --- 2026-08-31 grade-sensor-references Task 8: _source_reading reads the CROP ----
 
 def _episode(tmp_path, segment=None):

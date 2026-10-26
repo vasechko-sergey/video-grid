@@ -596,3 +596,45 @@ def test_a_still_manifest_refuses_a_move_or_a_track(kw):
 def test_still_must_be_a_bool():
     problems = mf.validate(mf.Manifest.from_dict(_still_md(still="false")))
     assert "still must be true or false, got 'false'" in problems
+
+
+# --- freeze (design 2026-10-21 §3) ----------------------------------------------------
+
+def _freeze_md(**kw):
+    return {"segment": "s.mp4", "out_path": "o.mp4", "composition": "center",
+            "grid": "thirds", "canvas": [9, 16], "target_dur": 0.5, "freeze": True, **kw}
+
+
+def test_a_freeze_manifest_is_valid_and_reads_back():
+    # the one marker below the EDL that this episode holds a frame — the conductor, the
+    # check and the QC judge each read it (final review I1–I3)
+    m = mf.Manifest.from_dict(_freeze_md())
+    assert m.freeze is True and mf.validate(m) == []
+    assert mf.Manifest.from_dict({**_freeze_md(), "freeze": None}).freeze is False
+    assert mf.Manifest.from_dict({k: v for k, v in _freeze_md().items()
+                                  if k != "freeze"}).freeze is False
+
+
+def test_freeze_must_be_a_bool():
+    problems = mf.validate(mf.Manifest.from_dict(_freeze_md(freeze="false")))
+    assert "freeze must be true or false, got 'false'" in problems
+
+
+@pytest.mark.parametrize("kw,name", [
+    (dict(pan={"from": 0, "to": 1}), "pan"), (dict(zoom={"from": 1, "to": 0.8}), "zoom"),
+    (dict(motion="static"), "motion"), (dict(smooth_window_s=0.5), "smooth_window_s"),
+    (dict(stabilize=True), "stabilize"), (dict(still=True), "still")])
+def test_a_freeze_manifest_refuses_what_addresses_time(kw, name):
+    # the EDL's own refusals, again here because a hand-written manifest reaches
+    # process_episode without an EDL — as the still's are
+    problems = mf.validate(mf.Manifest.from_dict(_freeze_md(**kw)))
+    assert [p for p in problems if p.startswith("a freeze episode cannot carry")] == [
+        f"a freeze episode cannot carry {name}: it holds one frame of the previous "
+        f"episode, so there is no time to move, smooth or stabilize, and it is video, "
+        f"not a photo — drop them, or drop `freeze`"], problems
+
+
+def test_a_freeze_keeps_its_hero():
+    # the held route follows whom the previous episode followed, so the pin rides along
+    m = mf.Manifest.from_dict(_freeze_md(hero=[1, 2, 3, 4]))
+    assert mf.validate(m) == []

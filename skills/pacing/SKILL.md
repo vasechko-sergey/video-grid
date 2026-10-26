@@ -14,6 +14,22 @@ reads as accidental even when it is "on the beat"). **The cuts are the input; th
 is the output.** The fit is only a proposal until you re-run `edit_plan build --pacing`,
 which is what writes the snapped durations and `beat_slot` back into `EDL.json`.
 
+**Photos and freezes are the exception** (design 2026-10-21 §2). A held episode — a
+photo, or a `{"freeze": true}` — has no length of its own, so the grid AUTHORS it in
+whole beats: at 120 BPM 4, 2 or 1 as the next bar of music is quiet, mid or loud,
+never the same count three times in a row inside a run of holds, the cuts inside a run
+on detected beats and the run's last cut on a line of the chosen level, so the cut back
+to footage is as musical as the rest — but only a line within half to twice its planned
+length, so a hold keeps its length class; with none there it keeps its beat and the reel
+fits a finer level. An authored `hold` (beats) outranks it — kept even where the music
+detects no beat near it — and a `--music` window whose tempo cannot hold it 1/3 s to
+8.0 s is dropped from the candidates (said on stderr); the fit is refused only when no
+window is left. A cut that is all holds names the beat as its level. `PACING.md` marks each
+such slot `held N beats` and names them in the fit report; the energy agreement leaves
+them out, because their length was derived from the energy. Turning an episode from
+footage into a photo or freeze (or back), or adding, changing or dropping its `hold`,
+means re-running pacing — binding refuses the mismatch.
+
 A thin driver over the pure `scripts/lib/gridfit` + `scripts/lib/pacing` core.
 
 ## Inputs
@@ -82,6 +98,10 @@ project. If `"$VG"` says there is no runtime, it has not been set up yet: run th
    energy is `fit_spine`'s `0.5` fallback rather than a measurement, a footnote
    naming how many. A miss is actionable, not fatal: try another window, change a
    scenario length, or accept an off-grid reel (check_reel's beat gate is advisory).
+   A window the fitted reel overruns ranks below every window that covers it, and an
+   overrun on the chosen one is named on stderr with the `--duration` to re-analyse at
+   — photos and freezes are the usual cause, since the grid sets their length. Step 5
+   with `--music` then refuses it, before anything renders: re-analyse and re-fit first.
 5. **Apply.** `"$VG" scripts.edit_plan build ... --pacing <run>/reels/<reel>/PACING.json
    [--spec <run>/reels/<reel>/SPEC.json] [--music <run>/reels/<reel>/MUSIC.json]` — this is what writes the
    snapped durations and `beat_slot` into `EDL.json`. Carry `--spec` through when a
@@ -104,7 +124,8 @@ project. If `"$VG"` says there is no runtime, it has not been set up yet: run th
 
 - **Generating or sizing cut lengths** → the material owns them (edit-plan + each
   shot's room, §2); pacing only chooses which grid lines the *existing* cuts land on.
-  It fits; it never re-times an episode to a slot's length.
+  It fits; it never re-times an episode to a slot's length — except a photo or a
+  freeze, whose length nothing in the footage fixes (above).
 - **Choosing the track** (which song) → music-and-mood (`music-match` / `music-source`),
   not this. Pacing analyses the chosen track's candidate windows, but it does not pick
   the song.

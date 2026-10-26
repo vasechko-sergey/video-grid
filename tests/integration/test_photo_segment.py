@@ -1,4 +1,4 @@
-"""Real-ffmpeg proofs for the photo segment (design 2026-10-20 §3, §4).
+"""Real-ffmpeg proofs for the photo segment (design 2026-10-20 §3, §4; 2026-10-21 §7).
 
 These read the pixels back. The contract fields are probed from the file, the colour
 is decoded and compared against what was drawn, and the move is compared frame by frame
@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from scripts import extract
 from scripts.lib import assembly, ffbin, kenburns, proc, still
 from scripts.lib.kenburns import Rect
 from scripts.lib.models import StillSpec
@@ -44,7 +45,7 @@ def test_the_segment_is_on_the_video_contract(tmp_path):
     st = _chart()
     out = tmp_path / "seg.mp4"
     facts = still.render(st, _static(st, 30), (320, 180), "30000/1001", str(out),
-                         timescale=30000)
+                         colour=still.BT709, timescale=30000)
     streams = _probe(out)["streams"]
     assert [s["codec_type"] for s in streams] == ["video"]          # no audio stream
     v = streams[0]
@@ -64,12 +65,13 @@ def test_a_big_move_drops_to_a_coarser_level_rather_than_alias(tmp_path):
     st = _texture(1600, 900)
     pl = kenburns.plan(st.dims, (16, 9), 1.0, None, "center", "thirds",
                        StillSpec(1.0, 0.3), 30)
-    facts = still.render(st, pl.frames, (320, 180), "30/1", str(tmp_path / "big.mp4"))
+    facts = still.render(st, pl.frames, (320, 180), "30/1", str(tmp_path / "big.mp4"),
+                         colour=still.BT709)
     assert facts["levels"] == 2
     small = kenburns.plan(st.dims, (16, 9), 1.0, None, "center", "thirds",
                           StillSpec(1.0, 0.92), 30)
     assert still.render(st, small.frames, (320, 180), "30/1",
-                        str(tmp_path / "small.mp4"))["levels"] == 1
+                        str(tmp_path / "small.mp4"), colour=still.BT709)["levels"] == 1
 
 
 def test_the_colour_survives_and_an_untagged_segment_would_not(tmp_path):
@@ -79,7 +81,7 @@ def test_the_colour_survives_and_an_untagged_segment_would_not(tmp_path):
     (decoded here explicitly as 709) moves the saturated patches by far more."""
     st = _chart()
     out = tmp_path / "seg.mp4"
-    still.render(st, _static(st, 2), (640, 360), "30/1", str(out))
+    still.render(st, _static(st, 2), (640, 360), "30/1", str(out), colour=still.BT709)
     step = 640 // len(PATCHES)
 
     def worst(path, vf):
@@ -99,6 +101,93 @@ def test_the_colour_survives_and_an_untagged_segment_would_not(tmp_path):
                "-pix_fmt", "yuv420p", "-an", str(naive)], [st.rgb.tobytes()] * 2)
     assert worst(naive, "format=rgb24") <= 4          # ffmpeg agrees with itself...
     assert worst(naive, as709) > 12                   # ...a 709 reader does not
+
+
+# How a camera describes the chart, as the encoder options that write it. The matrix is
+# the one the description names, so ffmpeg reads each camera's colours back.
+_CAMERAS = {
+    "undescribed": "scale=out_range=tv,format=yuv420p",
+    "bt709": "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,"
+             "setparams=colorspace=bt709",
+    "smpte170m": "scale=out_color_matrix=smpte170m:out_range=tv,format=yuv420p,"
+                 "setparams=colorspace=smpte170m",
+}
+_TAGS = ("color_space", "color_primaries", "color_transfer", "color_range")
+_N = 6                                   # frames per episode of the spliced master
+
+
+def _video_segment(st: still.Still, camera: str, out) -> str:
+    """The chart as a video segment the pipeline holds: a camera's encode of it, cut by
+    extract like any window."""
+    cam = out.with_name(out.stem + "_cam.mp4")
+    proc.feed([ffbin.ffmpeg(), "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+               "-s", "640x360", "-framerate", "30", "-i", "-", "-vf", _CAMERAS[camera],
+               "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "-an", str(cam)],
+              [st.rgb.tobytes()] * _N)
+    return extract.extract(str(cam), 0.0, _N / 30, str(out))
+
+
+def _master(tmp_path, camera: str, colour: still.Colour | None = None):
+    """video, photo, video — spliced by `-c copy` as assemble splices a reel. The photo
+    takes the first video segment's clock and, unless `colour` overrides it, its colour
+    description, exactly as extract_edl hands them over."""
+    st = _chart()
+    a = _video_segment(st, camera, tmp_path / "a.mp4")
+    b = _video_segment(st, camera, tmp_path / "b.mp4")
+    rate, ts = assembly.probe_rate(a)
+    photo = tmp_path / "photo.mp4"
+    still.render(st, _static(st, _N), (640, 360), rate, str(photo),
+                 colour=colour or still.colour_of(a), timescale=ts)
+    return assembly.concat([a, str(photo), b], str(tmp_path / "master.mp4")), a
+
+
+def _tags(path, of: str = "stream") -> list[tuple]:
+    """The four colour tags of the video stream, or of every decoded frame (`of="frame"`:
+    what the decoder hands the filter graph, carried-over descriptions included); None
+    where ffprobe reads none."""
+    rows = json.loads(proc.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
+                                "-show_entries", f"{of}=" + ",".join(_TAGS), "-of", "json",
+                                str(path)]).stdout)[f"{of}s"]
+    return [tuple(r.get(k) for k in _TAGS) for r in rows]
+
+
+def _patch_errors(path) -> list[int]:
+    """Each frame's worst patch, decoded by ffmpeg's own reading of each frame's
+    description — the decoder every sensor of this pipeline reads the master through."""
+    raw = proc.run([ffbin.ffmpeg(), "-v", "error", "-i", str(path), "-f", "rawvideo",
+                    "-pix_fmt", "rgb24", "-"]).stdout
+    step = 640 // len(PATCHES)
+    return [max(int(np.abs(f[180, i * step + step // 2] - np.array(c)).max())
+                for i, c in enumerate(PATCHES))
+            for f in np.frombuffer(raw, np.uint8).reshape(-1, 360, 640, 3).astype(int)]
+
+
+@pytest.mark.parametrize("camera", sorted(_CAMERAS))
+def test_between_video_segments_the_photo_takes_their_description(tmp_path, camera):
+    """Design 2026-10-21 §7. The photo is described as the video beside it, so the master
+    never changes description — no frame of it, the photo's and the video's after it
+    included — and every frame's patches decode back within the colour test's 4 codes."""
+    master, a = _master(tmp_path, camera)
+    assert _tags(master, of="frame") == _tags(a) * (3 * _N)
+    errors = _patch_errors(master)
+    assert len(errors) == 3 * _N and max(errors) <= 4, errors
+
+
+def test_a_bt709_stamped_photo_between_undescribed_video_changes_the_masters_description(
+        tmp_path):
+    """The control — the stamp every photo carried before this fix. The decoder carries
+    the photo's description over to video frames whose own parameter sets name none —
+    every frame after the photo, and (decode order) the last two before it — so those
+    decode through BT.709 instead of the BT.601 they were encoded with, and their
+    saturated patches move: measured 21 codes."""
+    master, _ = _master(tmp_path, "undescribed", colour=still.BT709)
+    tags, errors = _tags(master, of="frame"), _patch_errors(master)
+    assert tags[0] == (None,) * 4 and tags[-1] == ("bt709", "bt709", "bt709", "tv")
+    for i in [*range(_N), *range(2 * _N, 3 * _N)]:
+        # a video frame decodes right exactly when it keeps its own (absent) description
+        assert (errors[i] <= 4) == (tags[i] == (None,) * 4), (i, tags[i], errors[i])
+    assert max(errors[_N:2 * _N]) <= 4                  # the photo itself reads right
+    assert min(errors[2 * _N:]) > 12, errors            # all of the video after it does not
 
 
 def _texture(w: int, h: int, seed: int = 7) -> still.Still:
@@ -138,7 +227,7 @@ def test_the_float_warp_rides_a_smooth_curve_where_zoompan_stair_steps(tmp_path)
     pl = kenburns.plan(st.dims, (16, 9), 1.0, None, "center", "thirds",
                        StillSpec(1.0, 0.95), n)
     ours = tmp_path / "warp.mp4"
-    still.render(st, pl.frames, (W, H), "30/1", str(ours))
+    still.render(st, pl.frames, (W, H), "30/1", str(ours), colour=still.BT709)
     src = tmp_path / "blob.png"
     Image.fromarray(st.rgb).save(src)
     zp = tmp_path / "zoompan.mp4"
@@ -162,7 +251,7 @@ def test_the_level_change_is_blended_not_a_jump_in_sharpness(tmp_path):
     n, W, H = 60, 320, 180
     pl = kenburns.plan(st.dims, (16, 9), 1.0, None, "center", "thirds", StillSpec(1.0, 0.3), n)
     out = tmp_path / "big.mp4"
-    still.render(st, pl.frames, (W, H), "30/1", str(out))
+    still.render(st, pl.frames, (W, H), "30/1", str(out), colour=still.BT709)
     sharp = [float(cv2.Laplacian(f.astype(np.float64), cv2.CV_64F).var())
              for f in _gray_frames(out, W, H)]
     jumps = [max(a, b) / min(a, b) for a, b in zip(sharp, sharp[1:])]

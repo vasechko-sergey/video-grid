@@ -1458,3 +1458,179 @@ def test_the_manifest_bridge_marks_a_photo_still_and_drops_its_move():
 def test_edl_md_names_a_photo_and_its_move():
     md = EDL(episodes=(_photo_ep(), _photo_ep(still={"from": 0.9, "to": 1.0}))).to_markdown()
     assert "photo · 1.0→0.92" in md and "photo · 0.9→1.0" in md
+
+
+# --- held episodes: the freeze, `shutter`, `hold` (design 2026-10-21 §1, §3) ---------
+
+def _freeze_ep(**kw):
+    return _ep(**{"freeze": True, "start": 3.9, **kw})
+
+
+def test_held_names_a_photo_or_a_freeze_and_nothing_else():
+    assert (_ep().held(), _photo_ep().held(), _freeze_ep().held()) == (False, True, True)
+
+
+def test_the_held_fields_default_off():
+    e = _ep()
+    assert (e.freeze, e.shutter, e.hold) == (False, False, None)
+
+
+def test_a_default_episode_writes_none_of_the_held_keys():
+    d = _ep().to_dict()
+    assert not {"freeze", "shutter", "hold"} & set(d)
+    assert not {"freeze", "shutter", "hold"} & set(_photo_ep().to_dict())
+
+
+# EDL.json as edit_plan wrote it before held episodes existed: a video and a photo row.
+_PRE_HELD_EDL = (
+    '{"episodes": [{"source": "a.mp4", "start": 1.0, "dur": 2.0, "shot_type": "wide", '
+    '"composition": "lead", "grid": "thirds", "layout": "fill", "crop_aspect": null, '
+    '"crop_scale": 1.0, "rect": null, "background": "blur", "background_color": "black", '
+    '"border_px": 0, "border_color": "white", "motion": null, "pan": null, "zoom": null, '
+    '"stabilize": false, "ramp": null, "smooth_window_s": null, "hero": null, '
+    '"white_balance": 0.0, "black_point": 0.0, "highlight": 1.0, "highlight_red": 0.0, '
+    '"saturation": 1.0, "shadow_red": 0.0, "mid_blue": 1.0, "dip": 0.0, '
+    '"color_means": [105, 122, 137], "processing_notes": "ride", "beat_slot": 0, '
+    '"base_dur": 2.0}, {"source": "IMG_1.HEIC", "start": 0.0, "dur": 2.0, '
+    '"shot_type": "medium", "composition": "center", "grid": "thirds", "layout": "fill", '
+    '"crop_aspect": null, "crop_scale": 1.0, "rect": null, "background": "blur", '
+    '"background_color": "black", "border_px": 0, "border_color": "white", "motion": null, '
+    '"pan": null, "zoom": null, "stabilize": false, "ramp": null, '
+    '"still": {"from": 1.0, "to": 0.9}, "smooth_window_s": null, "hero": null, '
+    '"white_balance": 0.0, "black_point": 0.0, "highlight": 1.0, "highlight_red": 0.0, '
+    '"saturation": 1.0, "shadow_red": 0.0, "mid_blue": 1.0, "dip": 0.0, '
+    '"color_means": [105, 122, 137], "processing_notes": "", "beat_slot": null, '
+    '"base_dur": 2.0}], "music": null, "cast": null, "cap": 3, "platform": "", '
+    '"look": null, "target_dur": 4.0, "variety": null, "constraints": null, "outro": null, '
+    '"brief_len": null, "tone_target": null}')
+
+
+def test_an_edl_written_before_held_episodes_round_trips_byte_identical():
+    assert json.dumps(EDL.from_dict(json.loads(_PRE_HELD_EDL)).to_dict()) == _PRE_HELD_EDL
+
+
+def test_a_freeze_writes_its_held_fields_and_reads_them_back():
+    e = _freeze_ep(shutter=True, hold=2)
+    d = e.to_dict()
+    assert (d["freeze"], d["shutter"], d["hold"]) == (True, True, 2)
+    assert EDLEpisode(**d) == e
+
+
+def test_a_photo_carries_a_shutter_and_a_hold():
+    e = _photo_ep(shutter=True, hold=4)
+    assert EDLEpisode(**e.to_dict()) == e
+
+
+@pytest.mark.parametrize("kw, field_name", [
+    (dict(freeze="yes"), "freeze"), (dict(freeze=1), "freeze"),
+    (dict(shutter="yes"), "shutter"), (dict(shutter=1), "shutter"),
+])
+def test_freeze_and_shutter_must_be_real_bools(kw, field_name):
+    with pytest.raises(ValueError, match=f"EDLEpisode.{field_name} must be true or false"):
+        _photo_ep(**kw)
+
+
+@pytest.mark.parametrize("bad", [0, -1, 1.5, True, "2"])
+def test_hold_must_be_a_whole_number_of_beats(bad):
+    with pytest.raises(ValueError, match="EDLEpisode.hold must be a whole number of beats"):
+        _photo_ep(hold=bad)
+
+
+@pytest.mark.parametrize("kw, name", [(dict(shutter=True), "shutter"), (dict(hold=2), "hold")])
+def test_shutter_and_hold_are_refused_on_a_video_window(kw, name):
+    with pytest.raises(ValueError, match=f"EDLEpisode.{name} applies to a photo or a freeze"):
+        _ep(**kw)
+
+
+def test_a_freeze_on_a_photo_is_refused():
+    with pytest.raises(ValueError, match="a photo is already a still"):
+        _photo_ep(freeze=True)
+
+
+@pytest.mark.parametrize("kw, name", [
+    (dict(ramp={"at": 1.0, "factor": 0.5, "ease": 0.2, "hold": 0.2}), "ramp"),
+    (dict(pan={"from": 0.0, "to": 1.0}), "pan"), (dict(zoom={"from": 1.0, "to": 0.8}), "zoom"),
+    (dict(still={"from": 1.0, "to": 0.9}), "still"), (dict(motion="static"), "motion"),
+    (dict(smooth_window_s=0.5), "smooth_window_s"), (dict(stabilize=True), "stabilize"),
+])
+def test_a_freeze_refuses_what_addresses_time(kw, name):
+    with pytest.raises(ValueError, match=f"is a freeze and cannot carry {name}"):
+        _freeze_ep(**kw)
+
+
+@pytest.mark.parametrize("before, why", [
+    ((), "it opens the cut"),
+    ((_photo_ep(),), "episode 0 is a photo"),
+    ((_ep(), _freeze_ep()), "episode 1 is a freeze"),
+    ((_ep(composition="center", pan={"from": 0.2, "to": 0.7}),), "episode 0 is a pan"),
+])
+def test_an_edl_refuses_a_freeze_with_no_played_window_to_hold(before, why):
+    # the hand-authored front door: edit_plan refuses all four, and EDL.json need not come
+    # from edit_plan
+    with pytest.raises(ValueError, match=f"EDL.episodes\\[{len(before)}\\] is a freeze, which "
+                                         f"holds the previous episode's last frame and subject "
+                                         f"— it must follow a played video window that is not "
+                                         f"a pan, and {why}"):
+        EDL(episodes=(*before, _freeze_ep()))
+    with pytest.raises(ValueError, match="is a freeze, which holds"):
+        EDL.from_dict({"episodes": [e.to_dict() for e in (*before, _freeze_ep())]})
+
+
+def test_an_edl_takes_a_freeze_after_a_played_window():
+    edl = EDL(episodes=(_ep(), _freeze_ep(), _ep(start=6.0), _freeze_ep()))
+    assert [e.freeze for e in edl.episodes] == [False, True, False, True]
+
+
+def test_a_freeze_keeps_its_framing_and_hero():
+    e = _freeze_ep(layout="fit", crop_aspect="source", hero="Lena", saturation=0.9)
+    assert (e.layout, e.hero, e.saturation) == ("fit", "Lena", 0.9)
+
+
+def _cell(md: str, row_prefix: str, column: str) -> str:
+    header = [c.strip() for c in next(
+        ln for ln in md.splitlines() if ln.startswith("| # |")).split("|")[1:-1]]
+    row = [c.strip() for c in next(
+        ln for ln in md.splitlines() if ln.startswith(row_prefix)).split("|")[1:-1]]
+    return row[header.index(column)]
+
+
+def test_edl_md_names_a_freeze_by_the_frame_it_holds():
+    md = EDL(episodes=(_ep(), _freeze_ep(start=2.9667, dur=2.0))).to_markdown()
+    assert _cell(md, "| 1 |", "window") == "freeze @2.97s (2.00s)"
+    assert _cell(md, "| 1 |", "motion") == "freeze"
+
+
+def test_edl_md_shows_an_authored_hold_and_a_shutter_in_the_motion_column():
+    md = EDL(episodes=(_ep(), _freeze_ep(shutter=True, hold=1),
+                       _photo_ep(shutter=True, hold=4), _photo_ep(hold=2))).to_markdown()
+    assert _cell(md, "| 1 |", "motion") == "freeze · 1 beat · shutter"
+    assert _cell(md, "| 2 |", "motion") == "photo · 1.0→0.92 · 4 beats · shutter"
+    assert _cell(md, "| 3 |", "motion") == "photo · 1.0→0.92 · 2 beats"
+
+
+def test_edl_md_rows_without_held_fields_are_unchanged():
+    md = EDL.from_dict(json.loads(_PRE_HELD_EDL)).to_markdown()
+    assert md == (
+        "# Edit plan — 2 episodes, 4.0s · target 4.0s\n\n"
+        "| # | source | window | shot | layout | comp | grid | motion | beat | notes |\n"
+        "|---|--------|--------|------|--------|------|------|--------|:----:|-------|\n"
+        "| 0 | a.mp4 | 1.00–3.00 (2.00s) | wide | fill | lead | thirds | – | 0 | ride |\n"
+        "| 1 | IMG_1.HEIC | 0.00–2.00 (2.00s) | medium | fill | center | thirds | "
+        "photo · 1.0→0.9 | – |  |")
+
+
+def test_a_freeze_is_a_video_episode_to_the_manifest_bridge_that_says_it_is_a_freeze():
+    # framed and graded like any window — never the photo path's `still`; that it is not
+    # tracked is edl_to_reel's (it hands the freeze a held route). What crosses is the one
+    # bit every consumer below needs: the conductor, check_episode and the QC judge would
+    # each read a held frame as a played window without it (final review I1–I3)
+    md = to_manifest_dict(_freeze_ep(hero="Lena"), "seg.mp4", "out.mp4")
+    assert "still" not in md and md["hero"] == "Lena"
+    assert md == {**to_manifest_dict(_ep(hero="Lena", start=3.9), "seg.mp4", "out.mp4"),
+                  "freeze": True}
+
+
+def test_a_played_window_crosses_no_freeze_key():
+    # emitted only when true: every manifest without a freeze is byte-identical
+    assert "freeze" not in to_manifest_dict(_ep(), "seg.mp4", "out.mp4")
+    assert "freeze" not in to_manifest_dict(_photo_ep(), "seg.mp4", "out.mp4")

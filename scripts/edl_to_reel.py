@@ -11,22 +11,29 @@ Phase 1 also splits, at the GEOMETRY boundary (design 2026-08-30 §2): build_geo
 tracks and gates every episode and stops before any encode, and render_from_geometry
 renders over those frozen routes with the EDL's CURRENT colour block. The seam exists
 so match_grade can measure the crop that actually ships — which needs the route to
-exist — and so a re-authored grade costs no re-render."""
+exist — and so a re-authored grade costs no re-render.
+
+A freeze (design 2026-10-21 §3) is never tracked: both tracking arms render it in a
+second wave, over its predecessor's last route sample held for its length. That held
+route is the one GEOMETRY.json records, so phase 1b and build_reel's reprocess read it
+like any frozen route."""
 import argparse
 import json
+import shutil
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 
 from scripts import build_reel, extract, process_episode, track
-from scripts.lib import (color_fidelity, episode_qc as qc_lib, gates as gates_lib,
+from scripts.lib import (assembly, color_fidelity, episode_qc as qc_lib, gates as gates_lib,
                         hero as hero_lib, manifest as manifest_lib, provenance, reid,
                         kenburns, runlayout)
 from scripts.lib.edl import EDL, preflight
 from scripts.lib.episode_qc import ReelQC
 from scripts.lib.footage import Cast
 from scripts.lib.models import (EpisodeGeometry, MusicSpec, ReelEpisode, ReelGeometry,
-                               ReelManifest)
+                               ReelManifest, route_from_json, route_to_json)
 from scripts.lib.project import ProjectConfig
 
 DEFAULT_JOBS = 3      # measured knee (design §2): cap 4 buys nothing and costs latency
@@ -191,12 +198,18 @@ def _run_pool(mds: list[dict], work_dir: str, jobs: int, *,
               authored: gates_lib.Gates,
               cast: Cast | None = None,
               stop_after: str | None = None,
-              prepared: list[tuple[str | None, str | None]] | None = None
+              prepared: list[tuple[str | None, str | None]] | None = None,
+              indices: list[int] | None = None
               ) -> tuple[list[dict], dict | None]:
     """One process_episode per episode over a bounded pool, results in index order.
 
+    `indices` runs only those episodes (default: every one), each still under its own
+    EDL index — its scratch dir, its finding, its raised note. _run_episodes uses it to
+    hold the freezes back for a second wave.
+
     `prepared[i]` is (route_path, prepared_source) for episode i — the frozen pair
-    phase 1a recorded (design 2026-08-30 §2.3). An episode handed a route never
+    phase 1a recorded (design 2026-08-30 §2.3), or a freeze's held route (design
+    2026-10-21 §3). An episode handed a route never
     tracks, so the two weight warm-ups below cover only the ROUTE-LESS rest of the
     pool — with `prepared=None` that is every episode, exactly as before the split.
 
@@ -227,9 +240,11 @@ def _run_pool(mds: list[dict], work_dir: str, jobs: int, *,
     # kwarg only when it carries something keeps the call shape identical to the
     # pre-split one for a plain render — and to the pre-gates one for a reel that authored
     # none.
+    run = list(range(len(mds))) if indices is None else list(indices)
     kwargs: list[dict] = []
     tracking: list[dict] = []
-    for i, md in enumerate(mds):
+    for i in run:
+        md = mds[i]
         kw: dict = {}
         if stop_after is not None:
             kw["stop_after"] = stop_after
@@ -270,15 +285,16 @@ def _run_pool(mds: list[dict], work_dir: str, jobs: int, *,
     if any(p is not None and p.kind == "cast" for p in pins) and reid.available():
         reid.ensure_model()
     with ThreadPoolExecutor(max_workers=jobs) as ex:
-        futures = [ex.submit(process_episode.process_episode, md,
+        futures = [ex.submit(process_episode.process_episode, mds[i],
                              str(Path(work_dir) / f"ep{i}"),   # md already resolved → no project=
                              **kw)
-                   for i, (md, kw) in enumerate(zip(mds, kwargs, strict=True))]
+                   for i, kw in zip(run, kwargs, strict=True)]
     # the `with` block joined every worker, so each future below is already done and this
     # ONE loop reads them in index order — no dependence on completion order anywhere.
     expect = "geometry" if stop_after == "geometry" else "mechanical_pass"
     results: list[dict] = []
-    for i, (md, fut) in enumerate(zip(mds, futures, strict=True)):
+    for i, fut in zip(run, futures, strict=True):
+        md = mds[i]
         try:
             res = fut.result()
         except Exception as e:         # a hard setup error stays an exception, per the docstring
@@ -290,6 +306,89 @@ def _run_pool(mds: list[dict], work_dir: str, jobs: int, *,
                                          "sub_status": res.get("status")}, "sub": res}
         results.append(res)
     return results, None
+
+
+def _route_left(md: dict, epdir: str | Path) -> str | None:
+    """The route.json a rendered episode left in its scratch dir: none for a pan or a
+    still, which follow nobody (process_episode writes none for either). A full render's
+    result does not name it, so _build_manifest and _run_episodes both derive it here —
+    the same path the geometry stop's result names."""
+    if md.get("pan") is not None or md.get("still"):
+        return None
+    return str(Path(epdir) / "route.json")
+
+
+def _hold_route(prev_route: str | None, segment: str, out: Path) -> str | None:
+    """A freeze's held route (design 2026-10-21 §3): the previous episode's LAST route
+    sample — where it left the subject — repeated at t = k/fps for every frame k of the
+    freeze's own segment, counted and rated off that segment. Written to `out`; None when
+    the previous episode has no sample to hold.
+
+    The previous episode's route.meta.json is COPIED beside it, byte for byte: it names
+    whom that episode followed, which is whom the freeze holds, and it already passed the
+    contradiction gate there. A route with no sidecar (a hand-supplied one) gets none
+    here either, which process_episode reads as unambiguous — the same reading — and a
+    stale one from an earlier run in an unwiped scratch dir is removed for that reason."""
+    points = route_from_json(prev_route) if prev_route is not None else []
+    if not points:
+        return None
+    n, fps = assembly.count_frames(segment), assembly.probe_stream(segment).fps
+    out.parent.mkdir(parents=True, exist_ok=True)
+    route_to_json([replace(points[-1], t=k / fps) for k in range(n)], out)
+    meta, held_meta = Path(prev_route).with_suffix(".meta.json"), out.with_suffix(".meta.json")
+    if meta.exists():
+        shutil.copyfile(meta, held_meta)
+    else:
+        held_meta.unlink(missing_ok=True)
+    return str(out)
+
+
+def _run_episodes(edl: EDL, mds: list[dict], work_dir: str, jobs: int, *,
+                  authored: gates_lib.Gates, cast: Cast | None = None,
+                  stop_after: str | None = None) -> tuple[list[dict], dict | None]:
+    """Phase 1's pool for the two callers that TRACK (_build_manifest, build_geometry).
+
+    A freeze is not tracked (design 2026-10-21 §3): re-tracking one cloned frame loses
+    whom the previous episode followed. So the cut runs in two waves. Wave 1 is every
+    other episode, exactly as before; wave 2 is the freezes, each over a held route built
+    from its predecessor's (_hold_route) — which is why the predecessors must finish
+    first. A cut with no freeze is one _run_pool call, the call it always was.
+
+    Results come back in EDL index order. A stop in wave 1 returns before wave 2 runs, so
+    a freeze BELOW that index is never judged and the finding is the lowest among the
+    episodes that ran; a stop in wave 2 carries its own EDL index. On a stop the results
+    are the passing episodes that ran, in index order — no caller reads them past it."""
+    freezes = [i for i, ep in enumerate(edl.episodes) if ep.freeze]
+    if not freezes:
+        return _run_pool(mds, work_dir, jobs, authored=authored, cast=cast,
+                         stop_after=stop_after)
+    played = [i for i in range(len(mds)) if i not in set(freezes)]
+    first, stop = _run_pool(mds, work_dir, jobs, authored=authored, cast=cast,
+                            stop_after=stop_after, indices=played)
+    done = dict(zip(played, first))
+    if stop:
+        return [done[i] for i in sorted(done)], stop
+    prepared: list[tuple[str | None, str | None]] = [(None, None)] * len(mds)
+    for f in freezes:
+        p = f - 1      # EDL refuses a freeze at 0 or after a held episode, so p is played
+        epdir = Path(work_dir) / f"ep{p}"
+        prev_route = done[p]["route"] if "route" in done[p] else _route_left(mds[p], epdir)
+        held = _hold_route(prev_route, mds[f]["segment"],
+                           Path(work_dir) / f"ep{f}" / "route.json")
+        if held is None:
+            return [done[i] for i in sorted(done)], {
+                "status": "stop_and_report",
+                "finding": {"reason": "freeze-no-route", "episode_idx": f, "previous_idx": p,
+                            "detail": f"episode {f} is a freeze of episode {p}, which left no "
+                                      f"route sample to hold — a freeze holds the subject "
+                                      f"where the previous episode left them, and a pan or a "
+                                      f"still follows nobody. Freeze an episode that tracks "
+                                      f"someone, or drop the freeze"}}
+        prepared[f] = (held, None)
+    second, stop = _run_pool(mds, work_dir, jobs, authored=authored, cast=cast,
+                             stop_after=stop_after, prepared=prepared, indices=freezes)
+    done.update(zip(freezes, second))
+    return [done[i] for i in sorted(done)], stop
 
 
 def _reel_manifest(mds: list[dict], results: list[dict], routes: list[str | None],
@@ -357,6 +456,9 @@ def _reel_manifest(mds: list[dict], results: list[dict], routes: list[str | None
                       # SPEC.music_in_app: the deliver arm also writes the reel without
                       # the song and its sound note (design 2026-10-20)
                       music_in_app=edl.music_in_app,
+                      # the episodes whose cut carries the shutter accent; build_reel
+                      # places it on the master's real cut time (design 2026-10-21 §4)
+                      shutters=tuple(i for i, ep in enumerate(edl.episodes) if ep.shutter),
                       **extra)
     # The run's record, assembled where all three parts are in hand (design §6). The
     # override list is a DIFF of the effective check spec against a default one, so a
@@ -398,16 +500,16 @@ def _build_manifest(edl_path: str, project_path: str, footage_root: str,
     if stop:
         return None, stop
     _refuse_in_app_without_music(edl, music)
-    # 3. loop-1 fan-out: one process_episode per episode, up to `jobs` concurrently.
-    results, stop = _run_pool(mds, work_dir, jobs, cast=_cast_for(edl), authored=authored)
+    # 3. loop-1 fan-out: one process_episode per episode, up to `jobs` concurrently —
+    #    a freeze in a second wave, over its predecessor's held route (_run_episodes).
+    results, stop = _run_episodes(edl, mds, work_dir, jobs, cast=_cast_for(edl),
+                                  authored=authored)
     if stop:
         return None, stop
 
     # 4. loop-2: assemble the ReelManifest and drive build_reel
     epdirs = [str(Path(work_dir) / f"ep{i}") for i in range(len(mds))]
-    routes = [None if (md.get("pan") is not None or md.get("still"))
-              else str(Path(d) / "route.json")
-              for md, d in zip(mds, epdirs, strict=True)]
+    routes = [_route_left(md, d) for md, d in zip(mds, epdirs, strict=True)]
     return _reel_manifest(mds, results, routes, epdirs, edl, edl_path, music=music,
                           changelog=changelog, started=started, authored=authored), None
 
@@ -476,10 +578,13 @@ def _cut_identity(edl: EDL) -> list[dict]:
 
     A photo's `still` move is the same kind of input — it is rendered into the segment
     and does not cross either (design 2026-10-20 §4) — so it joins the identity, for
-    photos only: a GEOMETRY.json written before photos keeps comparing equal."""
+    photos only: a GEOMETRY.json written before photos keeps comparing equal. `freeze`
+    joins it for freezes only, for the same reason: `source`/`start`/`dur` cannot tell
+    a held frame from a played window that starts there (design 2026-10-21 §3)."""
     return [{"source": ep.source, "start": ep.start, "dur": ep.dur, "ramp": ep.ramp,
              **({"still": ep.still or kenburns.DEFAULT_MOVE.to_dict()}
-                if runlayout.is_photo(ep.source) else {})}
+                if runlayout.is_photo(ep.source) else {}),
+             **({"freeze": True} if ep.freeze else {})}
             for ep in edl.episodes]
 
 
@@ -499,8 +604,8 @@ def build_geometry(edl_path: str, project_path: str, footage_root: str,
                                                          footage_root, work_dir, out_dir, jobs)
     if stop:
         return None, stop
-    results, stop = _run_pool(mds, work_dir, jobs, cast=_cast_for(edl),
-                              stop_after="geometry", authored=authored)
+    results, stop = _run_episodes(edl, mds, work_dir, jobs, cast=_cast_for(edl),
+                                  stop_after="geometry", authored=authored)
     if stop:
         return None, stop
     geo = ReelGeometry(

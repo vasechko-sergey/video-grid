@@ -15,11 +15,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from pathlib import Path
 
+import cv2
 import imagehash
+import numpy as np
 from PIL import Image, ImageDraw
 
 from scripts import check_reel                    # reuse _hamming for cull dedup
-from scripts.lib import assembly, carve, footage, intake_cache, reid, runlayout, still, vidstab
+from scripts.lib import (assembly, carve, footage, hold, intake_cache, reid, runlayout,
+                        still, vidstab)
 from scripts.lib.appearance import crop_bbox
 from scripts.lib.intake_cache import CastEntry, ClipResult
 from scripts.track import MODEL, ensure_model       # reuse the tracker's model choice
@@ -35,6 +38,10 @@ CLIP_POOL_MIN = 5        # a clip with fewer windows has no distribution to rank
 DYNAMIC_RANK = 0.5       # motion rank at or above which a window is DESCRIBED "dynamic". A rank,
                          # not an absolute value, because every comparison here is pool-relative.
 DEDUP_DIST = 8                             # phash Hamming below which two windows are duplicates
+BURST_GAP = 2.0          # seconds between two photos' capture times within which they are one
+                         # burst (design 2026-10-21 §5). A convention, not a measurement: a burst
+                         # runs ~10 frames a second, and a retake of the same pose comes within a
+                         # couple of seconds.
 BEST_FLOOR = 0.50        # `score` is a PERCENTILE now (design §4.2), so this is the top-half cut,
                          # not an absolute quality bar. The VALUE is deliberately unchanged: the
                          # meaning change is the fix, and inventing a new number on one shoot is
@@ -57,12 +64,12 @@ CARD_LONG_SIDE = 480     # a review card enlarges its crop by WHOLE pixels until
                          # reaches this, so a small crop is legible and nothing is invented
 CARD_MIN_W = 360         # the card's narrowest canvas, so its caption is never cut
 _FOOTAGE_EXTS = runlayout.FOOTAGE_EXTS      # one list: intake scans it, project_init refuses on it
-PHOTO_HOLD = 2.0         # a photo window's length: the research's 1-2 s per photo in a reel,
-                         # 2-4 s in a post (design 2026-10-20 §1). A convention; U7 will take
-                         # a photo's length from the music grid instead.
-PHOTO_ROOM = 8.0         # how long a photo MAY be held — its clip `dur`, the room the pacing
-                         # fitter can stretch it into (selection.json has no length field for
-                         # a photo; U7). A convention.
+PHOTO_HOLD = hold.HOLD_DEFAULT   # a photo window's length — what it plays when no music
+                                 # binds it; with music the grid authors it (design
+                                 # 2026-10-21 §2). A convention, owned by lib/hold.py.
+PHOTO_ROOM = hold.HOLD_ROOM      # how long a photo MAY be held — its clip `dur`, the room the
+                                 # grid and the outro fit may grow it into. A convention,
+                                 # owned by lib/hold.py.
 DEFAULT_JOBS = 2          # 3 parallel full-clip passes pin every P-core (3x libx264 proxy
                           # alone is ~400s of CPU) and thermally throttle a laptop; 2 is the
                           # sustainable default. --jobs raises it on a cooled/desktop box or
@@ -154,9 +161,17 @@ def _separated(vec: list[float]) -> int:
     return len(vec) - max(Counter(vec).values())
 
 
-def score_pool(clips: list[footage.FootageClip]) -> dict:
+def score_pool(clips: list[footage.FootageClip],
+               sharpness: dict[str, float] | None = None) -> dict:
     """Fill every window's `score` and `description` from the WHOLE pool — Phase 2
     (design 2026-08-06-intake-motion-scoring §4). Mutates in place, like cull.
+
+    Photos rank among photos only (design 2026-10-21 §5, `_score_photos`): a still's
+    motion and shake are 0 by construction, which beside video ranked it last on one
+    term and first on the other. The rest of this docstring is the VIDEO pool, which
+    `_score_videos` computes over video windows only — so a video-only pool scores
+    exactly as it did before photos, and adding photos moves no video score.
+    `sharpness` maps a photo's source to its ClipResult.sharpness.
 
     Not computable in Phase 1, and that is the point: a per-clip worker cannot see
     a pool, and the absolute blend it used to compute could not rank. Three of its
@@ -185,7 +200,17 @@ def score_pool(clips: list[footage.FootageClip]) -> dict:
 
     Returns the separation report `Footage.scoring` carries: how many windows each
     term told apart, so a weight that bought nothing on this pool is visible instead
-    of implied by its size."""
+    of implied by its size. Its shape is the video pool's; a pool holding photos adds
+    their own report under `photos`."""
+    report = _score_videos([c for c in clips if c.kind != "photo"])
+    photos = [c for c in clips if c.kind == "photo"]
+    if photos:
+        report["photos"] = _score_photos(photos, sharpness or {})
+    return report
+
+
+def _score_videos(clips: list[footage.FootageClip]) -> dict:
+    """score_pool's video pool: the computation and report its docstring describes."""
     windows = [w for c in clips for w in c.windows]
     if not windows:
         return {"windows": 0, "separated": {t: 0 for t in footage.SCORE_TERMS}}
@@ -209,6 +234,28 @@ def score_pool(clips: list[footage.FootageClip]) -> dict:
                           "shake": _separated(stability)}}
 
 
+def _score_photos(photos: list[footage.FootageClip], sharpness: dict[str, float]) -> dict:
+    """A photo's `score`: its percentile among the photos of W_PRESENT·presence +
+    (1 − W_PRESENT)·sharpness, both ranked within the photo pool (design 2026-10-21 §5)
+    — so inside a burst, where presence ties, the sharpest frame ranks first. A photo
+    with no measured sharpness ranks as 0.0, the least sharp. The description names it
+    a photo and says nothing of motion: a still has none to call dynamic or calm."""
+    windows = [w for c in photos for w in c.windows]
+    presence = _percentile_rank([w.present for w in windows])
+    clarity = _percentile_rank([float(sharpness.get(c.source, 0.0))
+                                for c in photos for _ in c.windows])
+    blend = [W_PRESENT * p + (1 - W_PRESENT) * s for p, s in zip(presence, clarity)]
+    for w, sc in zip(windows, _percentile_rank(blend)):
+        w.score = round(sc, 3)
+        w.description = f"photo, {_who(w.people)}, {w.shot_type}"
+    return {"windows": len(windows),
+            "separated": {"present": _separated(presence), "sharpness": _separated(clarity)}}
+
+
+def _who(people: int) -> str:
+    return "no people" if people == 0 else ("1 person" if people == 1 else f"{people} people")
+
+
 def _describe(people: int, shot: str, motion_rank: float) -> str:
     """The human line in FOOTAGE.md. `motion_rank` is the window's motion PERCENTILE
     in its comparison pool, not a raw fraction — the dynamic/calm call is a
@@ -217,9 +264,8 @@ def _describe(people: int, shot: str, motion_rank: float) -> str:
     `CLIP_POOL_MIN` windows; at or above it, `motion_rank` is CLIP-relative (design
     §8.8), not pool-relative — `_describe` does not need to know which, since
     `score_pool` has already resolved the rank either way before calling here."""
-    who = "no people" if people == 0 else ("1 person" if people == 1 else f"{people} people")
     dyn = "dynamic" if motion_rank >= DYNAMIC_RANK else "calm"
-    return f"{who}, {shot}, {dyn}"
+    return f"{_who(people)}, {shot}, {dyn}"
 
 
 def _windowed_shake(mags: list[float], windows: list[tuple[float, float]], fps: float, w: int) -> list[float]:
@@ -281,23 +327,75 @@ def _people_timeline(src: str, fps: float, res: tuple[int, int],
 def cull(clips: list, phash_of: object) -> None:
     """Rank all windows by score; a window whose phash Hamming distance to an
     already-kept higher-scored window is < DEDUP_DIST is a duplicate (compare by
-    IMAGE, never by filename — several windows of one clip are legitimate). Mark
-    best on dedup survivors with score >= BEST_FLOOR. Mutates FootageWindow.best.
-    phash_of(clip, window) -> imagehash.ImageHash (injected; the driver closes it
-    over footage_root)."""
+    IMAGE, never by filename — several windows of one clip are legitimate). A photo
+    group (group_photos) is represented by its top-scored member — with equal
+    presence, its sharpest (design 2026-10-21 §5) — and every other member is a
+    duplicate, so a burst shows at most one best. When that top member is itself a
+    duplicate of an image already kept (a video window of the same moment), the group
+    gets NO best: the moment is starred already, and passing the star to a lower
+    member would star it twice. Mark best on dedup survivors with score >= BEST_FLOOR.
+    Mutates FootageWindow.best. phash_of(clip, window) -> imagehash.ImageHash
+    (injected; the driver closes it over footage_root)."""
     ranked = sorted(((c, w) for c in clips for w in c.windows),
                     key=lambda cw: cw[1].score, reverse=True)
     kept: list = []
+    spoken: set[str] = set()          # groups whose top-scored member has been ranked
     for c, w in ranked:
         h = phash_of(c, w)
-        dup = any(check_reel._hamming(h, kh) < DEDUP_DIST for kh in kept)
+        dup = ((c.group is not None and c.group in spoken)
+               or any(check_reel._hamming(h, kh) < DEDUP_DIST for kh in kept))
         w.best = (not dup) and w.score >= BEST_FLOOR
+        if c.group is not None:
+            spoken.add(c.group)
         if not dup:
             kept.append(h)
 
 
+def group_photos(results: list[ClipResult]) -> None:
+    """Group a burst and its near-identical retakes BEFORE ranking (design 2026-10-21
+    §5): a phone shoots ten frames a second, and a scorer that ranks them one by one
+    picks three of the same frame. Two photos join when, in capture order, one follows
+    the other within BURST_GAP (both times known), or their pHashes are under
+    DEDUP_DIST apart (any pair — a retake minutes later is still the same picture).
+    Union-find, so the links chain. A set of two or more is numbered g1, g2, … by the
+    `results` order of its first member — intake's `paths` order, so the ids are the
+    same at any --jobs and cache mix — and a lone photo gets none. Video is never
+    grouped. Mutates the photo clips' `group`."""
+    photos = [r for r in results if r.clip.kind == "photo"]
+    parent = list(range(len(photos)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def join(i: int, j: int) -> None:
+        a, b = find(i), find(j)
+        if a != b:
+            parent[max(a, b)] = min(a, b)
+
+    timed = sorted((r.taken, i) for i, r in enumerate(photos) if r.taken is not None)
+    for (t0, i), (t1, j) in zip(timed, timed[1:]):
+        if t1 - t0 <= BURST_GAP:
+            join(i, j)
+    hashes = [imagehash.hex_to_hash(r.phashes[0]) for r in photos]   # a photo has one window
+    for i in range(len(photos)):
+        for j in range(i + 1, len(photos)):
+            if check_reel._hamming(hashes[i], hashes[j]) < DEDUP_DIST:
+                join(i, j)
+    members: dict[int, list[int]] = {}
+    for i in range(len(photos)):
+        members.setdefault(find(i), []).append(i)
+    for r in photos:
+        r.clip.group = None
+    sets = sorted((m for m in members.values() if len(m) >= 2), key=lambda m: m[0])
+    for k, m in enumerate(sets, start=1):
+        for i in m:
+            photos[i].clip.group = f"g{k}"
+
+
 def _centroid(descs: list[list[float]]) -> list[float]:
-    import numpy as np
     m = np.asarray(descs, dtype="float64").mean(axis=0)
     n = float(np.linalg.norm(m)) or 1.0
     return (m / n).tolist()
@@ -350,7 +448,6 @@ def surface_crops(entries: list[CastEntry], max_cast: int = MAX_CAST) -> list[Ca
     if len(entries) == 1:
         labels = [1]
     else:
-        import numpy as np
         from scipy.cluster.hierarchy import fcluster, linkage
         from scipy.spatial.distance import pdist
         Z = linkage(pdist(np.asarray([e.descriptor for e in entries], "float64"),
@@ -511,7 +608,9 @@ def _process_photo(path: str) -> ClipResult:
     one YOLO pass on the decoded pixels, one window of PHOTO_HOLD seconds. The shot size
     reads off the LARGEST person box, as a video window's does; the move's subject (the
     union) is decided at render, from the same decode and the same model. A photo has
-    no motion or shake to measure, so both are 0, and it surfaces no cast in this slice."""
+    no motion or shake to measure, so both are 0, and it surfaces no cast in this slice.
+    What Phase 2 groups and ranks photos on rides along: the capture time and the
+    sharpness (design 2026-10-21 §5)."""
     st = still.load(path)
     w, h = st.dims
     boxes = still.people(st.rgb, MODEL)
@@ -523,7 +622,25 @@ def _process_photo(path: str) -> ClipResult:
                                 present=1.0 if boxes else 0.0)
     clip = footage.FootageClip(source=Path(path).name, dur=PHOTO_ROOM, res=(w, h), fps=0.0,
                                windows=[win], kind="photo")
-    return ClipResult(clip=clip, phashes=[str(imagehash.phash(Image.fromarray(st.rgb)))])
+    return ClipResult(clip=clip, phashes=[str(imagehash.phash(Image.fromarray(st.rgb)))],
+                      taken=st.record.get("taken"), sharpness=_sharpness(st.rgb))
+
+
+def _sharpness(rgb: np.ndarray) -> float:
+    """Variance of the Laplacian of the luma: focus and motion blur, what tells a burst's
+    frames apart (design 2026-10-21 §5). Read at ONE scale, the analysis proxy's long
+    side: the luma is resized to exactly PROXY_LONG_SIDE, down with INTER_AREA and up
+    with INTER_CUBIC, because the variance depends on scale — in either direction, by
+    content — so a 4032-wide photo and a 480-wide copy of it must be read at one. The
+    small copy then reads softer than its original, which it is: an upscale invents no
+    detail (the 2026-10-21 review's M1)."""
+    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+    h, w = gray.shape
+    k = PROXY_LONG_SIDE / max(w, h)
+    if k != 1:
+        gray = cv2.resize(gray, (max(1, round(w * k)), max(1, round(h * k))),
+                          interpolation=cv2.INTER_AREA if k < 1 else cv2.INTER_CUBIC)
+    return round(float(cv2.Laplacian(gray, cv2.CV_64F).var()), 3)
 
 
 def _process_clip(path: str, sample_fps: float = SAMPLE_FPS, embed_cast: bool = True,
@@ -700,10 +817,13 @@ def intake(footage_root: str, out_dir: str, sample_fps: float = SAMPLE_FPS, *,
                 failed.append({"source": p.name, "error": str(e)})
                 print(f"intake: ⚠ {p.name} failed — {e}", file=sys.stderr)
     ok = [results[p] for p in paths if p in results]
+    group_photos(ok)                  # Phase 2: bursts and retakes, BEFORE ranking (2026-10-21 §5)
     clips = [r.clip for r in ok]
     # Score BEFORE constructing Footage so `scoring` passes __post_init__ rather than
     # being assigned onto a built object (design 2026-09-10 §4.2).
-    scoring = score_pool(clips)       # Phase 2: pool-relative score + description (design §4.5)
+    scoring = score_pool(clips,       # Phase 2: pool-relative score + description (design §4.5)
+                         sharpness={r.clip.source: r.sharpness for r in ok
+                                    if r.sharpness is not None})
     result = footage.Footage(clips=clips, band=band, scoring=scoring)
     phash_by = {(r.clip.source, w.start, w.dur): imagehash.hex_to_hash(h)
                 for r in ok for w, h in zip(r.clip.windows, r.phashes)}

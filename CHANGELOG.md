@@ -10,6 +10,58 @@ Versioning rules are in
 Per-subsystem detail lives in [docs/build-status.md](docs/build-status.md); this
 file is the short "what changed for someone who installs it" list.
 
+## 0.28.0 — 2026-10-26
+
+- **Photos hold on the beat.** With music, the grid chooses a photo's length in whole
+  beats from the music's energy over the bar it opens — at 120 BPM 4, 2 or 1 beats as
+  that bar is quiet, mid or loud — and never gives one run of photos the same count
+  three times in a row. Where the run cuts back to video it ends on the reel's grid
+  line, but only within half to twice its plan: across the whole range a phrase line
+  is almost always reachable, and a photo planned at 2 beats was bound to 10. Author
+  `hold` (beats) in `selection.json` to ask for a count: it is kept even where the
+  music has no beat near it (a breakdown), and a `--music` window whose tempo cannot
+  play it is dropped from the candidates, not fatal. Held lengths can grow a reel past
+  its music, so `edit_plan build --pacing --music` refuses a reel its window cannot
+  cover before anything renders, and a photo-only reel's `PACING.md` names the beat
+  rather than a coarse level no cut sits on. Without music a photo still plays 2.0 s.
+- **The freeze.** `{"freeze": true}` in `selection.json` holds the previous shot's
+  last frame, "like a photograph", for a length the grid chooses the same way. The
+  frame is the previous segment's last decoded frame, taken by count: the obvious
+  source-time formula named a neighbouring frame in 5 of 28 off-grid cuts, the count
+  was right in 28 of 28. A freeze is not re-tracked — it is framed where the previous
+  shot left its subject, centred — and its sound stops. It keeps the previous shot's
+  grade exactly (match-grade does not measure it, it follows), its framing is not
+  judged — the previous shot's was, and a subject left near the edge would otherwise
+  have failed every retry — and the episode-QC judge is told it is a freeze, so one
+  frame held does not read as a stalled render.
+- **The shutter accent.** `shutter: true` on a photo, and by default on a freeze,
+  puts a three-frame white flash in the delivery and a shutter click on the cut. The
+  flash blends each plane once through `lutyuv`: `drawbox`'s fill missed saturated
+  colours by up to 67 codes of chroma, and only grey came out right. It is in the
+  delivered file and not in the master, so no colour check reads it as a grade; the
+  attestation lists the flash times, and `probe look --flash` runs deliver's own look
+  gate by hand.
+- **Bursts are grouped, and photos rank among photos.** Photos taken within 2 s of
+  each other (their EXIF capture time) or near-identical by pHash are one group, and a
+  group gets at most one ★. Photos are scored on presence and sharpness against the
+  other photos, instead of landing mid-pool on a motion and a shake they do not have;
+  a photo's score and a video window's are percentiles of two pools and do not
+  compare. `FOOTAGE.md` names each group and its size. The first scan after updating
+  re-scans the photos only — their cache entries gained the capture time and
+  sharpness — and every video clip stays cached. **On a run that already has photos,
+  re-run footage-intake and then pacing:** an older `FOOTAGE.json` still loads, with
+  its photos ranked against the video and no groups (`edit_plan build` now says so),
+  and an older `PACING.json` with photos is refused when it is applied.
+- **A photo takes the colour description of the video beside it**, as it takes its
+  clock. Every photo was written BT.709; beside video that describes no colour, the
+  reel's master changed description at the photo, ffmpeg carried it onto the video
+  after it (whose colours then decoded 21 codes off) and restarted its frame count
+  there, so `grade_faithful` read the wrong frames and refused a correct reel. Now an
+  undescribed video gives an undescribed photo, converted by the BT.601 matrix ffmpeg
+  reads it with, and a described one its own matrix and tags; a reel of photos alone
+  stays BT.709. Two video clips described differently (two cameras) still mix in the
+  master, as before. Design 2026-10-21 §7.
+
 ## 0.27.0 — 2026-10-21
 
 - **Install without a clone.** `/plugin marketplace add vasechko-sergey/video-grid`,

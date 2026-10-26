@@ -7,8 +7,9 @@ import numpy as np
 import pytest
 
 from scripts import probe
-from scripts.lib import gradedamage
+from scripts.lib import gradedamage, lookcheck
 from scripts.lib.edl import EDL, EDLEpisode, write_edl
+from scripts.lib.look import LookSpec
 from scripts.lib.models import EpisodeGeometry, ReelEpisode, ReelGeometry, ReelManifest
 
 
@@ -469,7 +470,48 @@ def test_probe_look_decodes_and_judges_only_the_declared_ends(monkeypatch):
     monkeypatch.setattr(probe.assembly, "last_frame_rgb",
                         lambda p, fps: np.zeros((4, 4, 3), np.uint8))
     got = {}
-    monkeypatch.setattr(probe.lookcheck, "evaluate", lambda *a, **k: (got.update(k), [])[1])
+    monkeypatch.setattr(probe.deliver.lookcheck, "evaluate",
+                        lambda *a, **k: (got.update(k), [])[1])
     probe.probe_look("m.mp4", "d.mp4", fade=0.8, fade_in=0.0)
     assert (0.0,) not in seen
     assert (got["fade"], got["fade_in"]) == (0.8, 0.0)
+
+
+def test_probe_look_is_delivers_own_gate_not_a_copy_of_its_sampling(monkeypatch):
+    """Review M3: a second copy of the sampling was not updated for the shutter flash,
+    so a hand re-check of a flashed reel reported a vignette fail the real gate did
+    not. probe look now hands everything to deliver._verify_look."""
+    seen = []
+    finding = lookcheck.LookFinding(check="vignette", status="pass", detail="d",
+                                    measured=0.3, expected=0.2)
+    monkeypatch.setattr(probe.deliver, "_verify_look",
+                        lambda *a: (seen.append(a), [finding])[1])
+    got = probe.probe_look("m.mp4", "d.mp4", vignette=0.3, fade=0.5, fade_in=0.0,
+                           titles="T.json", platform="reels", flashes=[1.0, 2.5])
+    assert seen == [("m.mp4", "d.mp4", LookSpec(vignette=0.3, fade=0.5, fade_in=0.0),
+                     "T.json", "reels", [1.0, 2.5])]
+    assert got == [finding.to_dict()]
+
+
+def test_probe_look_judges_a_declared_vignette_without_crashing(monkeypatch):
+    """Before it was deliver's gate, probe look handed lookcheck.evaluate a bool for
+    `titles`, which it iterates — every call that declared anything raised TypeError."""
+    frame = np.full((40, 20, 3), 120, np.uint8)
+    monkeypatch.setattr(probe.assembly, "probe_duration", lambda p: 10.0)
+    monkeypatch.setattr(probe.assembly, "probe_stream",
+                        lambda p: SimpleNamespace(fps=30.0, w=20, h=40))
+    monkeypatch.setattr(probe.assembly, "frames_rgb", lambda p, ts, fps: [frame] * len(ts))
+    got = probe.probe_look("m.mp4", "d.mp4", vignette=0.3)
+    assert [f["check"] for f in got] == ["vignette"]
+
+
+def test_cli_look_forwards_titles_platform_and_every_flash(monkeypatch, capsys):
+    seen = {}
+    monkeypatch.setattr(probe, "probe_look", lambda *a, **k: (seen.update(k, args=a), [])[1])
+    monkeypatch.setattr(sys, "argv", ["probe", "look", "m.mp4", "d.mp4", "--vignette", "0.3",
+                                      "--titles", "T.json", "--platform", "reels",
+                                      "--flash", "1.0", "--flash", "2.5"])
+    probe.main()
+    assert seen == {"args": ("m.mp4", "d.mp4"), "vignette": 0.3, "fade": 0.0,
+                    "fade_in": None, "titles": "T.json", "platform": "reels",
+                    "flashes": [1.0, 2.5]}

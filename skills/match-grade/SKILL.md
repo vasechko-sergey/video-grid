@@ -134,8 +134,10 @@ project. If `"$VG"` says there is no runtime, it has not been set up yet: run th
 3. **Read the report.** `MATCH.md` lists the target triple (p5/p50/p95), then
    one row per episode: its measured profile, its distance (max Δ) to the
    target, and the action taken (`author`/`skip`) with a reason (`authored` /
-   `within-eps` / `flat-source` / `hand-authored`). Surface it at the CP3
-   final review beside the reel.
+   `within-eps` / `flat-source` / `hand-authored` / `freeze`). A freeze's row reads
+   "freeze — follows episode i−1": it is not measured and does not vote in the
+   target, it takes the episode it holds' decision and pair exactly, so the held frame
+   keeps that frame's grade. Surface it at the CP3 final review beside the reel.
 
    **`mood-bias-ineffective` is the one line that needs a decision.** It means
    the reel's own tonal range left no room for the mood's displacement, so what
