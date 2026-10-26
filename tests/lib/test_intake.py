@@ -1742,7 +1742,7 @@ def _burst_photo(path, sf=intake.SAMPLE_FPS, embed_cast=True, band=carve.DEFAULT
     return _photo_res(name, taken=taken, phash=phash, sharpness=sharpness)
 
 
-def _groups(footage_json):
+def _footage_groups(footage_json):
     return [c.get("group") for c in json.loads(footage_json)["clips"]]
 
 
@@ -1757,7 +1757,7 @@ def test_group_numbering_is_the_same_across_a_cache_mix(monkeypatch, tmp_path):
     monkeypatch.setattr(intake, "_process_clip", _burst_photo)
     intake.intake(str(root), str(out), jobs=1)
     cold = (out / "FOOTAGE.json").read_text()
-    assert _groups(cold) == ["g1", "g2", "g1", "g2"]
+    assert _footage_groups(cold) == ["g1", "g2", "g1", "g2"]
     for n in ("p1.jpg", "p3.jpg"):
         shutil.rmtree(out / ".intake_cache" / n)
     intake.intake(str(root), str(out), jobs=1)
@@ -1792,5 +1792,5 @@ def test_group_numbering_is_the_same_across_jobs(monkeypatch, tmp_path):
     intake.intake(str(root), str(tmp_path / "o3"), jobs=3)
     assert set(stored[:2]) == {"p2.jpg", "p4.jpg"}  # load-bearing: the 2nd group first
     one = (tmp_path / "o1" / "FOOTAGE.json").read_text()
-    assert _groups(one) == ["g1", "g2", "g1", "g2"]
+    assert _footage_groups(one) == ["g1", "g2", "g1", "g2"]
     assert (tmp_path / "o3" / "FOOTAGE.json").read_text() == one
