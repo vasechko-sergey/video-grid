@@ -21,8 +21,10 @@ never the same count three times in a row inside a run of holds, the cuts inside
 on detected beats and the run's last cut on a line of the chosen level, so the cut back
 to footage is as musical as the rest — but only a line within half to twice its planned
 length, so a hold keeps its length class; with none there it keeps its beat and the reel
-fits a finer level. An authored `hold` (beats) outranks it, and one
-that cannot last 1/3 s to 8.0 s at a window's tempo is refused. `PACING.md` marks each
+fits a finer level. An authored `hold` (beats) outranks it — kept even where the music
+detects no beat near it — and a `--music` window whose tempo cannot hold it 1/3 s to
+8.0 s is dropped from the candidates (said on stderr); the fit is refused only when no
+window is left. A cut that is all holds names the beat as its level. `PACING.md` marks each
 such slot `held N beats` and names them in the fit report; the energy agreement leaves
 them out, because their length was derived from the energy. Turning an episode from
 footage into a photo or freeze (or back), or adding, changing or dropping its `hold`,
@@ -98,7 +100,8 @@ project. If `"$VG"` says there is no runtime, it has not been set up yet: run th
    scenario length, or accept an off-grid reel (check_reel's beat gate is advisory).
    A window the fitted reel overruns ranks below every window that covers it, and an
    overrun on the chosen one is named on stderr with the `--duration` to re-analyse at
-   — photos and freezes are the usual cause, since the grid sets their length.
+   — photos and freezes are the usual cause, since the grid sets their length. Step 5
+   with `--music` then refuses it, before anything renders: re-analyse and re-fit first.
 5. **Apply.** `"$VG" scripts.edit_plan build ... --pacing <run>/reels/<reel>/PACING.json
    [--spec <run>/reels/<reel>/SPEC.json] [--music <run>/reels/<reel>/MUSIC.json]` — this is what writes the
    snapped durations and `beat_slot` into `EDL.json`. Carry `--spec` through when a

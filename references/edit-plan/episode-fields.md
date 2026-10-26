@@ -100,9 +100,13 @@ target length, and order them **hook first**. For each episode assign:
   left them — so after a `lead` the subject moves from the third line to the centre on
   the cut. It drops what addresses time (`ramp`, `pan`, `zoom`, `still`, `motion`,
   `smooth_window_s`, `stabilize`), plays 2.0 s when no music binds it, and its segment
-  is silent. Its `shutter` is on unless the entry says `"shutter": false`. It is not a
-  new use of footage: the variety census and `CONSTRAINTS.json`'s `no_repeat` both skip
-  it. It follows wherever the previous cut lands, after pacing and the outro fit.
+  is silent. Its `shutter` is on unless the entry says `"shutter": false`. match-grade
+  does not measure it: it takes the previous episode's grade exactly, conducted or
+  hand-authored. Its framing is not judged (the previous episode's was), so a subject
+  that episode leaves near the frame edge is held there — drop the freeze or move the
+  previous window's end if that reads wrong. It is not a new use of footage: the
+  variety census and `CONSTRAINTS.json`'s `no_repeat` both skip it. It follows wherever
+  the previous cut lands, after pacing and the outro fit.
 - `shutter` (optional, a photo or a freeze only) — the shutter accent on the
   episode's cut: a white flash and a shutter click (design 2026-10-21 §4). A freeze
   defaults it to `true` — without it a held frame reads as a stalled player; a photo
@@ -114,9 +118,10 @@ target length, and order them **hook first**. For each episode assign:
   bar is quiet, mid or loud, never the same count three times in a row inside a run of
   holds — and the run's last hold before a video ends on a line of the reel's level
   when one lies within half to twice its plan. Beats need a tempo: without `--pacing` it is
-  unused — `edit_plan build` says so — and the episode plays 2.0 s. Pacing refuses a
-  count that cannot last 1/3 s to 8.0 s at the window's tempo. An authored count is
-  never moved to reach a line, and the grid level is the whole reel's: when the hold is
+  unused — `edit_plan build` says so — and the episode plays 2.0 s. Pacing drops a
+  window whose tempo cannot hold the count 1/3 s to 8.0 s, and refuses only when no
+  window is left. An authored count is never moved to reach a line, nor to a beat when
+  the music detects none near it (it holds its count and the fit sees the distance), and the grid level is the whole reel's: when the hold is
   the last before a video, the cut back stays on the level's lines only if the count is
   a whole number of them — 4 or 8 beats keep a bar grid, 8 a 2-bar one, 2 only a
   half-bar, an odd count only the beat — so one odd `hold` there can cost every cut in

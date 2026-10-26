@@ -18,14 +18,22 @@ file is the short "what changed for someone who installs it" list.
   three times in a row. Where the run cuts back to video it ends on the reel's grid
   line, but only within half to twice its plan: across the whole range a phrase line
   is almost always reachable, and a photo planned at 2 beats was bound to 10. Author
-  `hold` (beats) in `selection.json` to ask for a count. Without music a photo still
-  plays 2.0 s.
+  `hold` (beats) in `selection.json` to ask for a count: it is kept even where the
+  music has no beat near it (a breakdown), and a `--music` window whose tempo cannot
+  play it is dropped from the candidates, not fatal. Held lengths can grow a reel past
+  its music, so `edit_plan build --pacing --music` refuses a reel its window cannot
+  cover before anything renders, and a photo-only reel's `PACING.md` names the beat
+  rather than a coarse level no cut sits on. Without music a photo still plays 2.0 s.
 - **The freeze.** `{"freeze": true}` in `selection.json` holds the previous shot's
   last frame, "like a photograph", for a length the grid chooses the same way. The
   frame is the previous segment's last decoded frame, taken by count: the obvious
   source-time formula named a neighbouring frame in 5 of 28 off-grid cuts, the count
   was right in 28 of 28. A freeze is not re-tracked — it is framed where the previous
-  shot left its subject, centred — and its sound stops.
+  shot left its subject, centred — and its sound stops. It keeps the previous shot's
+  grade exactly (match-grade does not measure it, it follows), its framing is not
+  judged — the previous shot's was, and a subject left near the edge would otherwise
+  have failed every retry — and the episode-QC judge is told it is a freeze, so one
+  frame held does not read as a stalled render.
 - **The shutter accent.** `shutter: true` on a photo, and by default on a freeze,
   puts a three-frame white flash in the delivery and a shutter click on the cut. The
   flash blends each plane once through `lutyuv`: `drawbox`'s fill missed saturated

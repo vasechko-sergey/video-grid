@@ -90,7 +90,11 @@ its out-point is **chosen**:
   its target among those within half a beat of it — even a hair outside `[lo, hi]`: the
   count was checked against the range at the window's tempo before the fit, and beat
   jitter must not cost or add a beat to it (`hold: 16` at 120 BPM on a grid 0.2 % slow
-  is 8.016 s, and the range alone gave it 15 beats). With no beat there, the range rule.
+  is 8.016 s, and the range alone gave it 15 beats). With no beat there (a gap in the
+  grid, a breakdown), the target itself, clamped into the range, and its distance to the
+  nearest beat or line is a deviation the fit sees — as past the grid. Falling back to
+  the range rule took the nearest beat anywhere in `[lo, hi]`, a beat or more off the
+  count, and binding accepted it in silence (final review M3).
   Where it is the last hold before a video, the cut back stays on the level's lines only
   if the count is a whole number of them, so an odd count can cost the whole reel its
   level (4 or 8 keep a bar, 2 only a half-bar, 3 only the beat — measured, and said in
@@ -102,6 +106,12 @@ its out-point is **chosen**:
   distance to the nearest line or beat is a deviation the fit sees, as for a footage cut
   past the last line. Snapping to the last beat instead cut such a hold short in silence
   and still read "fits".
+- A cut that is ALL holds has no cut matched against a level's lines — every cut is
+  chosen among the detected beats — so every level fits at (0, 0) and the coarsest
+  would name a grid no cut sits on (four photos at 120 BPM reported `phrase`). The fit
+  names the finest level, with nothing rejected, and PACING.md says "beat — every cut is
+  a held cut on a detected beat" (`gridfit.every_cut_held`; final review M1). A single
+  episode has no cut and keeps the rule it had.
 - Phases that tie on `(worst, total)` break toward the plan: the third key is
   `Fit.drift`, `Σ |out − target|` over the held cuts. A run of holds re-syncs every later
   cut to whichever line it ends on, so a reel that opens on holds ties every phase that
@@ -131,13 +141,20 @@ beat from `hold × beat`, is refused as a PACING.json the fit cannot have writte
 fit stays a fixed point: a held length is a function of the music and of the positions
 the scenario's own lengths produce.
 
-`scripts/pacing.py` refuses an authored `hold` outside `[HOLD_MIN, HOLD_ROOM]` at each
-window's tempo, naming both, and hands the fitter no held list at all when nothing is
-held. Because the grid sets held lengths, a reel with photos can grow past the window
-the music was analysed for: a window the fitted reel overruns (by more than
-`build_reel`'s own 0.1 s) ranks below every window that covers it, and an overrun on the
-chosen window is named in one line with the length to re-analyse at (two bars of
-headroom, a convention) — not refused, since the reel gate already escalates it.
+`scripts/pacing.py` judges an authored `hold` against `[HOLD_MIN, HOLD_ROOM]` at each
+window's tempo: a window that cannot play it is dropped from the candidates in one line
+naming the count, the seconds and the window, and the fit is refused, naming each, only
+when no window is left — another window at another tempo may play the same count
+(final review M2; it used to refuse the whole run at the first such window). It hands
+the fitter no held list at all when nothing is held. Because the grid sets held
+lengths, a reel with photos can grow past the window the music was analysed for: a
+window the fitted reel overruns (by more than `models.MUSIC_OVERRUN_TOL`, the 0.1 s that
+mix and `build_reel` refuse past) ranks below every window that covers it, and an
+overrun on the chosen window is named in one line with the length to re-analyse at
+(`pacing.reanalysis_duration`: two bars of headroom, a convention) — not refused there.
+`edit_plan build --pacing --music` refuses it: it holds both the bound target and the
+window, and the reel gate would otherwise refuse it only after phase 1 had rendered and
+judged every episode (final review M5).
 Anchors skip held episodes. PACING.md prints a held slot's beat count, and says that its
 kind cell is the band of its own span while the count was planned from the bar that
 opens it. `_apply_outro` grows a held closer into `HOLD_ROOM`, not into the clip's room
@@ -170,7 +187,8 @@ A ramped predecessor's segment is already retimed by then, so its last frame is 
 that plays.
 
 A freeze is a **video episode** in every other respect — framed, graded and checked like
-any window — except that it is **not tracked**. Re-tracking one cloned frame loses what
+any window — except that it is **not tracked**, is **graded as the frame it holds**, and
+its **framing is not judged**. Re-tracking one cloned frame loses what
 the previous episode was following (the Task 1 review): with no motion an unpinned pick
 falls back to size and may take another person or tie, a frame left empty stops on
 `no-track`, flow builds a route out of encode noise, and a motion-keyed composition reads
@@ -184,6 +202,34 @@ freezes pushed in. A freeze after a `pan` is refused: a pan has no route, and it
 holds nobody to freeze on. `zoom` on the freeze itself is refused because `zoompan`
 stair-steps on a still (photos design §0); a pushed freeze would be the float warp, not
 this slice.
+
+**Below the EDL a freeze says so.** `edl.to_manifest_dict` carries `freeze: true` onto the
+manifest (true-only, so every other manifest is byte-identical) and `Manifest.freeze`
+refuses what a freeze cannot carry, as the EDL does, for a hand-written manifest. The
+first version left it behind on the claim that downstream a freeze needed nothing, and
+three stages each did the right thing for a played window and the wrong thing for a held
+frame (final review I1–I3):
+
+- **match-grade** measured the freeze's one frame against its predecessor's profile
+  pooled over a whole window, so the two landed on different sides of `eps` whenever the
+  window's light moved and the "same frame, held" changed brightness on the cut by the
+  predecessor's whole correction; its duplicate frame also voted twice in the median. A
+  freeze is now neither measured nor counted: it takes its predecessor's decision whole —
+  the conducted pair, the hand-authored pair, or none (`matchgrade.follow`) — and
+  MATCH.md names it "freeze — follows episode i−1".
+- **check_episode** judged its framing against the held route. Where the predecessor's
+  subject ends near an edge the centred crop is clamped on EVERY sample of the freeze
+  (640×360, 9:16, a last sample at x = 80: `centered` 0.0 against its 0.9 bar, while the
+  predecessor passed at 0.958), the ladder rescaled knobs that cannot move a clamped
+  crop, and the freeze escalated `max-retries` to an edit-plan with nothing to change.
+  Its framing is now reported `editorial-only`, "freeze" — judged on the episode it
+  freezes — and a failing freeze escalates once, `freeze-not-retryable`, as a still
+  does. A freeze handed no route is refused rather than tracked.
+- **The episode-QC judge** saw a strip of identical frames, with no flash (deliver adds
+  it) and nothing saying why. The packet's intent carries `freeze` and `shutter`, and
+  the judge template says what a freeze is: its path and motion are not judgeable (a
+  minor, route-none finding, as under a pan or on a photo), and the accent is not in the
+  clip.
 
 The cut identity carries `freeze`, and edit-plan leaves a freeze out of the variety
 census and the constraint projection: it is not a new use of footage, and `no_repeat`
@@ -205,7 +251,8 @@ at the master's real cut time (the probed clip durations `check_reel` already su
   `grade_faithful`) reads the episode or the master, and a white frame under any of their
   samples would read as a grade. Deliver's own look gate compares the delivered file
   against the master, so its samples are moved out of every flash window (the vignette's
-  mid sample, the titles' in-window times and witnesses). reel-review's stills step off
+  three interior samples at a quarter, half and three quarters of the reel, the titles'
+  in-window times and witnesses). reel-review's stills step off
   them too, by the same rule — they are grabbed from the delivered reel and feed its
   `colour` axis, where a frame washed toward white reads as a grade; a still that cannot
   move later without entering the fade-out (the ending) steps back a frame before the
@@ -252,8 +299,11 @@ freeze of its last frame, a photo with a shutter and a second video window — i
 order, because a freeze cannot follow a photo (§3) — with music, and a control reel
 built the same way with `shutter: false` everywhere. The EDL comes from
 `edit_plan.build_edl` over a selection, bound to a PACING.json fitted to a synthetic
-120 BPM MUSIC.json, and goes down the router's road: `build_geometry`,
-`render_from_geometry`, the episode-QC gate, `assemble_reel`. Only the person detectors
+120 BPM MUSIC.json, and goes down the router's road: `build_geometry`, the required
+match-grade conductor (`write_match`, which rewrites the EDL's tone pairs between the
+phases), `render_from_geometry`, the episode-QC gate, `assemble_reel`. The first version
+skipped match-grade and called this road the router's, so its freeze-frame claim held
+only on a road the router never takes (final review I1). Only the person detectors
 (the tracker's and the photo's) and the weights are stubbed, and the episode-QC judges'
 approving verdicts are written as the gate reads them. Both reels deliver; every episode clip probes the clip's
 own 24/1, not extract's 30/1 default; the freeze holds 1 beat (its bar reads peak) and
@@ -262,10 +312,19 @@ whole beats, not 2.0 s; the delivered frame at each accented cut is within 1.6 c
 `a·255 + (1−a)·master` for each opacity, the frame past the flash is the master's again,
 and the master is the control's master frame for frame; the delivered audio's 2.5–9 kHz
 band at each accented cut is 4500–5100× the control's, and equal to it at the cut back
-to footage; the freeze's first frame is its predecessor's last clip frame (0.32 mean
-codes from it, 5.49 from the frame before). Five mutations each turn a test red: no
+to footage; the conductor gives the freeze its predecessor's tone pair, and the
+freeze's first frame is its predecessor's last clip frame (0.31 mean codes from it, 5.35
+from the frame before, on the graded clips). Six mutations each turn a test red: no
 flashes to deliver, no shutters to mix, the freeze one frame early, every band held
-2.0 s, the photo on the default clock.
+2.0 s, the photo on the default clock, and the conductor measuring the freeze as its own
+episode. The frame-hold assertion alone does not see that one on this clip: the freeze's
+own pair maps its p50 101 where the predecessor's maps 145, but testsrc2's luma sits
+mostly at the two outer anchors both pairs share, so its first frame lands 0.94 codes
+from the predecessor's last, still under the assertion's 1.32 — the pair is asserted
+directly instead.
+`test_freeze.py` carries the framing case: a held route at x = 80 of a 640×360 source
+under a 9:16 crop passes on attempt 1, and the same render judged as a played window
+escalates `max-retries`.
 
 Every test runs on two clips: full range with a BT.709 description, as camera footage
 arrives, and one that describes no colour at all. Both deliver, and every episode clip
@@ -301,6 +360,11 @@ included (§7). Before the fix the undescribed reel was refused.
 - Sharpness is focus and motion blur, not taste; there is no aesthetic model.
 - A freeze re-centres its subject: after a `lead` episode the subject moves from the
   third line to the centre on the cut. The flash covers it; nothing reproduces the lead.
+- A freeze's framing is not checked. It is reported `editorial-only` because its crop
+  is derived from a framing already judged on the episode it freezes — but a subject
+  that episode left near the edge is held there, off-centre, for the whole freeze, and
+  nothing flags it; the episode-QC judge sees the frame, and dropping the freeze or
+  re-cutting its predecessor's window are the remedies.
 - A freeze after a stabilized episode holds the raw frame under a route measured on
   stabilized pixels, a few pixels off; the flash covers the cut, nothing corrects it.
 - The flash is not in `draft.mp4`, and nothing checks that it rendered beyond the proof.
