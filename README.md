@@ -39,7 +39,9 @@ run when the reel asks for them:
    moment windows. The people who recur are clustered by appearance (OSNet re-ID)
    and shown to you as cards so you can name them. Photos (JPEG, PNG, HEIC) in
    the same folder come in too: upright, colour-managed to sRGB, framed on the
-   people in them and given a slow sub-pixel push instead of a still frame.
+   people in them and given a slow sub-pixel push instead of a still frame. A
+   burst or a run of near-identical retakes is grouped, and one photo of each group
+   is starred.
 3. **Contact sheets.** The agent looks at the frames of every window rather than
    trusting the scores alone.
 4. **Brief** *(optional; checkpoint 1)*. One question at a time: length, mood, the
@@ -58,7 +60,9 @@ run when the reel asks for them:
 7. **Pacing** *(optional)*. The cuts are fitted to the coarsest musical grid they
    can reach (beat, half-bar, bar, two bars or phrase). When there is a bar grid
    and the closing shot has room, the reel's length is chosen so the closing fade
-   starts on a bar line.
+   starts on a bar line. A photo, or a frozen last frame of the shot before it,
+   holds a whole number of beats the grid picks — fewer where the music is louder —
+   and can carry a shutter accent: a white flash and a click on its cut.
 8. **Geometry and grade.** Each shot follows its subject: the tracked route drives
    a smoothed crop path that reframes 16:9 footage to 9:16. Optional per shot are
    a subject-anchored zoom, a pan, a speed ramp into slow motion, stabilization

@@ -94,10 +94,24 @@ project. If `"$VG"` says there is no runtime, it has not been set up yet: run th
    one window of 2.0 s — a placeholder: with music, pacing authors a photo's length in
    whole beats, from 1/3 s to 8.0 s (design 2026-10-21 §2) — its people and shot size read
    by the same YOLO, decoded upright and in sRGB (a Display P3 iPhone photo is
-   converted, not desaturated). Photos surface no cast candidates. The scan logs
-   what it skipped by extension (`.dng`, `.webp` …) — say so to the user when it
-   does — and names photo+video pairs sharing a name: those are usually iPhone
-   Live Photos, and both halves enter as separate sources for now.
+   converted, not desaturated). Photos surface no cast candidates.
+
+   Photos are **grouped before they are ranked** (design 2026-10-21 §5): two photos
+   are one group when their EXIF capture times are within 2.0 s of each other
+   (chained, so a burst is one group) or their pHashes are near-duplicates, and a
+   group of two or more carries a `group` id (`g1`, …) that `FOOTAGE.md` prints
+   with its size. Photos then **rank among photos**, on presence and sharpness — a
+   photo's `score` is a percentile of the photo pool and a video window's of the
+   video pool, so the two are not comparable. A group gets at most one `★`, its
+   top-scored member (usually the sharpest of a burst), and none when that member
+   repeats an image already starred (a video window of the same moment). A photo
+   whose EXIF carries no readable time is grouped by pHash alone. The first scan
+   after 0.28 re-scans the photos once (their cache entries gained the capture time
+   and sharpness); video entries still hit.
+
+   The scan logs what it skipped by extension (`.dng`, `.webp` …) — say so to the
+   user when it does — and names photo+video pairs sharing a name: those are usually
+   iPhone Live Photos, and both halves enter as separate sources for now.
 
    `--win-min`/`--win-max` set the window length band a scan carves with —
    default `(1.2, 4.0)` seconds. The floor is the shortest shot the cut can have:

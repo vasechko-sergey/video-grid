@@ -100,16 +100,20 @@ target length, and order them **hook first**. For each episode assign:
   left them — so after a `lead` the subject moves from the third line to the centre on
   the cut. It drops what addresses time (`ramp`, `pan`, `zoom`, `still`, `motion`,
   `smooth_window_s`, `stabilize`), plays 2.0 s when no music binds it, and its segment
-  is silent. It is not a new use of footage: the variety census and
-  `CONSTRAINTS.json`'s `no_repeat` both skip it. It follows wherever the previous cut
-  lands, after pacing and the outro fit.
+  is silent. Its `shutter` is on unless the entry says `"shutter": false`. It is not a
+  new use of footage: the variety census and `CONSTRAINTS.json`'s `no_repeat` both skip
+  it. It follows wherever the previous cut lands, after pacing and the outro fit.
 - `shutter` (optional, a photo or a freeze only) — the shutter accent on the
   episode's cut: a white flash and a shutter click (design 2026-10-21 §4). A freeze
   defaults it to `true` — without it a held frame reads as a stalled player; a photo
   defaults to `false`. Refused on a played video window.
 - `hold` (optional, a photo or a freeze only) — a length in whole **beats** (an int
   ≥ 1) that outranks the music grid's own pick (design 2026-10-21 §2.1), e.g. for a
-  hero photo the brief wants held longer. Beats need a tempo: without `--pacing` it is
+  hero photo the brief wants held longer. Without it the grid plans the count from the
+  music's energy over the bar that opens the hold — at 120 BPM 4, 2 or 1 beats as that
+  bar is quiet, mid or loud, never the same count three times in a row inside a run of
+  holds — and the run's last hold before a video ends on a line of the reel's level
+  when one lies within half to twice its plan. Beats need a tempo: without `--pacing` it is
   unused — `edit_plan build` says so — and the episode plays 2.0 s. Pacing refuses a
   count that cannot last 1/3 s to 8.0 s at the window's tempo. An authored count is
   never moved to reach a line, and the grid level is the whole reel's: when the hold is

@@ -115,6 +115,23 @@ project. If `"$VG"` says there is no runtime, it has not been set up yet: run th
    YOUR cut. `best` marks the top half that also survived phash dedup. Look at the
    contact sheets.
 
+   **Photos rank among photos** (design 2026-10-21 §5). A photo's `score` is its
+   percentile among this shoot's photos, on presence and sharpness; a video
+   window's is among the video windows. They are percentiles of two different
+   pools, so the numbers are not comparable — never prefer a photo to a window, or
+   the reverse, by score. A burst or a run of near-identical retakes is one
+   `group` (`FOOTAGE.md` names it and its size) and carries at most one `★`.
+   **Use one photo of a group** unless the cut means the sequence itself — three
+   frames of one moment read as one moment, three times.
+
+   A photo and a `{"freeze": true}` entry are **held** episodes: nothing in the
+   footage fixes their length, so with music the grid authors it in whole beats
+   (the **pacing** skill), and either can carry the `shutter` accent (a flash and
+   a click on its cut — a freeze defaults it on) or an authored `hold` in beats.
+   A freeze holds the previous episode's last frame and must follow a played
+   video window that is not a `pan`. What each inherits and refuses is in
+   episode-fields (below).
+
    **Variety is an objective, not a preference.** The build refuses a cut that uses
    *zero* of a shot size the mood's preset wants when the footage offers three or
    more windows of it — the reason is `variety-gap` and it names candidate windows
@@ -151,6 +168,9 @@ project. If `"$VG"` says there is no runtime, it has not been set up yet: run th
          "episodes": [
            {"source": "MVI_3739.mp4", "window": 2, "composition": "lead",
             "grid": "thirds", "layout": "fill", "motion": "lateral:right", "hero": "largest"},
+           {"freeze": true},
+           {"source": "IMG_2041.HEIC", "window": 0, "composition": "center",
+            "grid": "thirds", "shutter": true},
            {"source": "MVI_3739.mp4", "window": [4, 6], "composition": "center",
             "grid": "thirds", "white_balance": 0.5, "saturation": 1.1},
            {"source": "MVI_3998.mp4", "window": 1, "composition": "center", "grid": "phi"}

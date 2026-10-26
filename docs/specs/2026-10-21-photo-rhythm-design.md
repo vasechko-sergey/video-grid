@@ -1,7 +1,7 @@
 # Photos on the beat, among video — held episodes, the freeze, the shutter, the burst
 
-**Status:** designed 2026-10-21. Backlog U7 + U8, the photo epic's second slice
-(the first: [photos design](2026-10-20-photos-design.md), 0.26.0).
+**Status:** built 2026-10-21 – 2026-10-26 (0.28.0). Backlog U7 + U8, the photo epic's
+second slice (the first: [photos design](2026-10-20-photos-design.md), 0.26.0).
 
 ## §0 · Why
 
@@ -246,12 +246,27 @@ look` is deliver's own gate run by hand, and takes them as `--flash`.
 
 ## §6 · Proof: one reel
 
-A real-ffmpeg reel of a video window, a photo with a shutter, a freeze and a second
-video window, with music: delivered; every episode clip on one rate; the flash in the
-delivered file at the photo's and the freeze's cuts and not in the master; the click in
-the stem at those times against a control without accents; the freeze's frame is the
-previous segment's last frame (nearer it than the frame before); the held lengths whole
-beats of the music.
+`tests/integration/test_photo_rhythm_reel.py`: a real-ffmpeg reel of a video window, a
+freeze of its last frame, a photo with a shutter and a second video window — in that
+order, because a freeze cannot follow a photo (§3) — with music, and a control reel
+built the same way with `shutter: false` everywhere. The EDL comes from
+`edit_plan.build_edl` over a selection, bound to a PACING.json fitted to a synthetic
+120 BPM MUSIC.json, and goes down the router's road: `build_geometry`,
+`render_from_geometry`, the episode-QC gate, `assemble_reel`. Only the person detector
+and the weights are stubbed. Both reels deliver; every episode clip probes the clip's
+own 24/1, not extract's 30/1 default; the freeze holds 1 beat (its bar reads peak) and
+the photo 3 (planned 2 at build, then ended on the bar line as the run's last hold) —
+whole beats, not 2.0 s; the delivered frame at each accented cut is within 1.6 codes of
+`a·255 + (1−a)·master` for each opacity, the frame past the flash is the master's again,
+and the master is the control's master frame for frame; the delivered audio's 2.5–9 kHz
+band at each accented cut is about 4500× the control's, and equal to it at the cut back
+to footage; the freeze's first frame is its predecessor's last clip frame (0.32 mean
+codes from it, 5.49 from the frame before). Five mutations each turn a test red: no
+flashes to deliver, no shutters to mix, the freeze one frame early, every band held
+2.0 s, the photo on the default clock.
+
+The clip is full range with a BT.709 description, as camera footage arrives. Beside
+undescribed video the same reel does not deliver — see §7.
 
 ## §7 · Honest limits
 
@@ -263,9 +278,45 @@ beats of the music.
 - Capture time without an offset is read as UTC: differences inside one camera are right,
   across two cameras with different clocks they are not, and a burst split across them is
   two groups.
+- The time rule groups the same MOMENT, not the same picture: two phones shooting at once,
+  both with correct offsets, join one group and keep one ★, and a camera with no offset
+  beside a phone with one can chain photos taken hours apart whenever the two wall clocks
+  happen to agree within `BURST_GAP`.
+- Neither link has a span cap. Time chaining is single-linkage, so minutes of continuous
+  shooting at gaps of 2 s or less is one group with one ★. pHash links are transitive:
+  A~B and B~C at 7 bits each put A and C, 14 bits apart, in one group — more merging than
+  `cull`'s own pairwise dedup does.
+- The photo blend gives sharpness `1 − W_PRESENT` = 0.56 of the weight, so across the photo
+  pool an empty sharp photo can outrank a slightly softer photo of a person. Inside a burst
+  presence ties and the sharpest wins, which is the case the blend is for; across the pool
+  the weights are a convention, not a measurement.
+- A photo's `score` is a percentile of the photo pool and a video window's of the video
+  pool. Two readers still sort one against the other — `cull`'s walk, deciding which of a
+  photo and a video window of the same moment keeps the ★, and edit-plan's variety-gap
+  suggestions — and the skills say the two are not comparable.
 - Sharpness is focus and motion blur, not taste; there is no aesthetic model.
 - A freeze re-centres its subject: after a `lead` episode the subject moves from the
   third line to the centre on the cut. The flash covers it; nothing reproduces the lead.
 - A freeze after a stabilized episode holds the raw frame under a route measured on
   stabilized pixels, a few pixels off; the flash covers the cut, nothing corrects it.
 - The flash is not in `draft.mp4`, and nothing checks that it rendered beyond the proof.
+- An accented closer of 1 s or less gets no reel-review still of its own: the ending still
+  sits at least `_END_MIN` (1 s) before the end and the closer's mid still is clamped to
+  the same bound, so both land on the episode before it. A held closer can be that
+  short: `HOLD_MIN` is 1/3 s.
+- **The master is spliced by `-c copy`, and nothing makes the episodes' colour
+  descriptions agree.** A photo segment is always described BT.709/tv (still.render
+  stamps it); a video segment carries whatever its source carried. Measured while
+  building §6's proof on an undescribed 24 fps test clip: the master read back with
+  every frame from two frames before the photo onward described BT.709/tv — ffmpeg's
+  decoder keeps a colour description for later frames whose own parameter sets carry
+  none — and that change of frame properties re-initializes the filter graph mid-decode,
+  restarting `select`'s `n`, so a by-number read returns the right count of the wrong
+  frames. `format=gray` also reads a described frame differently from an undescribed one
+  with the same Y plane (14.2 codes mean on testsrc2). `check_reel`'s `grade_faithful`
+  read residuals 0, 34, 76 and 16 against its 4.0 bar on a correctly rendered reel and
+  refused it. Two cameras described differently restart the filter graph the same way
+  without the carried-over description: BT.601-described clips either side of a BT.709
+  one decode right in full, and a by-number read past the change came back 8.4 and 5.7
+  codes off. Deliver's look gate reads the master by frame number too; the delivered
+  file is one encode, written with one description.

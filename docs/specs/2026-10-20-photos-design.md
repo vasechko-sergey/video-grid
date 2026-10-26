@@ -54,7 +54,8 @@ JSON for video, so every existing FOOTAGE.json and cache entry is byte-identical
   reel, 2–4 s in a post). `motion` and `shake` are 0; `people`, `subject_w/h` and
   `present` come from one YOLO pass on the still (the largest box, as for video).
 - The clip: `dur PHOTO_ROOM = 8.0` s — how long the pacing fitter may hold it
-  (`selection.json` has no field for a photo's length; U7 is that row) —
+  (`selection.json` had no field for a photo's length; U7 was that row, and the
+  [2026-10-21 design](2026-10-21-photo-rhythm-design.md) added `hold`, in beats) —
   `fps 0.0` (a photo has no rate; video keeps `fps > 0`), no scene cuts.
 - A photo surfaces no cast candidates in this slice.
 
@@ -186,6 +187,8 @@ only when true, so existing sidecars do not change):
 - Photo scoring: `motion` 0 ranks a photo lowest on motion and `shake` 0 highest on
   stability, so a photo lands mid-pool; choosing photos among video is U8, holding them on
   the music grid U7, Live Photos U9.
+  *Closed by the [2026-10-21 design](2026-10-21-photo-rhythm-design.md) (0.28.0), U9
+  excepted: photos rank among photos (§5) and the music grid authors their length (§2).*
 - No cast from photos, no hero pin on a photo, no pan across a photo's long side.
 - The YOLO pass runs twice on the same decoded still (intake, then extract), which is
   deterministic but not free (one model load per photo in each, a fraction of a second).
