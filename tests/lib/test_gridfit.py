@@ -463,19 +463,21 @@ def test_an_authored_count_outside_the_range_is_clamped_not_carried_further_out(
     assert f.shifts[0] == pytest.approx(6.0, abs=1e-12)          # out at 8.0
 
 
-def test_an_authored_count_with_no_beat_near_its_target_falls_back_to_the_range():
+def test_an_authored_count_with_no_beat_near_its_target_keeps_its_target():
     # beats every 1.0 s against a 0.5 s period: the 3-beat target 1.5 has no beat within
-    # half a period of it, so the range's nearest wins (1.0, the earlier of a tie)
+    # half a period of it. It used to fall back to the range's nearest beat (1.0 — two
+    # beats, not three); the count is kept and its distance to the nearest beat is a
+    # deviation the fit sees (final review M3)
     beats = [float(i) for i in range(20)]
     f = gridfit.fit_level([2.0, 2.0], beats, [(-0.25, 0.25)] * 2, 0.25, beats=beats,
                           held=[_h(beats=3), None], plan=_never)
-    assert f.shifts[0] == pytest.approx(-1.0, abs=1e-12)
+    assert (f.shifts[0], f.devs[0]) == pytest.approx((-0.5, 0.5), abs=1e-12)
     # a beat further than half a period is not the count's own: 16 beats (8.0) with the
-    # tracker's next beat at 8.4 stays inside HOLD_ROOM, on 7.0
+    # tracker's next beat at 8.4 holds 8.0, HOLD_ROOM itself — not 7.0, fourteen beats
     beats = [float(i) for i in range(8)] + [8.4 + i for i in range(10)]
     f = gridfit.fit_level([2.0, 2.0], beats, [(-0.25, 0.25)] * 2, 0.25, beats=beats,
                           held=[_h(beats=16), None], plan=_never)
-    assert f.shifts[0] == pytest.approx(5.0, abs=1e-12)
+    assert (f.shifts[0], f.devs[0]) == pytest.approx((6.0, 0.4), abs=1e-12)
 
 
 @pytest.mark.parametrize("k, level", [(1, "beat"), (2, "half-bar"), (3, "beat"), (4, "bar"),
@@ -646,3 +648,17 @@ def test_the_cut_back_to_footage_still_takes_a_coarse_level():
     chosen, _ = gridfit.best_fit([2.0, 2.0, 2.0, 2.0], _BEATS_120, [(-0.25, 0.25)] * 4,
                                  0.25, held=[None, _h(), _h(), None], plan=lambda pos, run: 2)
     assert chosen.level != "beat"
+
+
+def test_an_authored_count_with_no_beat_near_its_target_keeps_the_count_as_a_deviation():
+    # A breakdown: no beat is detected between 4.0 and 10.0. An authored 8 beats from 2.0
+    # targets 6.0, no beat lies within half a beat of it, and the range rule took the
+    # nearest beat anywhere in range — 4.0, four beats — so "an authored count is never
+    # moved" failed without a word (final review M3). It keeps its count; the distance
+    # to the nearest line is a deviation the fit sees, as past the grid.
+    beats = [i * 0.5 for i in range(9)] + [10.0 + i * 0.5 for i in range(21)]
+    f = gridfit.fit_level([2.0, 2.0, 2.0], beats, [(-0.25, 0.25)] * 3, 0.25,
+                          beats=beats, held=[None, _h(8), None], plan=_never)
+    assert f.shifts[1] == pytest.approx(2.0, abs=1e-12)        # out at 6.0: 8 beats
+    assert f.devs[1] == pytest.approx(2.0, abs=1e-12)          # 2.0 from the line at 4.0
+    assert (f.drift, f.fits) == (0.0, False)

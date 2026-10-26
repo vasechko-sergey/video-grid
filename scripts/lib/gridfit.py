@@ -119,9 +119,10 @@ def _held_cut(i: int, h: Held, pos: float, run: tuple[int, ...], run_end: bool,
     the cut back to footage is as musical as every other cut — but only lines within
     [k/2, 2k] beats of its plan, falling back to the beats when none is there. An
     authored count is never moved for the level, and takes the detected beat within
-    half a beat of its target even a hair outside the range. A target more than half a
-    beat past the last detected beat (music shorter than the reel), or nothing in range
-    → the target itself, clamped into the range."""
+    half a beat of its target even a hair outside the range — or, with none there, the
+    target itself. A target more than half a beat past the last detected beat (music
+    shorter than the reel), or nothing in range → the target itself, clamped into the
+    range."""
     k = h.beats if h.beats is not None else plan(pos, run)
     if isinstance(k, bool) or not isinstance(k, int) or k < 1:
         raise ValueError(f"gridfit.fit_level: plan returned {k!r} for held episode {i} at "
@@ -135,14 +136,19 @@ def _held_cut(i: int, h: Held, pos: float, run: tuple[int, ...], run_end: bool,
         # fit can see, as a footage cut past the last line has
         return min(max(target, lo), hi), target
     if h.beats is not None and lo - _SLACK <= target <= hi + _SLACK:
-        # An authored count inside the range (scripts/pacing.py refuses one outside it at
-        # each window's tempo) takes its own beat — the detected one nearest the target —
+        # An authored count inside the range (scripts/pacing.py drops a window whose tempo
+        # puts it outside) takes its own beat — the detected one nearest the target —
         # even a hair outside the range: the tracker's jitter must not cost or add a beat
         # to a count the author wrote. A count outside it is clamped by the range rule
         # below, never carried further out by this one
         near = [x for x in beats if abs(x - target) <= period / 2 + _SLACK]
         if near:
             return min(near, key=lambda c: (abs(c - target), c)), target
+        # No beat there (a breakdown in the grid): the range rule would take the nearest
+        # beat ANYWHERE in range, a beat or more off the count, and "an authored count is
+        # never moved" would fail without a word (final review M3). The count itself is
+        # used and its distance to the nearest beat or line is a dev, as past the grid
+        return min(max(target, lo), hi), target
 
     def inside(xs: list[float], a: float = lo, b: float = hi) -> list[float]:
         return [x for x in xs if max(lo, a) - _SLACK <= x <= min(hi, b) + _SLACK]
