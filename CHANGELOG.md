@@ -40,7 +40,10 @@ file is the short "what changed for someone who installs it" list.
   a photo's score and a video window's are percentiles of two pools and do not
   compare. `FOOTAGE.md` names each group and its size. The first scan after updating
   re-scans the photos only — their cache entries gained the capture time and
-  sharpness — and every video clip stays cached.
+  sharpness — and every video clip stays cached. **On a run that already has photos,
+  re-run footage-intake and then pacing:** an older `FOOTAGE.json` still loads, with
+  its photos ranked against the video and no groups (`edit_plan build` now says so),
+  and an older `PACING.json` with photos is refused when it is applied.
 - **A photo takes the colour description of the video beside it**, as it takes its
   clock. Every photo was written BT.709; beside video that describes no colour, the
   reel's master changed description at the photo, ffmpeg carried it onto the video

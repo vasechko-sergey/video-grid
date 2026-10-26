@@ -910,6 +910,17 @@ def write_edit_plan(footage_path: str, selection_path: str, project_path: str, o
     build_edl's `music` paragraph and `_apply_outro`). Absent, EDL.outro stays None and
     the reel's length is whatever the footage/pacing already decided, unchanged."""
     footage = Footage.from_json(footage_path)
+    photos = sum(1 for c in footage.clips if c.kind == "photo")
+    if photos and not (footage.scoring and "photos" in footage.scoring):
+        # A pool scanned before 0.28 still loads — and its photo scores are percentiles
+        # against the video (motion 0 ranked a photo lowest) and it carries no burst
+        # groups, so "one photo per group" has nothing to read. Said, not refused: it is
+        # a usable cut, only a worse-informed one (final review M6).
+        _log(f"photos: FOOTAGE.json holds {photos} photo{'' if photos == 1 else 's'} but "
+             f"no photo ranking (scoring.photos) — it was scanned before 0.28, so its "
+             f"photo scores are percentiles against the video and it records no burst "
+             f"groups. Re-run footage-intake (it re-scans the photos only), then edit-plan "
+             f"and pacing")
     try:
         selection = json.loads(Path(selection_path).read_text())
     except json.JSONDecodeError as e:

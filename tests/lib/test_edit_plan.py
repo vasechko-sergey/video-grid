@@ -2440,3 +2440,37 @@ def test_a_paced_reel_inside_build_reels_tolerance_builds():
     edl = edit_plan.build_edl(_footage(), _sel3(), pacing=_spine2(),
                               music=_short_music(5.1))
     assert edl.target_dur == pytest.approx(5.15)
+
+
+# --- a FOOTAGE.json scanned before photos ranked among photos (final review M6) -----
+
+def _photo_pool(scoring):
+    photo = FootageClip(source="IMG_1.HEIC", dur=8.0, res=(3024, 4032), fps=0.0,
+                        kind="photo",
+                        windows=[FootageWindow(start=0.0, dur=2.0, shot_type="medium",
+                                               people=1, motion=0.0, shake=0.0)])
+    return Footage(clips=[*_footage().clips, photo], scoring=scoring)
+
+
+_VIDEO_SCORING = {"windows": 3, "separated": {"present": 0, "motion": 3, "shake": 3}}
+
+
+@pytest.mark.parametrize("scoring", [None, _VIDEO_SCORING])
+def test_a_pre_028_scan_with_photos_is_named(tmp_path, capsys, scoring):
+    # its photo scores are the old cross-pool percentiles and it has no group ids
+    fp, sp, pp = _write_inputs(tmp_path, _plain_selection(), footage=_photo_pool(scoring))
+    edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path / "out"))
+    assert ("photos: FOOTAGE.json holds 1 photo but no photo ranking (scoring.photos) — "
+            "it was scanned before 0.28, so its photo scores are percentiles against the "
+            "video and it records no burst groups. Re-run footage-intake (it re-scans the "
+            "photos only), then edit-plan and pacing") in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("footage", [
+    _photo_pool({**_VIDEO_SCORING,
+                 "photos": {"windows": 1, "separated": {"present": 0, "sharpness": 0}}}),
+    None])                                                     # no photo at all
+def test_a_current_scan_or_a_video_pool_says_nothing_about_photos(tmp_path, capsys, footage):
+    fp, sp, pp = _write_inputs(tmp_path, _plain_selection(), footage=footage)
+    edit_plan.write_edit_plan(fp, sp, pp, str(tmp_path / "out"))
+    assert "photos:" not in capsys.readouterr().err
