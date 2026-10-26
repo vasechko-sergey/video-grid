@@ -264,8 +264,11 @@ def test_an_unparseable_date_is_absent_never_a_failure(tmp_path, date):
     assert "taken" not in st.record and st.dims == (64, 48)
 
 
-def test_garbage_subseconds_and_offset_leave_the_date_standing(tmp_path):
-    st = still.load(_dated_jpeg(tmp_path / "a.jpg", "2026:10:21 12:34:56", "x1", "zz"))
+@pytest.mark.parametrize("offset", ["zz", "+24:00", "+05:99"])
+def test_garbage_subseconds_and_offset_leave_the_date_standing(tmp_path, offset):
+    # "+24:00" is past what dt.timezone accepts and would raise outside any guard;
+    # "+05:99" would otherwise read as UTC+06:39
+    st = still.load(_dated_jpeg(tmp_path / "a.jpg", "2026:10:21 12:34:56", "x1", offset))
     assert st.record["taken"] == _epoch(2026, 10, 21, 12, 34, 56)
 
 
