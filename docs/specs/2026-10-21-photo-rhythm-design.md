@@ -222,11 +222,13 @@ look` is deliver's own gate run by hand, and takes them as `--flash`.
 ## §5 · U8c — groups, and photos ranked among photos
 
 - `still.load` records the capture time (EXIF `DateTimeOriginal` + `SubSecTimeOriginal`,
-  with `OffsetTimeOriginal` when present; absent → no time). Intake stores it and a
-  **sharpness** (variance of the Laplacian of the luma at the analysis proxy's long side,
-  960) in the cached photo result. A photo's cache key gains `PHOTO_CACHE_VERSION = 1`,
-  so a photo cached before these fields misses; `CACHE_VERSION` stays 9, because no
-  video payload changed and a bump would re-scan every video of an existing run.
+  with `OffsetTimeOriginal` when present; absent, or an EXIF block Pillow cannot parse →
+  no time, never a failed decode). Intake stores it and a **sharpness** (variance of the
+  Laplacian of the luma resized to the analysis proxy's long side, 960 — down or up, so a
+  small copy reads softer than its original) in the cached photo result. A photo's
+  cache key gains `PHOTO_CACHE_VERSION = 1`, so a photo cached before these fields
+  misses; `CACHE_VERSION` stays 9, because no video payload changed and a bump would
+  re-scan every video of an existing run.
 - Phase 2 **groups** photos: two photos are one group when their capture times are
   within `BURST_GAP = 2.0` s of each other (chained through time order), or their pHash
   distance is under `DEDUP_DIST`. A group of two or more gets an id (`g1`, … in path
@@ -236,7 +238,9 @@ look` is deliver's own gate run by hand, and takes them as `--flash`.
   photo's score is its percentile among photos of `W_PRESENT·presence + (1−W_PRESENT)·
   sharpness`. `Footage.scoring` gains a `photos` report with the same separated counts.
 - **One per group.** `cull` marks best at most one photo per group, the highest scored —
-  the sharpest when presence ties, which is a burst's usual case.
+  the sharpest when presence ties, which is a burst's usual case. A group whose top
+  member is a pHash duplicate of an image already kept (a video window of the same
+  moment) gets none: the moment is starred already.
 - FOOTAGE.md names each photo's group and size; the edit-plan skill says to use one
   photo per group unless the cut means the sequence.
 
